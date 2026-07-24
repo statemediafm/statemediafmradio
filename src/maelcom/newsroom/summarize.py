@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import NamedTuple
 
 from ..core.models import NewsItem, Script
+from ..core.people import is_bot
 from .llm import LLMClient, LLMConfig
 
 
@@ -63,42 +64,9 @@ def _origin(item: NewsItem) -> str:
     return {"hackernews": "Hacker News"}.get(item.source, "the newsroom")
 
 
-# Automation accounts to keep out of the "who did the work" credit line.
-_BOT_NAMES = frozenset(
-    {
-        "dependabot",
-        "renovate",
-        "renovate-bot",
-        "mergify",
-        "codecov",
-        "codspeed-hq",
-        "sourcery-ai",
-        "pre-commit-ci",
-        "github-actions",
-        "greenkeeper",
-        "snyk-bot",
-        "imgbot",
-        "allcontributors",
-        "stale",
-        "semantic-release-bot",
-    }
-)
-
-
-def _is_bot(name: str) -> bool:
-    """True if ``name`` looks like an automation/bot account, not a person.
-
-    Catches the ``[bot]`` suffix GitHub/GitLab apps use (``dependabot[bot]``,
-    ``codecov[bot]``), ``-bot``/``_bot`` suffixes, and a few well-known bots that
-    use neither.
-    """
-    n = name.strip().lower()
-    return n.endswith(("[bot]", "-bot", "_bot")) or n in _BOT_NAMES
-
-
 def _authored_by_bot(item: NewsItem) -> bool:
     """True if the item's author (its first actor) is an automation account."""
-    return bool(item.actors) and _is_bot(item.actors[0])
+    return bool(item.actors) and is_bot(item.actors[0])
 
 
 def time_greeting(now: datetime) -> str:
@@ -162,7 +130,7 @@ def radio_reads(
     counts: dict[str, int] = {}
     for it in items:
         for actor in it.actors:
-            if _is_bot(actor):
+            if is_bot(actor):
                 continue
             counts[actor] = counts.get(actor, 0) + 1
     top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]

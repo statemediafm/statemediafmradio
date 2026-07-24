@@ -11,9 +11,9 @@ from datetime import datetime
 import pytest
 
 from maelcom.core.models import NewsItem, Script
+from maelcom.core.people import is_bot
 from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
 from maelcom.newsroom.summarize import (
-    _is_bot,
     build_prompt,
     naive_radio_script,
     radio_reads,
@@ -166,9 +166,9 @@ def test_radio_reads_marks_headlines_and_greeting():
 def test_is_bot_detects_automation_but_not_people():
     for bot in ["dependabot[bot]", "codecov[bot]", "github-actions[bot]", "renovate",
                 "snyk-bot", "pre-commit_ci_bot"]:
-        assert _is_bot(bot)
+        assert is_bot(bot)
     for person in ["alice", "edgarrmondragon", "Jamie Reid", "Abbott"]:
-        assert not _is_bot(person)
+        assert not is_bot(person)
 
 
 def test_contributors_line_excludes_bots():

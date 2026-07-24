@@ -12,6 +12,7 @@ import re
 from itertools import pairwise
 
 from ..core.models import ActivitySignal, NewsItem
+from ..core.people import is_bot
 
 # Named voices/themes assigned to participants so the music can reflect *who* is
 # active. Busiest participant gets the first voice.
@@ -76,10 +77,14 @@ def activity(items: list[NewsItem], window_s: float | None = None) -> ActivitySi
     item (0 when fewer than two are timed). An empty window is valid: it yields a
     quiet, zero-volume signal so the music can idle at the base (theta) level.
     """
-    # Rank participants by how many items they touched (busiest first).
+    # Rank participants by how many items they touched (busiest first). Bots
+    # (dependabot, codecov, …) aren't "participants" — they'd inflate the count
+    # and skew the music toward busier bands, so leave them out.
     counts: dict[str, int] = {}
     for item in items:
         for actor in item.actors:
+            if is_bot(actor):
+                continue
             counts[actor] = counts.get(actor, 0) + 1
     ranked_actors = [a for a, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
     actor_voices = {

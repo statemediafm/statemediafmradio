@@ -35,6 +35,19 @@ def test_empty_window_is_a_quiet_signal():
     assert signal.actor_voices == {}
 
 
+def test_bots_excluded_from_participant_count():
+    items = [
+        _commit("c1", "bump deps", "dependabot[bot]"),
+        _commit("c2", "coverage", "codecov[bot]"),
+        _commit("c3", "real work", "alice"),
+    ]
+    signal = activity(items)
+    # Volume still counts every item, but only humans are participants.
+    assert signal.volume == 3
+    assert signal.participant_count == 1
+    assert set(signal.actor_voices) == {"alice"}
+
+
 def test_actor_voices_rank_busiest_first():
     items = [
         _commit("c1", "one", "heavy"),
