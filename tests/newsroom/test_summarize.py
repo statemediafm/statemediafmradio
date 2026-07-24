@@ -148,17 +148,30 @@ def test_time_greeting_states_hour_and_minute():
 def test_radio_reads_join_equals_script():
     items = _items()
     reads = radio_reads(items, "bbc-world")
-    assert " ".join(text for _, text in reads) == naive_radio_script(items, "bbc-world")
+    assert " ".join(r.text for r in reads) == naive_radio_script(items, "bbc-world")
 
 
 def test_radio_reads_marks_headlines_and_greeting():
     reads = radio_reads(_items(), "bbc-world", greeting="Good day. It is 09:00.")
     # The greeting is the first read.
-    assert reads[0] == ("other", "Good day. It is 09:00.")
+    assert reads[0].role == "other"
+    assert reads[0].text == "Good day. It is 09:00."
     # Each unique headline is its own 'headline' read.
-    headlines = [text for role, text in reads if role == "headline"]
+    headlines = [r.text for r in reads if r.role == "headline"]
     assert "Fix scheduler offset bug." in headlines
     assert "Deploy window moved to 14:00." in headlines
+
+
+def test_radio_reads_headlines_carry_origin():
+    items = [
+        NewsItem(id="hn:1", source="hackernews", kind="story", title="Opus 5",
+                 origin="Hacker News", actors=["a"]),
+        NewsItem(id="c1", source="git", kind="commit", title="Fix the bug",
+                 origin="meltano", actors=["b"]),
+    ]
+    reads = radio_reads(items, "bbc-world")
+    by_origin = {r.origin for r in reads if r.role == "headline"}
+    assert by_origin == {"Hacker News", "meltano"}
 
 
 def test_naive_radio_script_greeting_is_prepended():

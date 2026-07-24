@@ -19,6 +19,7 @@ import sys
 import tomllib
 from dataclasses import replace
 from datetime import datetime, timedelta
+from itertools import zip_longest
 
 from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
@@ -38,12 +39,22 @@ _TONE_FREQS = (220.0, 262.0, 196.0)
 
 
 def _source_items(args: argparse.Namespace) -> list | None:
-    """Poll the selected single source: Hacker News with --hn, else the repo."""
+    """Poll the selected sources into one item list.
+
+    With both --hn and --repo, the two are combined into a single segment,
+    interleaved so headlines alternate sources (and thus voices). Returns
+    ``None`` if no source was selected.
+    """
+    lists: list[list] = []
     if getattr(args, "hn", False):
-        return HackerNewsSource(max_count=args.max_count).poll()
+        lists.append(HackerNewsSource(max_count=args.max_count).poll())
     if args.repo:
-        return open_source(args.repo, max_count=args.max_count, token=args.token).poll()
-    return None
+        lists.append(open_source(args.repo, max_count=args.max_count, token=args.token).poll())
+    if not lists:
+        return None
+    if len(lists) == 1:
+        return lists[0]
+    return [item for row in zip_longest(*lists) for item in row if item is not None]
 
 
 def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:
@@ -76,9 +87,20 @@ def _voice_segment(
         return script, tts.render(script)
 
     reads = radio_reads(items, style, greeting=greeting)
-    script = Script(text=" ".join(text for _, text in reads), style=style)
+    script = Script(text=" ".join(read.text for read in reads), style=style)
     pause_ms = round(args.headline_pause * 1000)
-    audio = render_reads(reads, tts, style=style, headline_pause_ms=pause_ms)
+
+    # When a single segment mixes sources, give each source its own voice so the
+    # headlines switch voice mid-segment. Single-source segments keep one voice.
+    origins = sorted({r.origin for r in reads if r.role == "headline" and r.origin})
+    voice_for = None
+    if len(origins) > 1:
+        providers = {origin: _segment_tts(args, i) for i, origin in enumerate(origins)}
+        voice_for = providers.get
+
+    audio = render_reads(
+        reads, tts, style=style, headline_pause_ms=pause_ms, voice_for=voice_for
+    )
     return script, audio
 
 

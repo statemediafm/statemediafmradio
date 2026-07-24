@@ -100,28 +100,37 @@ def concat_wavs(refs: list[AudioRef], gap_ms: int = 400) -> AudioRef:
 
 
 def render_reads(
-    reads: list[tuple[str, str]],
+    reads: list,
     tts: TTSProvider,
     *,
     style: str = "",
     voice: str | None = None,
     headline_pause_ms: int = 1000,
+    voice_for: object = None,
 ) -> AudioRef:
-    """Voice ``(role, text)`` reads into one clip, pausing between headlines.
+    """Voice reads into one clip, pausing between headlines and switching voice.
 
-    Each read is voiced separately with ``tts``; a ``headline_pause_ms`` silence
-    is inserted only between two consecutive ``"headline"`` reads, so the news
-    items land as distinct beats. Raises ``ValueError`` if nothing is voiceable.
+    Each read is ``(role, text[, origin])``. A read is voiced with ``tts``,
+    except a ``"headline"`` whose ``origin`` maps to another provider via
+    ``voice_for(origin)`` — so headlines from different sources speak in
+    different voices (all must share audio format to concatenate). A
+    ``headline_pause_ms`` silence separates consecutive ``"headline"`` reads.
+    Raises ``ValueError`` if nothing is voiceable.
     """
     clips: list[AudioRef] = []
     gaps: list[int] = []
     prev_role: str | None = None
-    for role, text in reads:
+    for read in reads:
+        role, text = read[0], read[1]
+        origin = read[2] if len(read) > 2 else None
         text = text.strip()
         if not text:
             continue
+        provider = tts
+        if role == "headline" and voice_for is not None and origin is not None:
+            provider = voice_for(origin) or tts
         gap = headline_pause_ms if (role == "headline" and prev_role == "headline") else 0
-        clips.append(tts.render(Script(text=text, style=style), voice=voice))
+        clips.append(provider.render(Script(text=text, style=style), voice=voice))
         gaps.append(gap)
         prev_role = role
     if not clips:

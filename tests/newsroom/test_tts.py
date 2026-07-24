@@ -83,3 +83,23 @@ def test_render_reads_pauses_only_between_headlines():
 def test_render_reads_requires_content():
     with pytest.raises(ValueError):
         render_reads([], ToneWavTTS())
+
+
+def test_render_reads_switches_voice_per_origin():
+    base = ToneWavTTS()
+    other = ToneWavTTS(frequency=180.0)  # same 8 kHz format → concatenates
+    consulted: list[str] = []
+
+    def voice_for(origin):
+        consulted.append(origin)
+        return other if origin == "meltano" else None
+
+    reads = [
+        ("other", "Intro."),
+        ("headline", "Opus 5.", "Hacker News"),
+        ("headline", "Fix the bug.", "meltano"),
+    ]
+    out = render_reads(reads, base, headline_pause_ms=0, voice_for=voice_for)
+    assert out.data[:4] == b"RIFF"
+    # voice_for is consulted for each headline's origin (not the 'other' read).
+    assert consulted == ["Hacker News", "meltano"]

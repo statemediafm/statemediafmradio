@@ -10,9 +10,19 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import NamedTuple
 
 from ..core.models import NewsItem, Script
 from .llm import LLMClient, LLMConfig
+
+
+class Read(NamedTuple):
+    """One spoken chunk of a broadcast. ``origin`` (a source label) is set on
+    ``headline`` reads so the voicer can pick a voice per source."""
+
+    role: str  # "headline" | "other"
+    text: str
+    origin: str | None = None
 
 # Rough words-per-minute for spoken radio, used to size the target read length.
 _WORDS_PER_MINUTE = 150
@@ -86,11 +96,11 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
 
 def radio_reads(
     items: list[NewsItem], style: str, *, greeting: str | None = None
-) -> list[tuple[str, str]]:
-    """The broadcast read as ordered ``(role, text)`` chunks.
+) -> list[Read]:
+    """The broadcast read as an ordered list of ``Read`` chunks.
 
-    ``role`` is ``"headline"`` or ``"other"``. Splitting the read into chunks
-    lets the voicer pause between headlines and (per source) switch voice;
+    Splitting the read into chunks lets the voicer pause between headlines and
+    switch voice per source (each headline carries its ``origin``);
     ``naive_radio_script`` is just these joined into one string, so the plain
     text is unchanged. Derived deterministically from the real activity.
     """
@@ -129,25 +139,26 @@ def radio_reads(
     single_origin = len({origin for _, origin in picked}) == 1
 
     plural = "s" if len(items) != 1 else ""
-    reads: list[tuple[str, str]] = []
+    reads: list[Read] = []
     if greeting:
-        reads.append(("other", greeting))
-    reads.append(("other", "This is the firmwide radio service."))
+        reads.append(Read("other", greeting))
+    reads.append(Read("other", "This is the firmwide radio service."))
     volume_line = (
         f"In the latest update there {'were' if plural else 'was'} "
         f"{len(items)} item{plural}{across}."
     )
-    reads.append(("other", volume_line))
+    reads.append(Read("other", volume_line))
     if top:
-        reads.append(("other", f"Most of the activity came from {_join_names(top)}."))
+        reads.append(Read("other", f"Most of the activity came from {_join_names(top)}."))
     # Attribute the headlines: name a single shared origin once, else tag each.
+    # Either way each headline read carries its origin for per-source voicing.
     if single_origin and picked:
-        reads.append(("other", f"Here are the headlines from {picked[0][1]}."))
-        reads.extend(("headline", f"{h}.") for h, _ in picked)
+        reads.append(Read("other", f"Here are the headlines from {picked[0][1]}."))
+        reads.extend(Read("headline", f"{h}.", origin) for h, origin in picked)
     else:
-        reads.append(("other", "Here are the headlines."))
-        reads.extend(("headline", f"From {origin}, {h}.") for h, origin in picked)
-    reads.append(("other", "That's the latest from the newsroom. More as it develops."))
+        reads.append(Read("other", "Here are the headlines."))
+        reads.extend(Read("headline", f"From {origin}, {h}.", origin) for h, origin in picked)
+    reads.append(Read("other", "That's the latest from the newsroom. More as it develops."))
     return reads
 
 
@@ -161,7 +172,7 @@ def naive_radio_script(
     activity instead of a placeholder. See ``radio_reads`` for the chunked form
     the voicer uses to pause between headlines.
     """
-    return " ".join(text for _, text in radio_reads(items, style, greeting=greeting))
+    return " ".join(read.text for read in radio_reads(items, style, greeting=greeting))
 
 
 def summarize(
