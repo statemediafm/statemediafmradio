@@ -58,6 +58,7 @@ class HackerNewsSource(Source):
                     kind="story",
                     title=story["title"],
                     body=f"{score} points and {n_comments} comments, via {domain}.",
+                    origin="Hacker News",
                     actors=[story["by"]] if story.get("by") else [],
                     timestamp=datetime.fromtimestamp(ts, tz=UTC) if ts else None,
                     refs=[url],

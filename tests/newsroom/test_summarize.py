@@ -12,7 +12,12 @@ import pytest
 
 from maelcom.core.models import NewsItem, Script
 from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
-from maelcom.newsroom.summarize import build_prompt, naive_radio_script, summarize
+from maelcom.newsroom.summarize import (
+    build_prompt,
+    naive_radio_script,
+    summarize,
+    time_greeting,
+)
 
 CFG = LLMConfig(model="test-model")
 
@@ -108,6 +113,35 @@ def test_naive_radio_script_names_issue_and_mr_kinds():
 def test_naive_radio_script_pluralizes_hn_stories():
     items = [NewsItem(id="hn:1", source="hackernews", kind="story", title="Big news", actors=["a"])]
     assert "stories" in naive_radio_script(items, style="bbc-world")
+
+
+def test_headlines_attributed_to_a_single_origin():
+    items = [
+        NewsItem(id="hn:1", source="hackernews", kind="story", title="Claude Opus 5",
+                 origin="Hacker News", actors=["a"]),
+        NewsItem(id="hn:2", source="hackernews", kind="story", title="Postgres scales",
+                 origin="Hacker News", actors=["b"]),
+    ]
+    text = naive_radio_script(items, style="bbc-world")
+    assert "Here are the headlines from Hacker News." in text
+    assert "Claude Opus 5." in text
+
+
+def test_headlines_attributed_per_source_when_mixed():
+    items = [
+        NewsItem(id="hn:1", source="hackernews", kind="story", title="Opus 5",
+                 origin="Hacker News", actors=["a"]),
+        NewsItem(id="c1", source="git", kind="commit", title="Fix the bug",
+                 origin="meltano", actors=["b"]),
+    ]
+    text = naive_radio_script(items, style="bbc-world")
+    assert "From Hacker News, Opus 5." in text
+    assert "From meltano, Fix the bug." in text
+
+
+def test_time_greeting_states_hour_and_minute():
+    assert time_greeting(datetime(2026, 7, 24, 16, 52)) == "Good day. It is 16:52."
+    assert time_greeting(datetime(2026, 7, 24, 9, 5)) == "Good day. It is 09:05."
 
 
 def test_naive_radio_script_is_deterministic():

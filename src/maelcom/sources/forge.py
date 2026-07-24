@@ -77,6 +77,7 @@ class ForgeSource(Source):
             raise ValueError(f"{repo!r} is not a recognized GitHub/GitLab URL.")
         self.repo = repo
         self.platform, self.slug = detected
+        self.project = self.slug.split("/")[-1]  # repo name, for on-air attribution
         self.max_count = max_count
         self.token = token or os.environ.get(
             "GITHUB_TOKEN" if self.platform == "github" else "GITLAB_TOKEN"
@@ -142,6 +143,7 @@ class ForgeSource(Source):
                     kind="pull_request" if is_pr else "issue",
                     title=it["title"],
                     body=body.strip()[:800],
+                    origin=self.project,
                     actors=list(dict.fromkeys(actors)),
                     timestamp=_parse_ts(it.get("updated_at")),
                     refs=[it.get("html_url", "")],
@@ -176,6 +178,7 @@ class ForgeSource(Source):
                         kind=kind,
                         title=it["title"],
                         body=body.strip()[:800],
+                        origin=self.project,
                         actors=list(dict.fromkeys(actors)),
                         timestamp=_parse_ts(it.get("updated_at")),
                         refs=[it.get("web_url", "")],

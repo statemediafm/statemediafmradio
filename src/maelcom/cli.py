@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import tomllib
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 from .core.models import Script
@@ -24,7 +25,7 @@ from .core.plan import single_news_plan
 from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
 from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
-from .newsroom.summarize import naive_radio_script, summarize
+from .newsroom.summarize import naive_radio_script, summarize, time_greeting
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs
 from .roster import build_roster, load_config
 from .sources import HackerNewsSource, Source, open_source
@@ -57,6 +58,12 @@ def _script_for(items: list, style: str, args: argparse.Namespace) -> Script:
     return Script(text=naive_radio_script(items, style), style=style)
 
 
+def _greet(script: Script) -> Script:
+    """Open the broadcast with the current time (plays before the segment)."""
+    greeting = time_greeting(datetime.now().astimezone())
+    return replace(script, text=f"{greeting} {script.text}")
+
+
 def _demo(args: argparse.Namespace) -> int:
     items = _source_items(args)
     if items is None:
@@ -69,7 +76,7 @@ def _demo(args: argparse.Namespace) -> int:
     if tts is None:
         return 2
 
-    script = _script_for(items, args.style, args)
+    script = _greet(_script_for(items, args.style, args))
     audio = tts.render(script)
     segment = single_news_plan(audio, script).segments[0]
 
@@ -152,18 +159,24 @@ def _broadcast(args: argparse.Namespace) -> int:
         return 2
 
     programmes: list[Programme] = []
-    content: dict[str, tuple[Script, object]] = {}
+    scripts: dict[str, Script] = {}
     for topic, source, cadence in roster:
         items = source.poll()
         if not items:
             print(f"(skipping {topic}: no activity)", file=sys.stderr)
             continue
-        script = _script_for(items, args.style, args)
-        content[topic] = (script, tts.render(script))
+        scripts[topic] = _script_for(items, args.style, args)
         programmes.append(Programme(topic, cadence))
     if not programmes:
         print("No segments to air.", file=sys.stderr)
         return 1
+
+    # Open the broadcast with the time greeting on the first segment, then voice.
+    first = next(iter(scripts))
+    scripts[first] = _greet(scripts[first])
+    content: dict[str, tuple[Script, object]] = {
+        topic: (script, tts.render(script)) for topic, script in scripts.items()
+    }
 
     plan = assemble_broadcast(programmes, content, args.window * 60)
     now = datetime.now().astimezone()  # local wall clock, for display only

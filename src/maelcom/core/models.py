@@ -26,6 +26,10 @@ class NewsItem:
     title: str
     body: str = ""
     kind: str = "update"
+    # Human-readable origin for on-air attribution ("Hacker News", "meltano").
+    # ``source`` is the pillar/source name ("git", "forge", "hackernews");
+    # ``origin`` names the specific place a headline came from.
+    origin: str | None = None
     tenant: str | None = None
     actors: list[str] = field(default_factory=list)
     timestamp: datetime | None = None

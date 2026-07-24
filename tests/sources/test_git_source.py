@@ -8,6 +8,14 @@ import subprocess
 import pytest
 
 from maelcom.sources import GitSource, get_source, is_remote
+from maelcom.sources.git_source import _repo_name
+
+
+def test_repo_name_for_attribution():
+    assert _repo_name("/home/me/RFClassifier") == "RFClassifier"
+    assert _repo_name("https://gitlab.com/meltano/meltano.git") == "meltano"
+    assert _repo_name("https://github.com/meltano/meltano/") == "meltano"
+    assert _repo_name("git@github.com:acme/widgets.git") == "widgets"
 
 
 @pytest.mark.parametrize(

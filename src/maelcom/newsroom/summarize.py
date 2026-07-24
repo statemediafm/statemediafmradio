@@ -9,6 +9,7 @@ and no network — and production defaults to the local Claude client via LiteLL
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from ..core.models import NewsItem, Script
 from .llm import LLMClient, LLMConfig
@@ -43,6 +44,18 @@ def _join_names(names: list[str]) -> str:
     if len(names) == 2:
         return f"{names[0]} and {names[1]}"
     return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def _origin(item: NewsItem) -> str:
+    """Where a headline is from, for on-air attribution."""
+    if item.origin:
+        return item.origin
+    return {"hackernews": "Hacker News"}.get(item.source, "the newsroom")
+
+
+def time_greeting(now: datetime) -> str:
+    """The broadcast's opening line, stating the current hour and minute."""
+    return f"Good day. It is {now:%H:%M}."
 
 
 def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) -> str:
@@ -104,15 +117,26 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
     # Clean each subject, then keep the first few unique headlines — the merge /
     # underlying-commit pairing in many repos otherwise repeats the same line.
     seen: set[str] = set()
-    headlines: list[str] = []
+    picked: list[tuple[str, str]] = []  # (headline, origin)
     for it in items:
         headline = _clean_headline(it.title)
         if headline and headline.lower() not in seen:
             seen.add(headline.lower())
-            headlines.append(headline)
-        if len(headlines) == 5:
+            picked.append((headline, _origin(it)))
+        if len(picked) == 5:
             break
-    headline_text = " ".join(f"{h}." for h in headlines)
+
+    # Attribute the headlines to where they're from. When they all share one
+    # origin, name it once; when they're mixed, tag each headline.
+    origins = {origin for _, origin in picked}
+    if len(origins) == 1:
+        headline_text = f"Here are the headlines from {origins.pop()}. " + " ".join(
+            f"{h}." for h, _ in picked
+        )
+    else:
+        headline_text = "Here are the headlines. " + " ".join(
+            f"From {origin}, {h}." for h, origin in picked
+        )
 
     plural = "s" if len(items) != 1 else ""
     return (
@@ -120,7 +144,7 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
         f"In the latest update there {'were' if plural else 'was'} "
         f"{len(items)} item{plural}{across}. "
         f"{contributors}"
-        f"Here are the headlines. {headline_text} "
+        f"{headline_text} "
         f"That's the latest from the newsroom. More as it develops."
     )
 

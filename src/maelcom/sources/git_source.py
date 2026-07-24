@@ -40,6 +40,7 @@ class GitSource(Source):
     def __init__(self, repo: str, max_count: int = 50) -> None:
         self.repo = repo
         self.max_count = max_count
+        self.project = _repo_name(repo)
 
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
         if is_remote(self.repo):
@@ -78,11 +79,22 @@ class GitSource(Source):
             kind="commit",
             title=subject,
             body=body.strip(),
+            origin=self.project,
             actors=[author] if author else [],
             timestamp=_parse_iso(iso),
             refs=[sha],
             raw={"repo": self.repo},
         )
+
+
+def _repo_name(repo: str) -> str:
+    """The project name from a repo path or URL, for on-air attribution.
+
+    e.g. ``/home/me/RFClassifier`` → ``RFClassifier``;
+    ``https://gitlab.com/meltano/meltano.git`` → ``meltano``.
+    """
+    name = repo.rstrip("/").split("/")[-1]
+    return name.removesuffix(".git")
 
 
 def _parse_iso(value: str) -> datetime | None:

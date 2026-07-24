@@ -81,6 +81,7 @@ def test_github_issues_and_prs_with_latest_comment():
     assert issue.body == "latest word on the hang"
     assert issue.actors == ["alice", "carol"]
     assert issue.id == "github:issue:101"
+    assert issue.origin == "widgets"  # attributed to the project name
     # The PR has no comments → no comment call was made, body falls back.
     assert pr.body == "PR body"
     assert pr.actors == ["bob"]

@@ -54,6 +54,7 @@ def test_front_page_stories_map_to_news_items():
     assert top.source == "hackernews"
     assert top.actors == ["alvis"]
     assert top.id == "hn:10"
+    assert top.origin == "Hacker News"
     assert top.raw["rank"] == 1
     # Body notes score, comments, and domain (www. stripped).
     assert "911 points and 500 comments" in top.body
