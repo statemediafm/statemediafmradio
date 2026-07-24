@@ -37,7 +37,8 @@ Choose a source:
 It writes a radio script to stdout and saves the voiced audio to
 `maelcom-demo.wav`. Copy `dist/maelcom.pyz` anywhere and run it with just
 `python3`. Passing **both** `--hn` and `--repo` combines them into one segment,
-interleaved, with each headline attributed and voiced in its source's own voice.
+covering each source in full before the next (depth-first, not interleaved),
+with each source's headlines attributed and voiced in its own voice.
 
 The offline demo builds a deterministic summary from the real activity (top
 contributors + recent headlines) and voices it with a placeholder tone — so it

@@ -141,6 +141,24 @@ def test_headlines_attributed_per_source_when_mixed():
     assert "From meltano, Fix the bug." in text
 
 
+def test_multi_source_headlines_are_grouped_depth_first():
+    # Interleaved input, but headlines must come out grouped by source.
+    items = [
+        NewsItem(id="h1", source="hackernews", kind="story", title="HN one",
+                 origin="Hacker News", actors=["a"]),
+        NewsItem(id="r1", source="git", kind="commit", title="Repo one", origin="proj", actors=["b"]),
+        NewsItem(id="h2", source="hackernews", kind="story", title="HN two",
+                 origin="Hacker News", actors=["c"]),
+        NewsItem(id="r2", source="git", kind="commit", title="Repo two", origin="proj", actors=["d"]),
+    ]
+    headlines = [(r.text, r.origin) for r in radio_reads(items, "bbc-world") if r.role == "headline"]
+    # All Hacker News headlines precede all repo headlines (no interleaving).
+    assert [o for _, o in headlines] == ["Hacker News", "Hacker News", "proj", "proj"]
+    # Each source is announced at the top of its run.
+    assert headlines[0][0] == "From Hacker News, HN one."
+    assert headlines[2][0] == "From proj, Repo one."
+
+
 def test_time_greeting_states_hour_and_minute():
     assert time_greeting(datetime(2026, 7, 24, 16, 52)) == "Good day. It is 16:52."
     assert time_greeting(datetime(2026, 7, 24, 9, 5)) == "Good day. It is 09:05."

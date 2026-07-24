@@ -19,7 +19,6 @@ import sys
 import tomllib
 from dataclasses import replace
 from datetime import datetime, timedelta
-from itertools import zip_longest
 
 from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
@@ -42,19 +41,18 @@ def _source_items(args: argparse.Namespace) -> list | None:
     """Poll the selected sources into one item list.
 
     With both --hn and --repo, the two are combined into a single segment,
-    interleaved so headlines alternate sources (and thus voices). Returns
-    ``None`` if no source was selected.
+    concatenated (not interleaved) so the summary covers one source in full
+    before the next. Returns ``None`` if no source was selected.
     """
-    lists: list[list] = []
+    items: list = []
+    picked = False
     if getattr(args, "hn", False):
-        lists.append(HackerNewsSource(max_count=args.max_count).poll())
+        items += HackerNewsSource(max_count=args.max_count).poll()
+        picked = True
     if args.repo:
-        lists.append(open_source(args.repo, max_count=args.max_count, token=args.token).poll())
-    if not lists:
-        return None
-    if len(lists) == 1:
-        return lists[0]
-    return [item for row in zip_longest(*lists) for item in row if item is not None]
+        items += open_source(args.repo, max_count=args.max_count, token=args.token).poll()
+        picked = True
+    return items if picked else None
 
 
 def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:

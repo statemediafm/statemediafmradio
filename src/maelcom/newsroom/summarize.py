@@ -135,21 +135,28 @@ def radio_reads(
             counts[actor] = counts.get(actor, 0) + 1
     top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
 
-    # Clean each subject, then keep the first few unique headlines — the merge /
-    # underlying-commit pairing in many repos otherwise repeats the same line.
-    # Skip bot-authored items (dependency bumps, coverage bots, …) as noise.
+    # Group headlines by origin and cover each source in full before the next
+    # (depth-first) — no interleaving across sources. ``order`` preserves each
+    # origin's first appearance; a per-source cap keeps one busy source from
+    # crowding out the others. Deduped; bot-authored items skipped as noise.
+    per_source = 5
     seen: set[str] = set()
-    picked: list[tuple[str, str]] = []  # (headline, origin)
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
     for it in items:
         if _authored_by_bot(it):
             continue
         headline = _clean_headline(it.title)
-        if headline and headline.lower() not in seen:
-            seen.add(headline.lower())
-            picked.append((headline, _origin(it)))
-        if len(picked) == 5:
-            break
-    single_origin = bool(picked) and len({origin for _, origin in picked}) == 1
+        if not headline or headline.lower() in seen:
+            continue
+        seen.add(headline.lower())
+        origin = _origin(it)
+        if origin not in groups:
+            groups[origin] = []
+            order.append(origin)
+        if len(groups[origin]) < per_source:
+            groups[origin].append(headline)
+    single_origin = len(order) == 1
 
     plural = "s" if len(items) != 1 else ""
     reads: list[Read] = []
@@ -163,16 +170,21 @@ def radio_reads(
     reads.append(Read("other", volume_line))
     if top:
         reads.append(Read("other", f"Most of the activity came from {_join_names(top)}."))
-    # Attribute the headlines: name a single shared origin once, else tag each.
-    # Either way each headline read carries its origin for per-source voicing.
-    if not picked:
+    # Attribute the headlines. One source → name it once. Several → cover them
+    # depth-first, announcing each source at the top of its run; every headline
+    # read carries its origin so the voicer speaks each source in its own voice.
+    if not order:
         reads.append(Read("other", "No standout headlines to report."))
     elif single_origin:
-        reads.append(Read("other", f"Here are the headlines from {picked[0][1]}."))
-        reads.extend(Read("headline", f"{h}.", origin) for h, origin in picked)
+        origin = order[0]
+        reads.append(Read("other", f"Here are the headlines from {origin}."))
+        reads.extend(Read("headline", f"{h}.", origin) for h in groups[origin])
     else:
         reads.append(Read("other", "Here are the headlines."))
-        reads.extend(Read("headline", f"From {origin}, {h}.", origin) for h, origin in picked)
+        for origin in order:
+            for i, h in enumerate(groups[origin]):
+                text = f"From {origin}, {h}." if i == 0 else f"{h}."
+                reads.append(Read("headline", text, origin))
     reads.append(Read("other", "That's the latest from the newsroom. More as it develops."))
     return reads
 
