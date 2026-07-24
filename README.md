@@ -127,8 +127,10 @@ every = "15m"
 offset = "0"
 ```
 
-**Audio.** `--out news.wav` writes one combined WAV of all segments back to back;
-`--out-dir DIR` writes one WAV per segment topic. Add `--speak` for real voices —
+**Audio.** `--out` (default `news.wav`, `''` to skip) writes one combined WAV of
+all segments back to back; `--out-dir DIR` writes one WAV per segment topic. So
+`maelcom broadcast --hn --window 120` alone drops a `news.wav` in the current
+directory. Add `--speak` for real voices —
 each segment is voiced in a **different** rotating voice so the topics sound
 distinct. The broadcast opens with a spoken time greeting ("Good day. It is
 16:52."), headlines are **attributed** to their source (Hacker News, the git

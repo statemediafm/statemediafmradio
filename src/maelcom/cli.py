@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import tomllib
+import urllib.error
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -37,6 +38,23 @@ _SPEAK_VOICES = ("alan", "alba", "northern_english_male")
 _TONE_FREQS = (220.0, 262.0, 196.0)
 
 
+class _CliError(Exception):
+    """A user-facing error — reported as a clean message, not a traceback."""
+
+
+def _poll(source: Source) -> list:
+    """Poll a source, turning network/API failures into a clean CLI error."""
+    try:
+        return source.poll()
+    except urllib.error.HTTPError as exc:
+        hint = ""
+        if exc.code in (401, 403):
+            hint = " — set GITHUB_TOKEN / GITLAB_TOKEN (or --token), or retry later"
+        raise _CliError(f"{type(source).__name__}: HTTP {exc.code} {exc.reason}{hint}") from exc
+    except urllib.error.URLError as exc:
+        raise _CliError(f"{type(source).__name__}: cannot reach network ({exc.reason})") from exc
+
+
 def _source_items(args: argparse.Namespace) -> list | None:
     """Poll the selected sources into one item list.
 
@@ -47,10 +65,10 @@ def _source_items(args: argparse.Namespace) -> list | None:
     items: list = []
     picked = False
     if getattr(args, "hn", False):
-        items += HackerNewsSource(max_count=args.max_count).poll()
+        items += _poll(HackerNewsSource(max_count=args.max_count))
         picked = True
     if args.repo:
-        items += open_source(args.repo, max_count=args.max_count, token=args.token).poll()
+        items += _poll(open_source(args.repo, max_count=args.max_count, token=args.token))
         picked = True
     return items if picked else None
 
@@ -201,7 +219,11 @@ def _broadcast(args: argparse.Namespace) -> int:
     content: dict[str, tuple[Script, AudioRef]] = {}
     seg_index = 0
     for topic, source, cadence in roster:
-        items = source.poll()
+        try:
+            items = _poll(source)
+        except _CliError as exc:
+            print(f"(skipping {topic}: {exc})", file=sys.stderr)
+            continue
         if not items:
             print(f"(skipping {topic}: no activity)", file=sys.stderr)
             continue
@@ -333,13 +355,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     bc.add_argument("--window", type=int, default=60, help="Rundown length in minutes.")
     bc.add_argument(
-        "--out", default=None, help="Write one combined WAV of all segments back to back."
+        "--out",
+        default="news.wav",
+        help="Combined WAV of all segments back to back (default news.wav; '' to skip).",
     )
     bc.add_argument("--out-dir", default=None, help="Directory to write one WAV per segment topic.")
     bc.set_defaults(func=_broadcast)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except _CliError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
