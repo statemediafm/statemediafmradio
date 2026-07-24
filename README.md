@@ -22,15 +22,17 @@ single-file zipapp — no install, no `pip`, no `PYTHONPATH`:
 python3 dist/maelcom.pyz demo --repo /path/to/a/git/repo
 ```
 
-Point `--repo` at either:
+Choose a source:
 
-- a **GitHub/GitLab URL** (e.g. `https://github.com/meltano/meltano`) — reads
-  the most recently updated **issues and merge/pull requests, with the latest
-  comment on each** (public projects work unauthenticated, subject to the
+- **`--repo <GitHub/GitLab URL>`** (e.g. `https://github.com/meltano/meltano`) —
+  reads the most recently updated **issues and merge/pull requests, with the
+  latest comment on each** (public projects work unauthenticated, subject to the
   platform's rate limits; pass `--token` or set `GITHUB_TOKEN` / `GITLAB_TOKEN`
-  to raise them); or
-- a **local/bare repo path or URL** — falls back to recent **commits** (all
-  that is available without a forge API).
+  to raise them);
+- **`--repo <local/bare repo path>`** — falls back to recent **commits** (all
+  that is available without a forge API);
+- **`--hn`** — the **Hacker News front page** (top stories via the official HN
+  API). Try it with `python3 dist/maelcom.pyz demo --hn`.
 
 It writes a radio script to stdout and saves the voiced audio to
 `maelcom-demo.wav`. Copy `dist/maelcom.pyz` anywhere and run it with just
@@ -79,6 +81,31 @@ maelcom demo --repo /path/to/repo --live
 Extras: `.[llm]` (LiteLLM + config), `.[tts]` (Piper neural speech), `.[web]`
 (FastAPI + uvicorn), `.[dev]` (pytest, ruff, mypy), `.[all]`.
 
+## Multiple sources as timed segments
+
+`broadcast` airs several sources at **different times**, each on its own cadence,
+so they read as distinct news segments about their topic (a step toward the
+"rhythm of the day" scheduler):
+
+```sh
+maelcom broadcast --hn --repo https://github.com/meltano/meltano --window 60
+```
+
+It prints a rundown — each source scheduled every 15 minutes, staggered so they
+interleave — plus the script for each segment:
+
+```
+Broadcast rundown — next 60 min, 8 segments:
+  16:36  Repository activity        18s
+  16:42  Hacker News front page     31s
+  16:51  Repository activity        18s
+  ...
+```
+
+Add `--speak` and `--out-dir DIR` to write one WAV per segment topic. Cadences
+live in `core/schedule.py` (`Cadence`, `Programme`, `assemble_broadcast`) and are
+pure/deterministic — the scheduler never reads the wall clock.
+
 ## Generative music (M2)
 
 Maelcom also turns a repo's activity into a **Strudel program** — generative
@@ -110,11 +137,11 @@ pytest
 
 ```
 src/maelcom/
-  core/       shared data model (§6 contracts) + plan assembly
-  sources/    activity sources (forge issues/MRs, git commits) → NewsItem
+  core/       data model (§6 contracts) + plan assembly + schedule (cadences)
+  sources/    forge issues/MRs, git commits, Hacker News front page → NewsItem
   newsroom/   summarize (LLMClient) + voice (TTSProvider)
   genmusic/   activity → ActivitySignal → compose → StrudelProgram (lofi)
   web/        FastAPI: /health, /plan, /audio/{id}, /genmusic, Tufte page
   pipeline.py NewsItems → summarize → voice → BroadcastPlan
-  cli.py      `maelcom demo`, `maelcom genmusic`
+  cli.py      `maelcom demo`, `maelcom genmusic`, `maelcom broadcast`
 ```

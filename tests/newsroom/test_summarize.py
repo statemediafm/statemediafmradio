@@ -105,6 +105,11 @@ def test_naive_radio_script_names_issue_and_mr_kinds():
     assert "issues" in text and "pull requests" in text
 
 
+def test_naive_radio_script_pluralizes_hn_stories():
+    items = [NewsItem(id="hn:1", source="hackernews", kind="story", title="Big news", actors=["a"])]
+    assert "stories" in naive_radio_script(items, style="bbc-world")
+
+
 def test_naive_radio_script_is_deterministic():
     assert naive_radio_script(_items(), "lofi") == naive_radio_script(_items(), "lofi")
 

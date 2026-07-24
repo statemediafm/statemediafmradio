@@ -5,6 +5,7 @@ from __future__ import annotations
 from .base import Source, get_source, register_source
 from .forge import ForgeSource, detect_forge
 from .git_source import GitSource, is_remote
+from .hackernews import HackerNewsSource
 
 
 def open_source(repo: str, max_count: int = 20, token: str | None = None) -> Source:
@@ -23,6 +24,7 @@ def open_source(repo: str, max_count: int = 20, token: str | None = None) -> Sou
 __all__ = [
     "ForgeSource",
     "GitSource",
+    "HackerNewsSource",
     "Source",
     "detect_forge",
     "get_source",

@@ -302,6 +302,12 @@ adding breadth.
 - `forge_source` (GitHub/GitLab issues + merge/pull requests, each with its
   **latest comment**) → `NewsItem`s; `open_source()` routes a forge URL here and
   a local/bare repo to `git_source`. Optional API token; stdlib-only. ✅
+- `hackernews_source` (news.ycombinator.com front page via the HN API) →
+  `NewsItem`s; `maelcom demo --hn`. stdlib-only. ✅
+- **Multi-source segments / scheduler seed** (`core/schedule.py`): `Cadence` +
+  `Programme` + `assemble_broadcast` place each source at its own times as
+  titled `Segment`s; `maelcom broadcast` airs several sources as an interleaved
+  rundown. Pure/deterministic (no wall-clock reads). Groundwork for §5.5. ✅
 - Newsroom: `summarize()` → prompt → **`LLMClient`** → 1–2 min who/what/… script.
   Ship `LiteLLMClient` (default profile = local Claude client,
   `anthropic/claude-opus-4-8`) + the `fake` client for tests + the proxy/harness

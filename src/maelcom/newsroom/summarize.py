@@ -88,6 +88,7 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
         "pull_request": "pull requests",
         "merge_request": "merge requests",
         "commit": "commits",
+        "story": "stories",
     }
     kinds = sorted({it.kind for it in items})
     kind_nouns = [_kind_noun.get(k, f"{k}s") for k in kinds]

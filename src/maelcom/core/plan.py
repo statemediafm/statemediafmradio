@@ -47,6 +47,7 @@ def plan_to_dict(plan: BroadcastPlan) -> dict:
         "segments": [
             {
                 "kind": s.kind,
+                "title": s.title,
                 "start_s": s.start_s,
                 "duration_s": s.duration_s,
                 "audio_id": s.audio.id if s.audio else None,

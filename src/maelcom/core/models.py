@@ -98,13 +98,18 @@ class StrudelProgram:
 
 @dataclass(frozen=True, slots=True)
 class Segment:
-    """One timed entry in a broadcast plan."""
+    """One timed entry in a broadcast plan.
+
+    ``title`` names the segment's topic/source ("Hacker News front page",
+    "Repository activity") so a multi-source rundown reads as distinct segments.
+    """
 
     kind: str  # "news" | "music" | "song"
     start_s: float
     duration_s: float
     audio: AudioRef | None = None
     script: Script | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
