@@ -21,6 +21,7 @@ import urllib.error
 from dataclasses import replace
 from datetime import datetime, timedelta
 
+from . import serve as serve_mod
 from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
 from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
@@ -212,18 +213,21 @@ def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence,
     ]
 
 
+def _resolve_roster(args: argparse.Namespace) -> list:
+    """Roster from --config, else ad-hoc from --hn/--repo. Raises _CliError on a
+    bad config; returns [] when no source was given."""
+    if args.config:
+        try:
+            return build_roster(load_config(args.config))
+        except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
+            raise _CliError(f"roster config error: {exc}") from exc
+    return _ad_hoc_roster(args)
+
+
 def _broadcast(args: argparse.Namespace) -> int:
     # The roster (which sources air, how often, staggered by what) comes from a
     # config file, or is built ad hoc from --hn/--repo on a shared --every.
-    roster: list[tuple[str, Source, Cadence]]
-    if args.config:
-        try:
-            roster = build_roster(load_config(args.config))
-        except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
-            print(f"roster config error: {exc}", file=sys.stderr)
-            return 2
-    else:
-        roster = _ad_hoc_roster(args)
+    roster = _resolve_roster(args)
     if not roster:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
@@ -282,6 +286,23 @@ def _broadcast(args: argparse.Namespace) -> int:
                 fh.write(audio.data)
             print(f"wrote {path}")
     return 0
+
+
+def _serve(args: argparse.Namespace) -> int:
+    roster = _resolve_roster(args)
+    if not roster:
+        print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
+        return 2
+    tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
+    return serve_mod.run(
+        roster,
+        tts,
+        host=args.host,
+        port=args.port,
+        refresh=args.refresh,
+        headline_pause_ms=round(args.headline_pause * 1000),
+        style=args.style,
+    )
 
 
 def _add_source_args(p: argparse.ArgumentParser) -> None:
@@ -385,6 +406,29 @@ def main(argv: list[str] | None = None) -> int:
     )
     bc.add_argument("--out-dir", default=None, help="Directory to write one WAV per segment topic.")
     bc.set_defaults(func=_broadcast)
+
+    sv = sub.add_parser(
+        "serve", help="Run the web server with a live news + generative-music loop."
+    )
+    _add_source_args(sv)
+    _add_voice_args(sv)
+    sv.add_argument(
+        "--config",
+        default=None,
+        metavar="FILE",
+        help="Roster file (.toml/.json): per-segment source + cadence. Overrides --hn/--repo.",
+    )
+    sv.add_argument(
+        "--every",
+        default="15m",
+        help="Ad-hoc cadence interval for --hn/--repo (e.g. 15m, 90s, 1h). Sources auto-stagger.",
+    )
+    sv.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1).")
+    sv.add_argument("--port", type=int, default=8000, help="Bind port (default 8000).")
+    sv.add_argument(
+        "--refresh", type=float, default=60.0, help="Seconds between source refreshes (default 60)."
+    )
+    sv.set_defaults(func=_serve)
 
     args = parser.parse_args(argv)
     try:

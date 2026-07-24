@@ -323,6 +323,10 @@ adding breadth.
 - ✅ `genmusic/compose.py` + `styles/lofi.py`: `ActivitySignal` → `StrudelProgram`
   (Strudel source text). Golden/deterministic; `maelcom genmusic` CLI demo.
 - ✅ Program-text endpoint `GET /genmusic` (JSON) on the FastAPI app.
+- ✅ `maelcom serve` (`serve.py`): boots uvicorn + a background refresh loop that
+  reuses the roster — each tick recomputes the music program (and re-voices the
+  news plan only when activity changes), publishing live `/genmusic` + `/plan`.
+  `refresh_once` is web-free and unit-tested.
 - ⬜ Client-side Strudel player with fade-in/out between polls; incidental
   visualizer. *(remaining M2 piece — browser front end.)*
 - **Demo:** repo activity audibly modulates continuous generative music.

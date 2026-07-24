@@ -140,6 +140,23 @@ Durations accept units (`15m`, `90s`, `1h`) or bare seconds. The scheduler
 (`core/schedule.py`: `Cadence`, `Programme`, `assemble_broadcast`) is
 pure/deterministic — it never reads the wall clock.
 
+## Serving live (M2)
+
+`maelcom serve` runs the web server with a background loop that reuses the same
+roster and keeps `/genmusic` (generative music) and `/plan` (voiced news) fresh
+from live activity:
+
+```sh
+uv pip install -e ".[web]"                      # FastAPI + uvicorn
+maelcom serve --hn --repo <URL> --refresh 60    # or: --config examples/roster.toml
+# → http://127.0.0.1:8000  ·  GET /genmusic, /plan, /audio/{id}, /health
+```
+
+Each tick recomputes the Strudel program from current activity and re-voices the
+news plan only when the item set changes (so TTS isn't run every tick). Needs
+the `[web]` extra; add `[tts]` for spoken news. *(The browser Strudel player that
+consumes `/genmusic` is the remaining M2 piece.)*
+
 ## Generative music (M2)
 
 Maelcom also turns a repo's activity into a **Strudel program** — generative

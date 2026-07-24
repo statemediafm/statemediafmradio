@@ -34,3 +34,25 @@ def test_genmusic_empty_then_published():
     assert body["brainwave_band"] == program.brainwave_band
     assert "stack(" in body["text"]
     assert body["fade_ms"] == 2000
+
+
+def test_serve_refresh_makes_genmusic_and_plan_live():
+    from maelcom.core.models import NewsItem
+    from maelcom.core.schedule import Cadence
+    from maelcom.newsroom.tts import ToneWavTTS
+    from maelcom.serve import refresh_once
+
+    class _FakeSource:
+        def poll(self, since=None):
+            return [NewsItem(id="1", source="hackernews", kind="story",
+                             title="Story", origin="Hacker News", actors=["a"])]
+
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/genmusic").json() == {"text": None}
+
+    refresh_once(state, [("HN", _FakeSource(), Cadence(900, 0), 5)], ToneWavTTS(), cache={})
+    music = client.get("/genmusic").json()
+    assert music["style"] == "lofi" and "stack(" in music["text"]
+    plan = client.get("/plan").json()
+    assert plan["segments"] and plan["segments"][0]["title"] == "HN"
