@@ -13,6 +13,7 @@ import pytest
 from maelcom.core.models import NewsItem, Script
 from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
 from maelcom.newsroom.summarize import (
+    _is_bot,
     build_prompt,
     naive_radio_script,
     radio_reads,
@@ -160,6 +161,38 @@ def test_radio_reads_marks_headlines_and_greeting():
     headlines = [r.text for r in reads if r.role == "headline"]
     assert "Fix scheduler offset bug." in headlines
     assert "Deploy window moved to 14:00." in headlines
+
+
+def test_is_bot_detects_automation_but_not_people():
+    for bot in ["dependabot[bot]", "codecov[bot]", "github-actions[bot]", "renovate",
+                "snyk-bot", "pre-commit_ci_bot"]:
+        assert _is_bot(bot)
+    for person in ["alice", "edgarrmondragon", "Jamie Reid", "Abbott"]:
+        assert not _is_bot(person)
+
+
+def test_contributors_line_excludes_bots():
+    items = [
+        NewsItem(id="1", source="forge", kind="pull_request", title="bump nox",
+                 actors=["dependabot[bot]"]),
+        NewsItem(id="2", source="forge", kind="pull_request", title="coverage",
+                 actors=["codecov[bot]"]),
+        NewsItem(id="3", source="forge", kind="pull_request", title="real fix",
+                 actors=["alice"]),
+    ]
+    text = naive_radio_script(items, "bbc-world")
+    assert "dependabot" not in text
+    assert "codecov" not in text
+    assert "Most of the activity came from alice." in text
+
+
+def test_contributors_line_dropped_when_only_bots():
+    items = [
+        NewsItem(id="1", source="forge", kind="pull_request", title="bump",
+                 actors=["dependabot[bot]"]),
+    ]
+    text = naive_radio_script(items, "bbc-world")
+    assert "Most of the activity came from" not in text  # no humans → no credit line
 
 
 def test_radio_reads_headlines_carry_origin():

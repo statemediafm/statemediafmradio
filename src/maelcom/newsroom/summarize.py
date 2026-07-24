@@ -63,6 +63,39 @@ def _origin(item: NewsItem) -> str:
     return {"hackernews": "Hacker News"}.get(item.source, "the newsroom")
 
 
+# Automation accounts to keep out of the "who did the work" credit line.
+_BOT_NAMES = frozenset(
+    {
+        "dependabot",
+        "renovate",
+        "renovate-bot",
+        "mergify",
+        "codecov",
+        "codspeed-hq",
+        "sourcery-ai",
+        "pre-commit-ci",
+        "github-actions",
+        "greenkeeper",
+        "snyk-bot",
+        "imgbot",
+        "allcontributors",
+        "stale",
+        "semantic-release-bot",
+    }
+)
+
+
+def _is_bot(name: str) -> bool:
+    """True if ``name`` looks like an automation/bot account, not a person.
+
+    Catches the ``[bot]`` suffix GitHub/GitLab apps use (``dependabot[bot]``,
+    ``codecov[bot]``), ``-bot``/``_bot`` suffixes, and a few well-known bots that
+    use neither.
+    """
+    n = name.strip().lower()
+    return n.endswith(("[bot]", "-bot", "_bot")) or n in _BOT_NAMES
+
+
 def time_greeting(now: datetime) -> str:
     """The broadcast's opening line, stating the current hour and minute."""
     return f"Good day. It is {now:%H:%M}."
@@ -119,9 +152,13 @@ def radio_reads(
     kind_nouns = [_kind_noun.get(k, f"{k}s") for k in kinds]
     across = f" across {_join_names(kind_nouns)}" if kind_nouns else ""
 
+    # Credit people, not automation — bots dominate raw counts (dependabot,
+    # codecov, …) and would otherwise headline the "who did the work" line.
     counts: dict[str, int] = {}
     for it in items:
         for actor in it.actors:
+            if _is_bot(actor):
+                continue
             counts[actor] = counts.get(actor, 0) + 1
     top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
 
