@@ -48,6 +48,43 @@ _VOICE_ALIASES = {
 _DEFAULT_VOICE = "alan"
 
 
+def _assemble_wavs(clips: list[AudioRef], gaps_ms: list[int]) -> AudioRef:
+    """Join WAV clips with a per-clip *leading* silence (``gaps_ms[i]`` before
+    clip ``i``; the first clip's gap is ignored). All clips must share format."""
+    pairs = [(g, c) for g, c in zip(gaps_ms, clips) if c and c.data]
+    if not pairs:
+        raise ValueError("concat: nothing to assemble")
+
+    params: tuple[int, int, int] | None = None
+    frames = bytearray()
+    for i, (gap, ref) in enumerate(pairs):
+        with wave.open(io.BytesIO(ref.data)) as w:
+            fmt = (w.getnchannels(), w.getsampwidth(), w.getframerate())
+            data = w.readframes(w.getnframes())
+        if params is None:
+            params = fmt
+        elif fmt != params:
+            raise ValueError(f"concat: format mismatch at segment {i}: {fmt} != {params}")
+        if i and gap > 0:
+            frames += b"\x00" * int(params[0] * params[1] * params[2] * gap / 1000)
+        frames += data
+
+    nchannels, width, rate = params  # type: ignore[misc]
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(nchannels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    out = buf.getvalue()
+    return AudioRef(
+        id=hashlib.sha256(out).hexdigest()[:16],
+        media_type="audio/wav",
+        data=out,
+        duration_ms=round(len(frames) / (rate * width * nchannels) * 1000),
+    )
+
+
 def concat_wavs(refs: list[AudioRef], gap_ms: int = 400) -> AudioRef:
     """Concatenate WAV ``AudioRef``s into one, with ``gap_ms`` silence between.
 
@@ -59,36 +96,38 @@ def concat_wavs(refs: list[AudioRef], gap_ms: int = 400) -> AudioRef:
     usable = [r for r in refs if r and r.data]
     if not usable:
         raise ValueError("concat_wavs: nothing to concatenate")
+    return _assemble_wavs(usable, [0] + [gap_ms] * (len(usable) - 1))
 
-    params: tuple[int, int, int] | None = None
-    frames = bytearray()
-    for i, ref in enumerate(usable):
-        with wave.open(io.BytesIO(ref.data)) as w:
-            fmt = (w.getnchannels(), w.getsampwidth(), w.getframerate())
-            data = w.readframes(w.getnframes())
-        if params is None:
-            params = fmt
-        elif fmt != params:
-            raise ValueError(f"concat_wavs: format mismatch at segment {i}: {fmt} != {params}")
-        if frames and gap_ms:
-            frames += b"\x00" * int(params[0] * params[1] * params[2] * gap_ms / 1000)
-        frames += data
 
-    nchannels, width, rate = params  # type: ignore[misc]
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(nchannels)
-        w.setsampwidth(width)
-        w.setframerate(rate)
-        w.writeframes(bytes(frames))
-    out = buf.getvalue()
-    duration_ms = round(len(frames) / (rate * width * nchannels) * 1000)
-    return AudioRef(
-        id=hashlib.sha256(out).hexdigest()[:16],
-        media_type="audio/wav",
-        data=out,
-        duration_ms=duration_ms,
-    )
+def render_reads(
+    reads: list[tuple[str, str]],
+    tts: TTSProvider,
+    *,
+    style: str = "",
+    voice: str | None = None,
+    headline_pause_ms: int = 1000,
+) -> AudioRef:
+    """Voice ``(role, text)`` reads into one clip, pausing between headlines.
+
+    Each read is voiced separately with ``tts``; a ``headline_pause_ms`` silence
+    is inserted only between two consecutive ``"headline"`` reads, so the news
+    items land as distinct beats. Raises ``ValueError`` if nothing is voiceable.
+    """
+    clips: list[AudioRef] = []
+    gaps: list[int] = []
+    prev_role: str | None = None
+    for role, text in reads:
+        text = text.strip()
+        if not text:
+            continue
+        gap = headline_pause_ms if (role == "headline" and prev_role == "headline") else 0
+        clips.append(tts.render(Script(text=text, style=style), voice=voice))
+        gaps.append(gap)
+        prev_role = role
+    if not clips:
+        raise ValueError("render_reads: no non-empty reads")
+    gaps[0] = 0
+    return _assemble_wavs(clips, gaps)
 
 
 class TTSProvider(ABC):

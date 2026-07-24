@@ -126,7 +126,12 @@ offset = "0"
 ```
 
 **Audio.** `--out news.wav` writes one combined WAV of all segments back to back;
-`--out-dir DIR` writes one WAV per segment topic. Add `--speak` for real voices.
+`--out-dir DIR` writes one WAV per segment topic. Add `--speak` for real voices —
+each segment is voiced in a **different** rotating voice so the topics sound
+distinct. The broadcast opens with a spoken time greeting ("Good day. It is
+16:52."), headlines are **attributed** to their source (Hacker News, the git
+project) and spaced by `--headline-pause` seconds (default `1.0`).
+
 Durations accept units (`15m`, `90s`, `1h`) or bare seconds. The scheduler
 (`core/schedule.py`: `Cadence`, `Programme`, `assemble_broadcast`) is
 pure/deterministic — it never reads the wall clock.

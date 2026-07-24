@@ -15,6 +15,7 @@ from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
 from maelcom.newsroom.summarize import (
     build_prompt,
     naive_radio_script,
+    radio_reads,
     summarize,
     time_greeting,
 )
@@ -142,6 +143,27 @@ def test_headlines_attributed_per_source_when_mixed():
 def test_time_greeting_states_hour_and_minute():
     assert time_greeting(datetime(2026, 7, 24, 16, 52)) == "Good day. It is 16:52."
     assert time_greeting(datetime(2026, 7, 24, 9, 5)) == "Good day. It is 09:05."
+
+
+def test_radio_reads_join_equals_script():
+    items = _items()
+    reads = radio_reads(items, "bbc-world")
+    assert " ".join(text for _, text in reads) == naive_radio_script(items, "bbc-world")
+
+
+def test_radio_reads_marks_headlines_and_greeting():
+    reads = radio_reads(_items(), "bbc-world", greeting="Good day. It is 09:00.")
+    # The greeting is the first read.
+    assert reads[0] == ("other", "Good day. It is 09:00.")
+    # Each unique headline is its own 'headline' read.
+    headlines = [text for role, text in reads if role == "headline"]
+    assert "Fix scheduler offset bug." in headlines
+    assert "Deploy window moved to 14:00." in headlines
+
+
+def test_naive_radio_script_greeting_is_prepended():
+    text = naive_radio_script(_items(), "bbc-world", greeting="Good day. It is 09:00.")
+    assert text.startswith("Good day. It is 09:00. This is the firmwide radio service.")
 
 
 def test_naive_radio_script_is_deterministic():

@@ -20,15 +20,21 @@ import tomllib
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from .core.models import Script
+from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
 from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
 from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
-from .newsroom.summarize import naive_radio_script, summarize, time_greeting
-from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs
+from .newsroom.summarize import radio_reads, summarize, time_greeting
+from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs, render_reads
 from .roster import build_roster, load_config
 from .sources import HackerNewsSource, Source, open_source
+
+# Voices rotated across broadcast segments so each topic/source sounds distinct.
+# All are Piper *medium* voices (22.05 kHz) so segments concatenate cleanly.
+_SPEAK_VOICES = ("alan", "alba", "northern_english_male")
+# For the offline tone voice, vary pitch per segment instead (A3, C4, G3).
+_TONE_FREQS = (220.0, 262.0, 196.0)
 
 
 def _source_items(args: argparse.Namespace) -> list | None:
@@ -40,28 +46,40 @@ def _source_items(args: argparse.Namespace) -> list | None:
     return None
 
 
-def _make_tts(args: argparse.Namespace) -> TTSProvider | None:
-    """Build the TTS provider, or print guidance and return None on failure."""
-    if not getattr(args, "speak", False):
-        return ToneWavTTS()
-    try:
-        return PiperTTS(voice=args.voice)
-    except ImportError:
-        print("--speak needs the [tts] extra: pip install -e '.[tts]'", file=sys.stderr)
-        return None
+def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:
+    """A TTS voice for segment ``index`` — rotating so topics sound distinct.
+
+    Raises ``ImportError`` if ``--speak`` is set without the ``[tts]`` extra.
+    """
+    if getattr(args, "speak", False):
+        return PiperTTS(voice=_SPEAK_VOICES[index % len(_SPEAK_VOICES)])
+    return ToneWavTTS(frequency=_TONE_FREQS[index % len(_TONE_FREQS)])
 
 
-def _script_for(items: list, style: str, args: argparse.Namespace) -> Script:
-    """Offline deterministic summary, or a Claude summary with --live."""
+def _voice_segment(
+    items: list,
+    args: argparse.Namespace,
+    tts: TTSProvider,
+    *,
+    greeting: str | None = None,
+) -> tuple[Script, AudioRef]:
+    """Summarize one source and voice it, pausing between headlines.
+
+    Offline uses the chunked ``radio_reads`` so ``render_reads`` can space the
+    headlines; ``--live`` returns a single blob (no inter-headline pause).
+    """
+    style = args.style
     if getattr(args, "live", False):
-        return summarize(items, style, client=LiteLLMClient(), cfg=load_model_config(args.profile))
-    return Script(text=naive_radio_script(items, style), style=style)
+        script = summarize(items, style, client=LiteLLMClient(), cfg=load_model_config(args.profile))
+        if greeting:
+            script = replace(script, text=f"{greeting} {script.text}")
+        return script, tts.render(script)
 
-
-def _greet(script: Script) -> Script:
-    """Open the broadcast with the current time (plays before the segment)."""
-    greeting = time_greeting(datetime.now().astimezone())
-    return replace(script, text=f"{greeting} {script.text}")
+    reads = radio_reads(items, style, greeting=greeting)
+    script = Script(text=" ".join(text for _, text in reads), style=style)
+    pause_ms = round(args.headline_pause * 1000)
+    audio = render_reads(reads, tts, style=style, headline_pause_ms=pause_ms)
+    return script, audio
 
 
 def _demo(args: argparse.Namespace) -> int:
@@ -72,12 +90,14 @@ def _demo(args: argparse.Namespace) -> int:
     if not items:
         print("No activity found for this source.", file=sys.stderr)
         return 1
-    tts = _make_tts(args)
-    if tts is None:
+    try:
+        tts = PiperTTS(voice=args.voice) if args.speak else ToneWavTTS()
+    except ImportError:
+        print("--speak needs the [tts] extra: pip install -e '.[tts]'", file=sys.stderr)
         return 2
 
-    script = _greet(_script_for(items, args.style, args))
-    audio = tts.render(script)
+    greeting = time_greeting(datetime.now().astimezone())
+    script, audio = _voice_segment(items, args, tts, greeting=greeting)
     segment = single_news_plan(audio, script).segments[0]
 
     print(f"— {len(items)} items → {segment.duration_s:.0f}s segment ({args.style}) —\n")
@@ -154,29 +174,29 @@ def _broadcast(args: argparse.Namespace) -> int:
     if not roster:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
-    tts = _make_tts(args)
-    if tts is None:
-        return 2
 
+    # Each segment gets its own voice (rotated), and the broadcast opens with the
+    # time greeting on the first segment. Headlines are paced apart within each.
     programmes: list[Programme] = []
-    scripts: dict[str, Script] = {}
+    content: dict[str, tuple[Script, AudioRef]] = {}
+    seg_index = 0
     for topic, source, cadence in roster:
         items = source.poll()
         if not items:
             print(f"(skipping {topic}: no activity)", file=sys.stderr)
             continue
-        scripts[topic] = _script_for(items, args.style, args)
+        try:
+            seg_tts = _segment_tts(args, seg_index)
+        except ImportError:
+            print("--speak needs the [tts] extra: pip install -e '.[tts]'", file=sys.stderr)
+            return 2
+        greeting = time_greeting(datetime.now().astimezone()) if seg_index == 0 else None
+        content[topic] = _voice_segment(items, args, seg_tts, greeting=greeting)
         programmes.append(Programme(topic, cadence))
+        seg_index += 1
     if not programmes:
         print("No segments to air.", file=sys.stderr)
         return 1
-
-    # Open the broadcast with the time greeting on the first segment, then voice.
-    first = next(iter(scripts))
-    scripts[first] = _greet(scripts[first])
-    content: dict[str, tuple[Script, object]] = {
-        topic: (script, tts.render(script)) for topic, script in scripts.items()
-    }
 
     plan = assemble_broadcast(programmes, content, args.window * 60)
     now = datetime.now().astimezone()  # local wall clock, for display only
@@ -242,6 +262,12 @@ def _add_voice_args(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument("--live", action="store_true", help="Summarize via the local Claude client.")
     p.add_argument("--profile", default=None, help="model_config.yaml profile (with --live).")
+    p.add_argument(
+        "--headline-pause",
+        type=float,
+        default=1.0,
+        help="Seconds of silence between spoken headlines (default 1.0).",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

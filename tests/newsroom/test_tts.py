@@ -10,6 +10,7 @@ from maelcom.newsroom.tts import (
     _VOICE_PATHS,
     ToneWavTTS,
     concat_wavs,
+    render_reads,
     resolve_piper_voice,
 )
 
@@ -67,3 +68,18 @@ def test_concat_wavs_rejects_empty_and_format_mismatch():
     b = ToneWavTTS(sample_rate=16000).render(Script(text="y", style="x"))
     with pytest.raises(ValueError, match="format mismatch"):
         concat_wavs([a, b])
+
+
+def test_render_reads_pauses_only_between_headlines():
+    tts = ToneWavTTS()
+    reads = [("other", "Intro."), ("headline", "One."), ("headline", "Two."), ("other", "Bye.")]
+    tight = render_reads(reads, tts, headline_pause_ms=0)
+    spaced = render_reads(reads, tts, headline_pause_ms=1000)
+    assert spaced.data[:4] == b"RIFF"
+    # Exactly one gap (between the two consecutive headlines) → ~1s longer.
+    assert spaced.duration_ms - tight.duration_ms >= 900
+
+
+def test_render_reads_requires_content():
+    with pytest.raises(ValueError):
+        render_reads([], ToneWavTTS())

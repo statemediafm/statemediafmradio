@@ -84,16 +84,18 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
     )
 
 
-def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 90) -> str:
-    """A deterministic, LLM-free radio script built straight from the items.
+def radio_reads(
+    items: list[NewsItem], style: str, *, greeting: str | None = None
+) -> list[tuple[str, str]]:
+    """The broadcast read as ordered ``(role, text)`` chunks.
 
-    Real content derived from the actual activity — top contributors and recent
-    headlines — so the zero-dependency demo (and its spoken audio) reflects the
-    repository instead of a placeholder. Not as fluent as a model, but honest
-    about the input and fully offline.
+    ``role`` is ``"headline"`` or ``"other"``. Splitting the read into chunks
+    lets the voicer pause between headlines and (per source) switch voice;
+    ``naive_radio_script`` is just these joined into one string, so the plain
+    text is unchanged. Derived deterministically from the real activity.
     """
     if not items:
-        raise ValueError("naive_radio_script() requires at least one NewsItem")
+        raise ValueError("radio_reads() requires at least one NewsItem")
 
     # Describe the mix of item kinds (issues, merge/pull requests, commits, …).
     _kind_noun = {
@@ -112,7 +114,6 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
         for actor in it.actors:
             counts[actor] = counts.get(actor, 0) + 1
     top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
-    contributors = f"Most of the activity came from {_join_names(top)}. " if top else ""
 
     # Clean each subject, then keep the first few unique headlines — the merge /
     # underlying-commit pairing in many repos otherwise repeats the same line.
@@ -125,28 +126,42 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
             picked.append((headline, _origin(it)))
         if len(picked) == 5:
             break
-
-    # Attribute the headlines to where they're from. When they all share one
-    # origin, name it once; when they're mixed, tag each headline.
-    origins = {origin for _, origin in picked}
-    if len(origins) == 1:
-        headline_text = f"Here are the headlines from {origins.pop()}. " + " ".join(
-            f"{h}." for h, _ in picked
-        )
-    else:
-        headline_text = "Here are the headlines. " + " ".join(
-            f"From {origin}, {h}." for h, origin in picked
-        )
+    single_origin = len({origin for _, origin in picked}) == 1
 
     plural = "s" if len(items) != 1 else ""
-    return (
-        "This is the firmwide radio service. "
+    reads: list[tuple[str, str]] = []
+    if greeting:
+        reads.append(("other", greeting))
+    reads.append(("other", "This is the firmwide radio service."))
+    volume_line = (
         f"In the latest update there {'were' if plural else 'was'} "
-        f"{len(items)} item{plural}{across}. "
-        f"{contributors}"
-        f"{headline_text} "
-        f"That's the latest from the newsroom. More as it develops."
+        f"{len(items)} item{plural}{across}."
     )
+    reads.append(("other", volume_line))
+    if top:
+        reads.append(("other", f"Most of the activity came from {_join_names(top)}."))
+    # Attribute the headlines: name a single shared origin once, else tag each.
+    if single_origin and picked:
+        reads.append(("other", f"Here are the headlines from {picked[0][1]}."))
+        reads.extend(("headline", f"{h}.") for h, _ in picked)
+    else:
+        reads.append(("other", "Here are the headlines."))
+        reads.extend(("headline", f"From {origin}, {h}.") for h, origin in picked)
+    reads.append(("other", "That's the latest from the newsroom. More as it develops."))
+    return reads
+
+
+def naive_radio_script(
+    items: list[NewsItem], style: str, *, greeting: str | None = None
+) -> str:
+    """A deterministic, LLM-free radio script built straight from the items.
+
+    Real content derived from the actual activity — top contributors and recent
+    headlines — so the zero-dependency demo (and its spoken audio) reflects the
+    activity instead of a placeholder. See ``radio_reads`` for the chunked form
+    the voicer uses to pause between headlines.
+    """
+    return " ".join(text for _, text in radio_reads(items, style, greeting=greeting))
 
 
 def summarize(
