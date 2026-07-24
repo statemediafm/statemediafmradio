@@ -327,9 +327,13 @@ adding breadth.
   reuses the roster — each tick recomputes the music program (and re-voices the
   news plan only when activity changes), publishing live `/genmusic` + `/plan`.
   `refresh_once` is web-free and unit-tested.
-- ⬜ Client-side Strudel player with fade-in/out between polls; incidental
-  visualizer. *(remaining M2 piece — browser front end.)*
-- **Demo:** repo activity audibly modulates continuous generative music.
+- ✅ Client-side Strudel player (served at `/`): loads Strudel, plays the polled
+  `/genmusic` program after a start-gesture, crossfades via each program's
+  `fadeIn` as activity changes, shows live headlines + an incidental
+  intensity/brainwave visualizer.
+- **Demo:** repo activity audibly modulates continuous generative music. ✅
+
+*M2 complete — server runtime + browser player.*
 
 ### M3 — Second source + plugin architecture hardened
 - `slack_source` (join channel, summarize). Formalize Source/Voice/Style/Music

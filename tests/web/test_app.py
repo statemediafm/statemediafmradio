@@ -19,6 +19,17 @@ def test_health_ok():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_index_serves_strudel_player():
+    client = TestClient(create_app())
+    resp = client.get("/")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "@strudel/web" in html  # loads the Strudel runtime
+    assert "initStrudel(" in html and "evaluate(" in html  # starts + plays
+    assert "/genmusic" in html and "/plan" in html  # polls both endpoints
+    assert 'id=\'viz\'' in html  # the visualizer canvas
+
+
 def test_genmusic_empty_then_published():
     state = _State()
     client = TestClient(create_app(state))

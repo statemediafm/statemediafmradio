@@ -154,8 +154,14 @@ maelcom serve --hn --repo <URL> --refresh 60    # or: --config examples/roster.t
 
 Each tick recomputes the Strudel program from current activity and re-voices the
 news plan only when the item set changes (so TTS isn't run every tick). Needs
-the `[web]` extra; add `[tts]` for spoken news. *(The browser Strudel player that
-consumes `/genmusic` is the remaining M2 piece.)*
+the `[web]` extra; add `[tts]` for spoken news.
+
+Open **`http://127.0.0.1:8000`** in a browser: the page loads
+[Strudel](https://strudel.cc), and after you press **▶ Start radio** it plays the
+generative music live — polling `/genmusic` and crossfading (each program's
+built-in `fadeIn`) as repo/HN activity changes — with the latest news headlines
+and an incidental visualizer that tracks intensity + brainwave band. The start
+button is required: browsers block audio until a user gesture.
 
 ## Generative music (M2)
 
