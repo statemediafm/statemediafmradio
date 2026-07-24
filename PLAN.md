@@ -298,7 +298,10 @@ adding breadth.
 - **Demo:** `maelcom serve` boots; `/plan` returns an empty plan.
 
 ### M1 — Vertical slice: git → summary → voice → play  ⭐ *the concept's demo*
-- `git_source` (recent commits/PRs of a target repo) → `NewsItem`s.
+- `git_source` (recent commits of a target repo) → `NewsItem`s. ✅
+- `forge_source` (GitHub/GitLab issues + merge/pull requests, each with its
+  **latest comment**) → `NewsItem`s; `open_source()` routes a forge URL here and
+  a local/bare repo to `git_source`. Optional API token; stdlib-only. ✅
 - Newsroom: `summarize()` → prompt → **`LLMClient`** → 1–2 min who/what/… script.
   Ship `LiteLLMClient` (default profile = local Claude client,
   `anthropic/claude-opus-4-8`) + the `fake` client for tests + the proxy/harness

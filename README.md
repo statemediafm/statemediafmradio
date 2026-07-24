@@ -5,8 +5,10 @@ version-control data. It turns activity (git, Slack, Jira, Grafana, …) into a
 voiced news broadcast, with generative music that tracks project activity.
 
 See [PLAN.md](PLAN.md) for the architecture and roadmap. This repo currently
-implements the **M1 vertical slice**: a git repository's recent commits →
-summarized radio script → voiced audio → a one-segment broadcast plan.
+implements the **M1 vertical slice**: a repository's recent activity (a
+GitHub/GitLab project's issues and merge/pull requests with their latest
+comments, or a local repo's commits) → summarized radio script → voiced audio
+→ a one-segment broadcast plan.
 
 ## Quick start
 
@@ -20,15 +22,23 @@ single-file zipapp — no install, no `pip`, no `PYTHONPATH`:
 python3 dist/maelcom.pyz demo --repo /path/to/a/git/repo
 ```
 
-Point `--repo` at any git repository — a local path or a remote URL
-(e.g. `https://gitlab.com/meltano/meltano`; remotes are shallow-cloned to a temp
-dir). It reads recent commits, writes a radio script to stdout, and saves the
-voiced audio to `maelcom-demo.wav`. Copy `dist/maelcom.pyz` anywhere and run it
-with just `python3`.
+Point `--repo` at either:
 
-The offline demo builds a deterministic summary from the real commits (top
+- a **GitHub/GitLab URL** (e.g. `https://github.com/meltano/meltano`) — reads
+  the most recently updated **issues and merge/pull requests, with the latest
+  comment on each** (public projects work unauthenticated, subject to the
+  platform's rate limits; pass `--token` or set `GITHUB_TOKEN` / `GITLAB_TOKEN`
+  to raise them); or
+- a **local/bare repo path or URL** — falls back to recent **commits** (all
+  that is available without a forge API).
+
+It writes a radio script to stdout and saves the voiced audio to
+`maelcom-demo.wav`. Copy `dist/maelcom.pyz` anywhere and run it with just
+`python3`.
+
+The offline demo builds a deterministic summary from the real activity (top
 contributors + recent headlines) and voices it with a placeholder tone — so it
-needs no credentials or model, yet the output reflects the repository.
+needs no credentials or model, yet the output reflects the project.
 
 ### Real spoken audio
 
@@ -101,7 +111,7 @@ pytest
 ```
 src/maelcom/
   core/       shared data model (§6 contracts) + plan assembly
-  sources/    activity sources (git) → NewsItem
+  sources/    activity sources (forge issues/MRs, git commits) → NewsItem
   newsroom/   summarize (LLMClient) + voice (TTSProvider)
   genmusic/   activity → ActivitySignal → compose → StrudelProgram (lofi)
   web/        FastAPI: /health, /plan, /audio/{id}, /genmusic, Tufte page

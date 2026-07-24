@@ -1,11 +1,12 @@
 """Maelcom CLI — M1 demo entry point.
 
-    maelcom demo --repo /path/to/repo            # offline: deterministic summary
-    maelcom demo --repo /path/to/repo --live     # local Claude client via LiteLLM
-    maelcom demo --repo /path/to/repo --speak    # real spoken audio via Piper
+    maelcom demo --repo <URL-or-path>            # offline: deterministic summary
+    maelcom demo --repo <URL-or-path> --live     # local Claude client via LiteLLM
+    maelcom demo --repo <URL-or-path> --speak    # real spoken audio via Piper
 
-Points the git source at a repo, summarizes recent commits into a radio script,
-voices it, writes the audio, and prints the script.
+For a GitHub/GitLab URL it reads recent issues and merge/pull requests (with
+their latest comments); for a local repo it falls back to recent commits. It
+summarizes them into a radio script, voices it, and writes the audio.
 """
 
 from __future__ import annotations
@@ -19,13 +20,13 @@ from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
 from .newsroom.summarize import naive_radio_script, summarize
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider
-from .sources import GitSource
+from .sources import open_source
 
 
 def _demo(args: argparse.Namespace) -> int:
-    items = GitSource(args.repo, max_count=args.max_count).poll()
+    items = open_source(args.repo, max_count=args.max_count, token=args.token).poll()
     if not items:
-        print(f"No commits found in {args.repo}", file=sys.stderr)
+        print(f"No activity found for {args.repo}", file=sys.stderr)
         return 1
 
     tts: TTSProvider
@@ -41,7 +42,7 @@ def _demo(args: argparse.Namespace) -> int:
     else:
         tts = ToneWavTTS()
 
-    # Offline builds a deterministic summary from the real commits; --live sends
+    # Offline builds a deterministic summary from the real items; --live sends
     # them through the local Claude client for fluent prose.
     if args.live:
         script = summarize(
@@ -54,7 +55,7 @@ def _demo(args: argparse.Namespace) -> int:
     plan = single_news_plan(audio, script)
     segment = plan.segments[0]
 
-    print(f"— {len(items)} commits → {segment.duration_s:.0f}s segment ({args.style}) —\n")
+    print(f"— {len(items)} items → {segment.duration_s:.0f}s segment ({args.style}) —\n")
     print(segment.script.text if segment.script else "(no script)")
     if segment.audio:
         with open(args.out, "wb") as fh:
@@ -64,9 +65,9 @@ def _demo(args: argparse.Namespace) -> int:
 
 
 def _genmusic(args: argparse.Namespace) -> int:
-    items = GitSource(args.repo, max_count=args.max_count).poll()
+    items = open_source(args.repo, max_count=args.max_count, token=args.token).poll()
     if not items:
-        print(f"No commits found in {args.repo}", file=sys.stderr)
+        print(f"No activity found for {args.repo}", file=sys.stderr)
         return 1
 
     signal = activity(items)
@@ -82,7 +83,7 @@ def _genmusic(args: argparse.Namespace) -> int:
         return 2
 
     print(
-        f"— {signal.volume} commits → {program.style} @ {program.brainwave_band} "
+        f"— {signal.volume} items → {program.style} @ {program.brainwave_band} "
         f"(intensity {program.intensity:.2f}), {signal.participant_count} voices —\n"
     )
     print(program.text)
@@ -97,15 +98,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="maelcom")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    demo = sub.add_parser("demo", help="Summarize a git repo's recent activity into radio.")
+    demo = sub.add_parser("demo", help="Summarize a repo's recent activity into radio.")
     demo.add_argument(
         "--repo",
         required=True,
-        help="Local path OR remote URL of a git repo "
-        "(e.g. https://gitlab.com/meltano/meltano). Remotes are shallow-cloned.",
+        help="GitHub/GitLab URL (reads issues + merge/pull requests with latest "
+        "comments) OR a local/bare repo path (reads recent commits).",
     )
     demo.add_argument("--style", default="bbc-world", help="Voice/writing style.")
-    demo.add_argument("--max-count", type=int, default=50, help="Commits to read.")
+    demo.add_argument("--max-count", type=int, default=25, help="Items (issues/MRs or commits) to read.")
+    demo.add_argument(
+        "--token",
+        default=None,
+        help="Forge API token (else GITHUB_TOKEN / GITLAB_TOKEN); raises rate limits.",
+    )
     demo.add_argument("--out", default="maelcom-demo.wav", help="Audio output path.")
     demo.add_argument(
         "--speak",
@@ -127,8 +133,13 @@ def main(argv: list[str] | None = None) -> int:
     gm = sub.add_parser(
         "genmusic", help="Turn a git repo's activity into a generative Strudel program."
     )
-    gm.add_argument("--repo", required=True, help="Local path OR remote URL of a git repo.")
-    gm.add_argument("--max-count", type=int, default=50, help="Commits to read.")
+    gm.add_argument("--repo", required=True, help="GitHub/GitLab URL or local repo path.")
+    gm.add_argument("--max-count", type=int, default=25, help="Items (issues/MRs or commits) to read.")
+    gm.add_argument(
+        "--token",
+        default=None,
+        help="Forge API token (else GITHUB_TOKEN / GITLAB_TOKEN); raises rate limits.",
+    )
     gm.add_argument("--style", default="lofi", help="Generative style (M2: lofi).")
     gm.add_argument(
         "--base-intensity",

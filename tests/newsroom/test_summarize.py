@@ -83,9 +83,10 @@ def test_summarize_rejects_empty_window():
 
 def test_naive_radio_script_reflects_real_items():
     text = naive_radio_script(_items(), style="bbc-world")
-    # Style and item count are announced.
-    assert "bbc-world" in text
-    assert "2 changes" in text
+    # Firmwide framing, not a "bbc-world desk".
+    assert "firmwide radio service" in text
+    assert "desk" not in text
+    assert "2 items" in text
     # Real content: contributors and headlines come from the items, not a stub.
     assert "alice" in text
     assert "Fix scheduler offset bug" in text
@@ -93,6 +94,15 @@ def test_naive_radio_script_reflects_real_items():
     # It's a plain spoken script — no prompt scaffolding leaks in.
     assert "who, what, where" not in text
     assert "[fake:" not in text
+
+
+def test_naive_radio_script_names_issue_and_mr_kinds():
+    items = [
+        NewsItem(id="i1", source="forge", kind="issue", title="Scheduler hangs", actors=["a"]),
+        NewsItem(id="p1", source="forge", kind="pull_request", title="Fix the hang", actors=["b"]),
+    ]
+    text = naive_radio_script(items, style="bbc-world")
+    assert "issues" in text and "pull requests" in text
 
 
 def test_naive_radio_script_is_deterministic():
@@ -139,4 +149,4 @@ def test_naive_radio_script_rejects_empty_window():
 
 def test_naive_radio_script_singular_update_wording():
     one = [NewsItem(id="c1", source="git", kind="commit", title="only", actors=["a"])]
-    assert "was 1 change" in naive_radio_script(one, style="lofi")
+    assert "was 1 item" in naive_radio_script(one, style="lofi")

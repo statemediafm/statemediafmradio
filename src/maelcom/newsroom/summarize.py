@@ -82,15 +82,23 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
     if not items:
         raise ValueError("naive_radio_script() requires at least one NewsItem")
 
-    sources = sorted({it.source for it in items})
-    desk = " and ".join(sources) if sources else "news"
+    # Describe the mix of item kinds (issues, merge/pull requests, commits, …).
+    _kind_noun = {
+        "issue": "issues",
+        "pull_request": "pull requests",
+        "merge_request": "merge requests",
+        "commit": "commits",
+    }
+    kinds = sorted({it.kind for it in items})
+    kind_nouns = [_kind_noun.get(k, f"{k}s") for k in kinds]
+    across = f" across {_join_names(kind_nouns)}" if kind_nouns else ""
 
     counts: dict[str, int] = {}
     for it in items:
         for actor in it.actors:
             counts[actor] = counts.get(actor, 0) + 1
     top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
-    contributors = f"Most of the work came from {_join_names(top)}. " if top else ""
+    contributors = f"Most of the activity came from {_join_names(top)}. " if top else ""
 
     # Clean each subject, then keep the first few unique headlines — the merge /
     # underlying-commit pairing in many repos otherwise repeats the same line.
@@ -107,9 +115,9 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
 
     plural = "s" if len(items) != 1 else ""
     return (
-        f"You're listening to the {style} desk. "
-        f"In the latest update from the {desk} desk, there {'were' if plural else 'was'} "
-        f"{len(items)} change{plural}. "
+        "This is the firmwide radio service. "
+        f"In the latest update there {'were' if plural else 'was'} "
+        f"{len(items)} item{plural}{across}. "
         f"{contributors}"
         f"Here are the headlines. {headline_text} "
         f"That's the latest from the newsroom. More as it develops."
