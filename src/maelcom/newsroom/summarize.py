@@ -96,6 +96,11 @@ def _is_bot(name: str) -> bool:
     return n.endswith(("[bot]", "-bot", "_bot")) or n in _BOT_NAMES
 
 
+def _authored_by_bot(item: NewsItem) -> bool:
+    """True if the item's author (its first actor) is an automation account."""
+    return bool(item.actors) and _is_bot(item.actors[0])
+
+
 def time_greeting(now: datetime) -> str:
     """The broadcast's opening line, stating the current hour and minute."""
     return f"Good day. It is {now:%H:%M}."
@@ -164,16 +169,19 @@ def radio_reads(
 
     # Clean each subject, then keep the first few unique headlines — the merge /
     # underlying-commit pairing in many repos otherwise repeats the same line.
+    # Skip bot-authored items (dependency bumps, coverage bots, …) as noise.
     seen: set[str] = set()
     picked: list[tuple[str, str]] = []  # (headline, origin)
     for it in items:
+        if _authored_by_bot(it):
+            continue
         headline = _clean_headline(it.title)
         if headline and headline.lower() not in seen:
             seen.add(headline.lower())
             picked.append((headline, _origin(it)))
         if len(picked) == 5:
             break
-    single_origin = len({origin for _, origin in picked}) == 1
+    single_origin = bool(picked) and len({origin for _, origin in picked}) == 1
 
     plural = "s" if len(items) != 1 else ""
     reads: list[Read] = []
@@ -189,7 +197,9 @@ def radio_reads(
         reads.append(Read("other", f"Most of the activity came from {_join_names(top)}."))
     # Attribute the headlines: name a single shared origin once, else tag each.
     # Either way each headline read carries its origin for per-source voicing.
-    if single_origin and picked:
+    if not picked:
+        reads.append(Read("other", "No standout headlines to report."))
+    elif single_origin:
         reads.append(Read("other", f"Here are the headlines from {picked[0][1]}."))
         reads.extend(Read("headline", f"{h}.", origin) for h, origin in picked)
     else:

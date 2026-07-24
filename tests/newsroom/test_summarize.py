@@ -195,6 +195,28 @@ def test_contributors_line_dropped_when_only_bots():
     assert "Most of the activity came from" not in text  # no humans → no credit line
 
 
+def test_bot_authored_headlines_are_suppressed():
+    items = [
+        NewsItem(id="1", source="forge", kind="pull_request", title="bump nox from 1 to 2",
+                 actors=["dependabot[bot]"]),
+        NewsItem(id="2", source="forge", kind="pull_request", title="Add real feature",
+                 actors=["alice"]),
+    ]
+    headlines = [r.text for r in radio_reads(items, "bbc-world") if r.role == "headline"]
+    assert any("Add real feature" in h for h in headlines)
+    assert not any("bump nox" in h for h in headlines)
+
+
+def test_all_bot_authored_reports_no_headlines():
+    items = [
+        NewsItem(id="1", source="forge", kind="pull_request", title="bump x",
+                 actors=["renovate[bot]"]),
+    ]
+    text = naive_radio_script(items, "bbc-world")
+    assert "No standout headlines to report." in text
+    assert "bump x" not in text
+
+
 def test_radio_reads_headlines_carry_origin():
     items = [
         NewsItem(id="hn:1", source="hackernews", kind="story", title="Opus 5",
