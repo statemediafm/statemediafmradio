@@ -118,7 +118,7 @@ def _voice_segment(
             script = replace(script, text=f"{greeting} {script.text}")
         return script, tts.render(script)
 
-    reads = radio_reads(items, style, greeting=greeting)
+    reads = radio_reads(items, style, greeting=greeting, max_headlines=args.headlines)
     script = Script(text=" ".join(read.text for read in reads), style=style)
     pause_ms = round(args.headline_pause * 1000)
 
@@ -321,6 +321,12 @@ def _add_voice_args(p: argparse.ArgumentParser) -> None:
         type=float,
         default=1.0,
         help="Seconds of silence between spoken headlines (default 1.0).",
+    )
+    p.add_argument(
+        "--headlines",
+        type=int,
+        default=5,
+        help="Max headlines read per source (default 5).",
     )
 
 

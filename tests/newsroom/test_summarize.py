@@ -141,6 +141,18 @@ def test_headlines_attributed_per_source_when_mixed():
     assert "From meltano, Fix the bug." in text
 
 
+def test_max_headlines_caps_per_source():
+    items = [
+        NewsItem(id=f"h{i}", source="hackernews", kind="story", title=f"Story {i}",
+                 origin="Hacker News", actors=["a"])
+        for i in range(12)
+    ]
+    five = [r for r in radio_reads(items, "bbc-world") if r.role == "headline"]
+    ten = [r for r in radio_reads(items, "bbc-world", max_headlines=10) if r.role == "headline"]
+    assert len(five) == 5  # default
+    assert len(ten) == 10
+
+
 def test_multi_source_headlines_are_grouped_depth_first():
     # Interleaved input, but headlines must come out grouped by source.
     items = [

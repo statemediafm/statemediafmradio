@@ -101,14 +101,15 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
 
 
 def radio_reads(
-    items: list[NewsItem], style: str, *, greeting: str | None = None
+    items: list[NewsItem], style: str, *, greeting: str | None = None, max_headlines: int = 5
 ) -> list[Read]:
     """The broadcast read as an ordered list of ``Read`` chunks.
 
     Splitting the read into chunks lets the voicer pause between headlines and
     switch voice per source (each headline carries its ``origin``);
     ``naive_radio_script`` is just these joined into one string, so the plain
-    text is unchanged. Derived deterministically from the real activity.
+    text is unchanged. ``max_headlines`` caps how many headlines each source
+    contributes. Derived deterministically from the real activity.
     """
     if not items:
         raise ValueError("radio_reads() requires at least one NewsItem")
@@ -139,7 +140,6 @@ def radio_reads(
     # (depth-first) — no interleaving across sources. ``order`` preserves each
     # origin's first appearance; a per-source cap keeps one busy source from
     # crowding out the others. Deduped; bot-authored items skipped as noise.
-    per_source = 5
     seen: set[str] = set()
     groups: dict[str, list[str]] = {}
     order: list[str] = []
@@ -154,7 +154,7 @@ def radio_reads(
         if origin not in groups:
             groups[origin] = []
             order.append(origin)
-        if len(groups[origin]) < per_source:
+        if len(groups[origin]) < max_headlines:
             groups[origin].append(headline)
     single_origin = len(order) == 1
 
@@ -190,7 +190,7 @@ def radio_reads(
 
 
 def naive_radio_script(
-    items: list[NewsItem], style: str, *, greeting: str | None = None
+    items: list[NewsItem], style: str, *, greeting: str | None = None, max_headlines: int = 5
 ) -> str:
     """A deterministic, LLM-free radio script built straight from the items.
 
@@ -199,7 +199,8 @@ def naive_radio_script(
     activity instead of a placeholder. See ``radio_reads`` for the chunked form
     the voicer uses to pause between headlines.
     """
-    return " ".join(read.text for read in radio_reads(items, style, greeting=greeting))
+    reads = radio_reads(items, style, greeting=greeting, max_headlines=max_headlines)
+    return " ".join(read.text for read in reads)
 
 
 def summarize(
