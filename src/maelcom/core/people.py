@@ -25,6 +25,7 @@ _BOT_NAMES = frozenset(
         "allcontributors",
         "stale",
         "semantic-release-bot",
+        "meltybot",
     }
 )
 

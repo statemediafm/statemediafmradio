@@ -183,7 +183,7 @@ def test_radio_reads_marks_headlines_and_greeting():
 
 def test_is_bot_detects_automation_but_not_people():
     for bot in ["dependabot[bot]", "codecov[bot]", "github-actions[bot]", "renovate",
-                "snyk-bot", "pre-commit_ci_bot"]:
+                "snyk-bot", "pre-commit_ci_bot", "MeltyBot"]:
         assert is_bot(bot)
     for person in ["alice", "edgarrmondragon", "Jamie Reid", "Abbott"]:
         assert not is_bot(person)
