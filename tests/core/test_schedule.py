@@ -5,7 +5,23 @@ from __future__ import annotations
 import pytest
 
 from maelcom.core.models import AudioRef, Script
-from maelcom.core.schedule import Cadence, Programme, assemble_broadcast, build_rundown
+from maelcom.core.schedule import (
+    Cadence,
+    Programme,
+    assemble_broadcast,
+    build_rundown,
+    parse_duration,
+)
+
+
+def test_parse_duration_units_and_bare_numbers():
+    assert parse_duration("15m") == 900.0
+    assert parse_duration("90s") == 90.0
+    assert parse_duration("1.5h") == 5400.0
+    assert parse_duration("-9m") == -540.0
+    assert parse_duration("0") == 0.0
+    assert parse_duration("900") == 900.0  # bare string = seconds
+    assert parse_duration(900) == 900.0  # number = seconds
 
 
 def test_cadence_slots_in_window():
@@ -16,8 +32,9 @@ def test_cadence_slots_in_window():
 
 
 def test_cadence_requires_positive_interval():
+    # Validated at construction, not deferred to slots_in.
     with pytest.raises(ValueError):
-        Cadence(every_s=0).slots_in(0, 100)
+        Cadence(every_s=0)
 
 
 def test_build_rundown_interleaves_and_orders_by_time():

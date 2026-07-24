@@ -19,6 +19,24 @@ from dataclasses import dataclass
 from .models import AudioRef, BroadcastPlan, Script, Segment
 
 
+def parse_duration(value: str | float) -> float:
+    """Parse a duration into seconds.
+
+    Accepts a number (seconds) or a string with an optional unit suffix:
+    ``s`` seconds, ``m`` minutes, ``h`` hours, ``d`` days (e.g. ``"15m"``,
+    ``"90s"``, ``"1.5h"``, ``"-9m"``). A bare number string is seconds.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value).strip().lower()
+    if not s:
+        return 0.0
+    units = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+    if s[-1] in units:
+        return float(s[:-1]) * units[s[-1]]
+    return float(s)
+
+
 @dataclass(frozen=True, slots=True)
 class Cadence:
     """Airs on the lattice ``offset_s + k*every_s`` for integer ``k``."""
@@ -26,10 +44,12 @@ class Cadence:
     every_s: float
     offset_s: float = 0.0
 
-    def slots_in(self, start_s: float, end_s: float) -> list[float]:
-        """Every airing time in the half-open window ``[start_s, end_s)``."""
+    def __post_init__(self) -> None:
         if self.every_s <= 0:
             raise ValueError("Cadence.every_s must be positive")
+
+    def slots_in(self, start_s: float, end_s: float) -> list[float]:
+        """Every airing time in the half-open window ``[start_s, end_s)``."""
         k = math.ceil((start_s - self.offset_s) / self.every_s)
         slots: list[float] = []
         t = self.offset_s + k * self.every_s

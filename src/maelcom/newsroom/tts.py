@@ -48,6 +48,49 @@ _VOICE_ALIASES = {
 _DEFAULT_VOICE = "alan"
 
 
+def concat_wavs(refs: list[AudioRef], gap_ms: int = 400) -> AudioRef:
+    """Concatenate WAV ``AudioRef``s into one, with ``gap_ms`` silence between.
+
+    All clips must share the same format (channels, sample width, rate) — true
+    for any set produced by one TTS voice in a run. Raises ``ValueError`` on an
+    empty list or a format mismatch. This is how a multi-segment broadcast
+    becomes a single playable file.
+    """
+    usable = [r for r in refs if r and r.data]
+    if not usable:
+        raise ValueError("concat_wavs: nothing to concatenate")
+
+    params: tuple[int, int, int] | None = None
+    frames = bytearray()
+    for i, ref in enumerate(usable):
+        with wave.open(io.BytesIO(ref.data)) as w:
+            fmt = (w.getnchannels(), w.getsampwidth(), w.getframerate())
+            data = w.readframes(w.getnframes())
+        if params is None:
+            params = fmt
+        elif fmt != params:
+            raise ValueError(f"concat_wavs: format mismatch at segment {i}: {fmt} != {params}")
+        if frames and gap_ms:
+            frames += b"\x00" * int(params[0] * params[1] * params[2] * gap_ms / 1000)
+        frames += data
+
+    nchannels, width, rate = params  # type: ignore[misc]
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(nchannels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    out = buf.getvalue()
+    duration_ms = round(len(frames) / (rate * width * nchannels) * 1000)
+    return AudioRef(
+        id=hashlib.sha256(out).hexdigest()[:16],
+        media_type="audio/wav",
+        data=out,
+        duration_ms=duration_ms,
+    )
+
+
 class TTSProvider(ABC):
     """Render a Script to audio."""
 

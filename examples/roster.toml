@@ -1,0 +1,22 @@
+# Maelcom broadcast roster — run with:
+#   maelcom broadcast --config examples/roster.toml --window 60
+#
+# Each [[segments]] is one news segment: a source aired on its own cadence.
+# `every` and `offset` accept units (s/m/h/d) or bare seconds; staggering the
+# offsets makes the segments interleave rather than collide.
+
+[[segments]]
+topic = "Hacker News front page"
+source = "hackernews"
+max_count = 10
+every = "15m"
+offset = "6m"          # airs at :06, :21, :36, :51
+
+[[segments]]
+topic = "Engineering issues"
+source = "repo"                                   # GitHub/GitLab URL or local path
+repo = "https://github.com/meltano/meltano"
+token_env = "GITHUB_TOKEN"                        # optional; raises API rate limits
+max_count = 20
+every = "15m"
+offset = "0"           # airs at :00, :15, :30, :45

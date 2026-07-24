@@ -88,11 +88,11 @@ so they read as distinct news segments about their topic (a step toward the
 "rhythm of the day" scheduler):
 
 ```sh
-maelcom broadcast --hn --repo https://github.com/meltano/meltano --window 60
+# Ad hoc: sources on a shared interval, auto-staggered to interleave.
+maelcom broadcast --hn --repo https://github.com/meltano/meltano --every 15m --window 60
 ```
 
-It prints a rundown — each source scheduled every 15 minutes, staggered so they
-interleave — plus the script for each segment:
+It prints a rundown plus the script for each segment:
 
 ```
 Broadcast rundown — next 60 min, 8 segments:
@@ -102,9 +102,34 @@ Broadcast rundown — next 60 min, 8 segments:
   ...
 ```
 
-Add `--speak` and `--out-dir DIR` to write one WAV per segment topic. Cadences
-live in `core/schedule.py` (`Cadence`, `Programme`, `assemble_broadcast`) and are
-pure/deterministic — the scheduler never reads the wall clock.
+**Configurable roster.** For full control — which sources air, how often, and
+staggered by what offset — pass a TOML/JSON roster (see
+[`examples/roster.toml`](examples/roster.toml)):
+
+```sh
+maelcom broadcast --config examples/roster.toml --window 60
+```
+
+```toml
+[[segments]]
+topic = "Hacker News front page"
+source = "hackernews"
+every = "15m"
+offset = "6m"
+
+[[segments]]
+topic = "Engineering issues"
+source = "repo"
+repo = "https://github.com/meltano/meltano"
+every = "15m"
+offset = "0"
+```
+
+**Audio.** `--out news.wav` writes one combined WAV of all segments back to back;
+`--out-dir DIR` writes one WAV per segment topic. Add `--speak` for real voices.
+Durations accept units (`15m`, `90s`, `1h`) or bare seconds. The scheduler
+(`core/schedule.py`: `Cadence`, `Programme`, `assemble_broadcast`) is
+pure/deterministic — it never reads the wall clock.
 
 ## Generative music (M2)
 

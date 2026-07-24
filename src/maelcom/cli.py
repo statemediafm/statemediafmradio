@@ -16,16 +16,18 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tomllib
 from datetime import datetime, timedelta
 
 from .core.models import Script
 from .core.plan import single_news_plan
-from .core.schedule import Cadence, Programme, assemble_broadcast
+from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
 from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
 from .newsroom.summarize import naive_radio_script, summarize
-from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider
-from .sources import HackerNewsSource, open_source
+from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs
+from .roster import build_roster, load_config
+from .sources import HackerNewsSource, Source, open_source
 
 
 def _source_items(args: argparse.Namespace) -> list | None:
@@ -113,24 +115,37 @@ def _genmusic(args: argparse.Namespace) -> int:
     return 0
 
 
-def _broadcast(args: argparse.Namespace) -> int:
-    # Each source is a segment on its own cadence (news every 15 min), staggered
-    # so they interleave into a rundown rather than collide.
-    roster: list[tuple[str, object, Cadence]] = []
+def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence]]:
+    """Roster from --hn/--repo, all on --every, auto-staggered to interleave."""
+    every = parse_duration(args.every)
+    sources: list[tuple[str, Source]] = []
     if args.hn:
-        roster.append(
-            ("Hacker News front page", HackerNewsSource(max_count=args.max_count), Cadence(900, 360))
-        )
+        sources.append(("Hacker News front page", HackerNewsSource(max_count=args.max_count)))
     if args.repo:
-        roster.append(
-            (
-                "Repository activity",
-                open_source(args.repo, max_count=args.max_count, token=args.token),
-                Cadence(900, 0.0),
-            )
+        sources.append(
+            ("Repository activity", open_source(args.repo, max_count=args.max_count, token=args.token))
         )
+    n = len(sources)
+    return [
+        (topic, source, Cadence(every, i * every / n))
+        for i, (topic, source) in enumerate(sources)
+    ]
+
+
+def _broadcast(args: argparse.Namespace) -> int:
+    # The roster (which sources air, how often, staggered by what) comes from a
+    # config file, or is built ad hoc from --hn/--repo on a shared --every.
+    roster: list[tuple[str, Source, Cadence]]
+    if args.config:
+        try:
+            roster = build_roster(load_config(args.config))
+        except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
+            print(f"roster config error: {exc}", file=sys.stderr)
+            return 2
+    else:
+        roster = _ad_hoc_roster(args)
     if not roster:
-        print("Give at least one source: --hn and/or --repo.", file=sys.stderr)
+        print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
     tts = _make_tts(args)
     if tts is None:
@@ -162,6 +177,14 @@ def _broadcast(args: argparse.Namespace) -> int:
     for topic, (script, _audio) in content.items():
         print(f"\n— {topic} —\n{script.text}")
 
+    # One combined WAV of all segments back to back (each topic once, in order).
+    if args.out:
+        combined = concat_wavs([audio for _script, audio in content.values()])
+        with open(args.out, "wb") as fh:
+            fh.write(combined.data)
+        print(f"\nCombined broadcast written to {args.out} ({combined.duration_ms / 1000:.0f}s)")
+
+    # One WAV per segment topic.
     if args.out_dir:
         os.makedirs(args.out_dir, exist_ok=True)
         for topic, (_script, audio) in content.items():
@@ -238,7 +261,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     _add_source_args(bc)
     _add_voice_args(bc)
+    bc.add_argument(
+        "--config",
+        default=None,
+        metavar="FILE",
+        help="Roster file (.toml/.json): per-segment source + cadence. Overrides --hn/--repo.",
+    )
+    bc.add_argument(
+        "--every",
+        default="15m",
+        help="Ad-hoc cadence interval for --hn/--repo (e.g. 15m, 90s, 1h). Sources auto-stagger.",
+    )
     bc.add_argument("--window", type=int, default=60, help="Rundown length in minutes.")
+    bc.add_argument(
+        "--out", default=None, help="Write one combined WAV of all segments back to back."
+    )
     bc.add_argument("--out-dir", default=None, help="Directory to write one WAV per segment topic.")
     bc.set_defaults(func=_broadcast)
 
