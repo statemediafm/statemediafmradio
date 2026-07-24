@@ -114,8 +114,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     demo.add_argument(
         "--voice",
-        default="en_GB-alan-medium",
-        help="Piper voice name or path to a .onnx model (with --speak).",
+        default="alan",
+        metavar="VOICE",
+        help="Voice for --speak: alan (British male, default), alba (Scottish "
+        "female), northern_english_male, southern_english_female — or a full "
+        "Piper name or path to a .onnx model.",
     )
     demo.add_argument("--live", action="store_true", help="Use the local Claude client.")
     demo.add_argument("--profile", default=None, help="model_config.yaml profile (with --live).")

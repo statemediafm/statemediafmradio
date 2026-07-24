@@ -1,9 +1,16 @@
-"""Tests for the dependency-free tone TTS default."""
+"""Tests for the dependency-free tone TTS default and voice resolution."""
 
 from __future__ import annotations
 
+import pytest
+
 from maelcom.core.models import AudioRef, Script
-from maelcom.newsroom.tts import ToneWavTTS
+from maelcom.newsroom.tts import (
+    _VOICE_ALIASES,
+    _VOICE_PATHS,
+    ToneWavTTS,
+    resolve_piper_voice,
+)
 
 
 def test_render_produces_playable_wav():
@@ -28,3 +35,15 @@ def test_longer_script_is_longer_audio():
     short = tts.render(Script(text="one two", style="x"))
     long = tts.render(Script(text="one two " * 40, style="x"))
     assert long.duration_ms > short.duration_ms
+
+
+def test_curated_voice_aliases_map_to_known_models():
+    for alias in ("alan", "alba", "northern_english_male", "southern_english_female"):
+        assert alias in _VOICE_ALIASES
+        assert _VOICE_ALIASES[alias] in _VOICE_PATHS
+
+
+def test_resolve_rejects_unknown_voice_without_network():
+    # A non-.onnx, non-alias, non-name string fails fast (no download attempted).
+    with pytest.raises(ValueError, match="Unknown voice"):
+        resolve_piper_voice("definitely-not-a-voice")

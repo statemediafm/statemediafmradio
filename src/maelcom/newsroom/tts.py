@@ -24,17 +24,28 @@ from ..core.models import AudioRef, Script
 
 _WORDS_PER_MINUTE = 150
 
-# Default offline voice: a British male voice, fetched once from the Piper hub.
-_DEFAULT_VOICE = "en_GB-alan-medium"
 _VOICE_HUB = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 # Piper's voice files live under <lang_region>/<lang_region>/<name>/<quality>/.
 # e.g. en/en_GB/alan/medium/en_GB-alan-medium.onnx(.json)
 _VOICE_PATHS = {
-    "en_GB-alan-medium": "en/en_GB/alan/medium",  # British male (default)
+    "en_GB-alan-medium": "en/en_GB/alan/medium",  # British male
+    "en_GB-alba-medium": "en/en_GB/alba/medium",  # British (Scottish) female
     "en_GB-northern_english_male-medium": "en/en_GB/northern_english_male/medium",
+    "en_GB-southern_english_female-low": "en/en_GB/southern_english_female/low",
     "en_US-amy-low": "en/en_US/amy/low",
     "en_US-lessac-medium": "en/en_US/lessac/medium",
 }
+
+# Friendly short names for the curated British voices (what --voice accepts).
+_VOICE_ALIASES = {
+    "alan": "en_GB-alan-medium",
+    "alba": "en_GB-alba-medium",
+    "northern_english_male": "en_GB-northern_english_male-medium",
+    "southern_english_female": "en_GB-southern_english_female-low",
+}
+
+# Default offline voice: Alan, a British male (accepts the alias below too).
+_DEFAULT_VOICE = "alan"
 
 
 class TTSProvider(ABC):
@@ -102,16 +113,20 @@ def resolve_piper_voice(
 
     Downloads the pair from the Piper voice hub into ``voices_dir`` the first
     time (network required once); subsequent calls are offline. ``voice`` may
-    be a known name (see ``_VOICE_PATHS``) or a filesystem path to a ``.onnx``.
+    be a friendly alias (``alan``, ``alba``, ``northern_english_male``,
+    ``southern_english_female``), a full Piper name (see ``_VOICE_PATHS``), or a
+    filesystem path to a ``.onnx`` model.
     """
     # Explicit path to a model file.
     p = Path(voice)
     if p.suffix == ".onnx" and p.exists():
         return p, p.with_suffix(".onnx.json")
 
+    voice = _VOICE_ALIASES.get(voice, voice)  # resolve friendly aliases
     if voice not in _VOICE_PATHS:
+        known = sorted(_VOICE_ALIASES) + sorted(_VOICE_PATHS)
         raise ValueError(
-            f"Unknown voice {voice!r}. Known: {', '.join(sorted(_VOICE_PATHS))}, "
+            f"Unknown voice {voice!r}. Known: {', '.join(known)}, "
             "or pass a path to a local .onnx model."
         )
 
