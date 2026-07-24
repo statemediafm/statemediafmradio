@@ -105,11 +105,13 @@ def _voice_segment(
     tts: TTSProvider,
     *,
     greeting: str | None = None,
+    max_headlines: int | None = None,
 ) -> tuple[Script, AudioRef]:
     """Summarize one source and voice it, pausing between headlines.
 
     Offline uses the chunked ``radio_reads`` so ``render_reads`` can space the
     headlines; ``--live`` returns a single blob (no inter-headline pause).
+    ``max_headlines`` overrides the CLI ``--headlines`` default (per-segment).
     """
     style = args.style
     if getattr(args, "live", False):
@@ -118,7 +120,8 @@ def _voice_segment(
             script = replace(script, text=f"{greeting} {script.text}")
         return script, tts.render(script)
 
-    reads = radio_reads(items, style, greeting=greeting, max_headlines=args.headlines)
+    limit = args.headlines if max_headlines is None else max_headlines
+    reads = radio_reads(items, style, greeting=greeting, max_headlines=limit)
     script = Script(text=" ".join(read.text for read in reads), style=style)
     pause_ms = round(args.headline_pause * 1000)
 
@@ -191,8 +194,9 @@ def _genmusic(args: argparse.Namespace) -> int:
     return 0
 
 
-def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence]]:
-    """Roster from --hn/--repo, all on --every, auto-staggered to interleave."""
+def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence, int | None]]:
+    """Roster from --hn/--repo, all on --every, auto-staggered. Headlines is None
+    (use the CLI --headlines default) since ad-hoc has no per-segment config."""
     every = parse_duration(args.every)
     sources: list[tuple[str, Source]] = []
     if args.hn:
@@ -203,7 +207,7 @@ def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence]
         )
     n = len(sources)
     return [
-        (topic, source, Cadence(every, i * every / n))
+        (topic, source, Cadence(every, i * every / n), None)
         for i, (topic, source) in enumerate(sources)
     ]
 
@@ -229,7 +233,7 @@ def _broadcast(args: argparse.Namespace) -> int:
     programmes: list[Programme] = []
     content: dict[str, tuple[Script, AudioRef]] = {}
     seg_index = 0
-    for topic, source, cadence in roster:
+    for topic, source, cadence, headlines in roster:
         try:
             items = _poll(source)
         except _CliError as exc:
@@ -240,7 +244,9 @@ def _broadcast(args: argparse.Namespace) -> int:
             continue
         seg_tts = _segment_tts(args, seg_index)
         greeting = time_greeting(datetime.now().astimezone()) if seg_index == 0 else None
-        content[topic] = _voice_segment(items, args, seg_tts, greeting=greeting)
+        content[topic] = _voice_segment(
+            items, args, seg_tts, greeting=greeting, max_headlines=headlines
+        )
         programmes.append(Programme(topic, cadence))
         seg_index += 1
     if not programmes:

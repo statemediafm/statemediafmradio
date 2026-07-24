@@ -59,22 +59,25 @@ def _build_source(topic: str, seg: dict) -> Source:
     )
 
 
-def build_roster(config: dict) -> list[tuple[str, Source, Cadence]]:
-    """Turn a parsed roster config into ``(topic, source, cadence)`` entries.
+def build_roster(config: dict) -> list[tuple[str, Source, Cadence, int | None]]:
+    """Turn a parsed roster config into ``(topic, source, cadence, headlines)``.
 
-    Raises ``ValueError`` for a missing/empty ``segments`` list or a malformed
-    segment. Sources are constructed but not polled, so this stays offline.
+    ``headlines`` is the per-segment cap on how many headlines that source reads,
+    or ``None`` when the segment omits it (the caller supplies a default). Raises
+    ``ValueError`` for a missing/empty ``segments`` list or a malformed segment.
+    Sources are constructed but not polled, so this stays offline.
     """
     segments = config.get("segments")
     if not segments:
         raise ValueError("roster config has no 'segments'")
 
-    roster: list[tuple[str, Source, Cadence]] = []
+    roster: list[tuple[str, Source, Cadence, int | None]] = []
     for i, seg in enumerate(segments):
         topic = seg.get("topic") or f"Segment {i + 1}"
         cadence = Cadence(
             parse_duration(seg.get("every", "15m")),
             parse_duration(seg.get("offset", 0)),
         )
-        roster.append((topic, _build_source(topic, seg), cadence))
+        headlines = int(seg["headlines"]) if "headlines" in seg else None
+        roster.append((topic, _build_source(topic, seg), cadence, headlines))
     return roster

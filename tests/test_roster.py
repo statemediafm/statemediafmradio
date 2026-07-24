@@ -13,27 +13,31 @@ from maelcom.sources.hackernews import HackerNewsSource
 def test_build_roster_maps_sources_and_cadences():
     config = {
         "segments": [
-            {"topic": "HN", "source": "hackernews", "max_count": 10, "every": "15m", "offset": "6m"},
+            {"topic": "HN", "source": "hackernews", "max_count": 10, "headlines": 10,
+             "every": "15m", "offset": "6m"},
             {"topic": "Repo", "source": "repo", "repo": "/local/path", "every": "10m"},
         ]
     }
     roster = build_roster(config)
-    assert [t for t, _, _ in roster] == ["HN", "Repo"]
+    assert [t for t, _, _, _ in roster] == ["HN", "Repo"]
 
-    (_, hn_source, hn_cadence), (_, repo_source, repo_cadence) = roster
+    (_, hn_source, hn_cadence, hn_headlines), (_, repo_source, repo_cadence, repo_headlines) = roster
     assert isinstance(hn_source, HackerNewsSource)
     assert hn_source.max_count == 10
     assert hn_cadence == Cadence(900.0, 360.0)
+    assert hn_headlines == 10  # per-segment override
     # A local path routes to the git-commit source; offset defaults to 0.
     assert isinstance(repo_source, GitSource)
     assert repo_cadence == Cadence(600.0, 0.0)
+    assert repo_headlines is None  # omitted → caller's default
 
 
 def test_build_roster_defaults_topic_and_cadence():
     roster = build_roster({"segments": [{"source": "hackernews"}]})
-    topic, _, cadence = roster[0]
+    topic, _, cadence, headlines = roster[0]
     assert topic == "Segment 1"
     assert cadence == Cadence(900.0, 0.0)  # default every=15m, offset=0
+    assert headlines is None
 
 
 def test_build_roster_errors_are_clear():

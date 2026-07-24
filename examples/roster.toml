@@ -9,6 +9,7 @@
 topic = "Hacker News front page"
 source = "hackernews"
 max_count = 10
+headlines = 10         # read all ten front-page stories
 every = "15m"
 offset = "6m"          # airs at :06, :21, :36, :51
 
@@ -18,5 +19,6 @@ source = "repo"                                   # GitHub/GitLab URL or local p
 repo = "https://github.com/meltano/meltano"
 token_env = "GITHUB_TOKEN"                        # optional; raises API rate limits
 max_count = 20
+headlines = 3          # just the top few from the repo
 every = "15m"
 offset = "0"           # airs at :00, :15, :30, :45
