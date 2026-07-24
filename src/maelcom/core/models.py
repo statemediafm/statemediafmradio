@@ -1,8 +1,8 @@
 """Shared data model — the contracts every pillar speaks (plan §6).
 
 M1 subset: ``NewsItem``, ``Script``, ``AudioRef``, ``Segment``,
-``BroadcastPlan``. The remaining types (``ActivitySignal``, ``StrudelProgram``,
-``SongCue``) land alongside the pillars that produce them.
+``BroadcastPlan``. M2 adds the generative-music types ``ActivitySignal`` and
+``StrudelProgram``. ``SongCue`` (M5) lands with the music pillar.
 """
 
 from __future__ import annotations
@@ -58,6 +58,42 @@ class AudioRef:
     media_type: str = "audio/wav"
     data: bytes = b""
     duration_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ActivitySignal:
+    """Windowed features of the news stream, driving the generative music.
+
+    ``volume`` is the item count in the window; ``volatility`` (0..1) captures
+    how bursty the activity is (evenly spaced → low, clustered → high);
+    ``actor_voices`` maps a participant to a named voice/theme so the music can
+    reflect who is active. All fields are derived deterministically from a
+    ``NewsItem`` window (see ``genmusic.activity``).
+    """
+
+    window_s: float
+    volume: int
+    volatility: float
+    participant_count: int
+    themes: list[str] = field(default_factory=list)
+    actor_voices: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class StrudelProgram:
+    """A generative-music program as Strudel source text (the transport).
+
+    No audio is rendered server-side — the client plays ``text`` and crossfades
+    over ``fade_ms`` between polls. ``intensity`` (0..1) and ``brainwave_band``
+    (delta/theta/alpha/beta/gamma) describe the felt energy; sessions start at
+    theta and adapt upward with activity (plan §5.3).
+    """
+
+    text: str
+    style: str
+    intensity: float
+    brainwave_band: str
+    fade_ms: int = 2000
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,6 +15,7 @@ import sys
 
 from .core.models import Script
 from .core.plan import single_news_plan
+from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
 from .newsroom.summarize import naive_radio_script, summarize
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider
@@ -62,6 +63,36 @@ def _demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _genmusic(args: argparse.Namespace) -> int:
+    items = GitSource(args.repo, max_count=args.max_count).poll()
+    if not items:
+        print(f"No commits found in {args.repo}", file=sys.stderr)
+        return 1
+
+    signal = activity(items)
+    try:
+        program = compose(
+            signal,
+            style=args.style,
+            intensity=args.intensity,
+            base_intensity=args.base_intensity,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(
+        f"— {signal.volume} commits → {program.style} @ {program.brainwave_band} "
+        f"(intensity {program.intensity:.2f}), {signal.participant_count} voices —\n"
+    )
+    print(program.text)
+    if args.out:
+        with open(args.out, "w") as fh:
+            fh.write(program.text + "\n")
+        print(f"\nStrudel program written to {args.out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="maelcom")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -89,6 +120,27 @@ def main(argv: list[str] | None = None) -> int:
     demo.add_argument("--live", action="store_true", help="Use the local Claude client.")
     demo.add_argument("--profile", default=None, help="model_config.yaml profile (with --live).")
     demo.set_defaults(func=_demo)
+
+    gm = sub.add_parser(
+        "genmusic", help="Turn a git repo's activity into a generative Strudel program."
+    )
+    gm.add_argument("--repo", required=True, help="Local path OR remote URL of a git repo.")
+    gm.add_argument("--max-count", type=int, default=50, help="Commits to read.")
+    gm.add_argument("--style", default="lofi", help="Generative style (M2: lofi).")
+    gm.add_argument(
+        "--base-intensity",
+        type=float,
+        default=THETA_START,
+        help="User base energy 0..1; sessions start at theta (default).",
+    )
+    gm.add_argument(
+        "--intensity",
+        type=float,
+        default=None,
+        help="Override the activity-derived intensity (0..1).",
+    )
+    gm.add_argument("--out", default=None, help="Write the Strudel program to this file.")
+    gm.set_defaults(func=_genmusic)
 
     args = parser.parse_args(argv)
     return args.func(args)

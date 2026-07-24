@@ -42,6 +42,10 @@ testpaths = ["tests"]
 src = ["src"]
 line-length = 100
 
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures use naive datetimes deliberately — tz is irrelevant to the logic.
+"tests/**" = ["DTZ001"]
+
 [tool.mypy]
 python_version = "3.12"
 mypy_path = "src"

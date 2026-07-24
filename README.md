@@ -62,6 +62,26 @@ maelcom demo --repo /path/to/repo --live
 Extras: `.[llm]` (LiteLLM + config), `.[tts]` (Piper neural speech), `.[web]`
 (FastAPI + uvicorn), `.[dev]` (pytest, ruff, mypy), `.[all]`.
 
+## Generative music (M2)
+
+Maelcom also turns a repo's activity into a **Strudel program** — generative
+music that tracks the project. Activity becomes an `ActivitySignal` (volume,
+volatility, participants, themes); that maps to an intensity on the
+brainwave-band scale (sessions start at **theta** and rise toward gamma as
+activity climbs), and a style renderer emits Strudel source text:
+
+```sh
+python3 dist/maelcom.pyz genmusic --repo /path/to/repo
+```
+
+A quiet repo idles calm and dark; a busy, multi-contributor repo brightens,
+speeds up, and adds a lead and percussion. `--base-intensity` sets the user's
+resting energy, `--intensity` overrides the derived value, `--out` writes the
+program to a file. The installed server also exposes it at `GET /genmusic` as
+JSON (`{text, style, intensity, brainwave_band, fade_ms}`) for a client player
+to poll and crossfade between. *(The browser Strudel player + visualizer is the
+remaining M2 piece.)*
+
 ## Tests
 
 ```sh
@@ -76,7 +96,8 @@ src/maelcom/
   core/       shared data model (§6 contracts) + plan assembly
   sources/    activity sources (git) → NewsItem
   newsroom/   summarize (LLMClient) + voice (TTSProvider)
-  web/        FastAPI: /health, /plan, /audio/{id}, Tufte page
+  genmusic/   activity → ActivitySignal → compose → StrudelProgram (lofi)
+  web/        FastAPI: /health, /plan, /audio/{id}, /genmusic, Tufte page
   pipeline.py NewsItems → summarize → voice → BroadcastPlan
-  cli.py      `maelcom demo`
+  cli.py      `maelcom demo`, `maelcom genmusic`
 ```

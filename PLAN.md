@@ -308,9 +308,14 @@ adding breadth.
 - **Demo:** point at an active git repo → hear a ~90s voiced news read-out.
 
 ### M2 — Generative music vertical slice
-- `activity.py` from the M1 news stream → `ActivitySignal`.
-- One Strudel style (lofi) + theta-start intensity ramp → program text endpoint.
-- Client-side Strudel player with fade-in/out between polls; incidental visualizer.
+- ✅ `genmusic/activity.py`: news stream → `ActivitySignal` (volume, volatility,
+  participants, themes, actor→voice map). Deterministic.
+- ✅ `genmusic/brainwave.py`: intensity ↔ band mapping; theta-start, activity-lift.
+- ✅ `genmusic/compose.py` + `styles/lofi.py`: `ActivitySignal` → `StrudelProgram`
+  (Strudel source text). Golden/deterministic; `maelcom genmusic` CLI demo.
+- ✅ Program-text endpoint `GET /genmusic` (JSON) on the FastAPI app.
+- ⬜ Client-side Strudel player with fade-in/out between polls; incidental
+  visualizer. *(remaining M2 piece — browser front end.)*
 - **Demo:** repo activity audibly modulates continuous generative music.
 
 ### M3 — Second source + plugin architecture hardened

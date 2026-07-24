@@ -8,6 +8,12 @@ build/standalone/
 
 # Downloaded Piper voice models (large; fetched on first --speak)
 voices/
+*.onnx
+*.onnx.json
 
 # Demo output
 *.wav
+
+# Local scratch / experiments
+cmd
+voxs
