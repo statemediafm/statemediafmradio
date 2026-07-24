@@ -73,11 +73,12 @@ def render(
     bass = _BASS_ROOTS[variant]
     drums = _DRUMS[min(3, int(intensity * 4))]
 
+    # Drums use plain dirt-sample names (bd/sd/hh) so they sound with Strudel's
+    # default prebaked sample set — no drum-machine bank to load.
     layers = [
         f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({room}).gain(0.5).slow(2)',
         f'  note("{bass}").s("sawtooth").lpf(300).gain(0.55).slow(2)',
-        f'  s("{drums}").bank("RolandTR909").gain(0.7)',
-        '  s("vinyl").gain(0.25)',  # constant lofi crackle
+        f'  s("{drums}").gain(0.85)',
     ]
 
     # A lead appears once ≥2 people are active; its density tracks volatility,

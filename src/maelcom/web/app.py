@@ -129,10 +129,14 @@ async function pollMusic(){
     viz.intensity=d.intensity; viz.band=d.brainwave_band; viz.on=started;
     if(started && d.text!==lastProgram){
       lastProgram=d.text;
-      try{ evaluate(d.text); }catch(e){ console.error('strudel:',e); }
+      try{ evaluate(d.text); }
+      catch(e){ console.error('strudel:',e);
+        statusEl.textContent='music error: '+((e&&e.message)||e); return; }
     }
+    const ctx=(typeof getAudioContext==='function')?getAudioContext():null;
+    const ac=ctx?(' · audio '+ctx.state):'';
     statusEl.textContent=(started?'● on air':'ready')+
-      ' · '+d.style+' · '+d.brainwave_band+' · intensity '+d.intensity.toFixed(2);
+      ' · '+d.style+' · '+d.brainwave_band+' · intensity '+d.intensity.toFixed(2)+ac;
   }catch(e){}
 }
 async function pollNews(){
@@ -149,7 +153,12 @@ async function pollNews(){
 }
 btn.addEventListener('click', async ()=>{
   if(started) return; started=true; btn.disabled=true; btn.textContent='● On air';
-  try{ initStrudel(); }catch(e){ console.error(e); }
+  statusEl.textContent='loading sounds…';
+  try{
+    // Prebake the standard drum/instrument samples so the rhythm layers sound
+    // (without this you only hear the sustained synths — a single drone).
+    initStrudel({ prebake: () => samples('github:tidalcycles/dirt-samples') });
+  }catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
   await pollMusic();
 });
 pollMusic(); pollNews();
