@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     demo.add_argument(
         "--voice",
-        default="en_US-amy-low",
+        default="en_GB-alan-medium",
         help="Piper voice name or path to a .onnx model (with --speak).",
     )
     demo.add_argument("--live", action="store_true", help="Use the local Claude client.")

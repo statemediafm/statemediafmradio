@@ -85,7 +85,7 @@ def test_naive_radio_script_reflects_real_items():
     text = naive_radio_script(_items(), style="bbc-world")
     # Style and item count are announced.
     assert "bbc-world" in text
-    assert "2 updates" in text
+    assert "2 changes" in text
     # Real content: contributors and headlines come from the items, not a stub.
     assert "alice" in text
     assert "Fix scheduler offset bug" in text
@@ -99,15 +99,37 @@ def test_naive_radio_script_is_deterministic():
     assert naive_radio_script(_items(), "lofi") == naive_radio_script(_items(), "lofi")
 
 
-def test_naive_radio_script_singular_and_ranks_top_contributors():
+def test_naive_radio_script_ranks_top_contributors_conversationally():
     many = [
         NewsItem(id=f"c{i}", source="git", kind="commit", title=f"t{i}", actors=["heavy"])
         for i in range(5)
     ] + [NewsItem(id="c9", source="git", kind="commit", title="t9", actors=["light"])]
     text = naive_radio_script(many, style="lofi")
-    assert "heavy (5)" in text
+    # Names appear, but not the raw counts — that's metadata, not speech.
+    assert "heavy" in text
+    assert "(5)" not in text
     # Top contributor precedes the lighter one.
     assert text.index("heavy") < text.index("light")
+
+
+def test_naive_radio_script_strips_non_conversational_metadata():
+    items = [
+        NewsItem(
+            id="c1",
+            source="git",
+            kind="commit",
+            title="Merged: Fix the `env:` bug (MR meltano/meltano!2665)",
+            actors=["dev"],
+        ),
+        # Duplicate of the merge's underlying commit — should not repeat.
+        NewsItem(id="c2", source="git", kind="commit", title="Fix the `env:` bug", actors=["dev"]),
+    ]
+    text = naive_radio_script(items, style="lofi")
+    assert "!" not in text  # no exclamation points at all
+    assert "MR meltano" not in text  # tracker reference dropped
+    assert "Merged:" not in text  # merge prefix dropped
+    assert "`" not in text  # code formatting dropped
+    assert text.count("Fix the env: bug") == 1  # deduped to a single headline
 
 
 def test_naive_radio_script_rejects_empty_window():
@@ -117,4 +139,4 @@ def test_naive_radio_script_rejects_empty_window():
 
 def test_naive_radio_script_singular_update_wording():
     one = [NewsItem(id="c1", source="git", kind="commit", title="only", actors=["a"])]
-    assert "1 update came" in naive_radio_script(one, style="lofi")
+    assert "was 1 change" in naive_radio_script(one, style="lofi")

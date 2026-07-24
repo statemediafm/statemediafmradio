@@ -24,12 +24,14 @@ from ..core.models import AudioRef, Script
 
 _WORDS_PER_MINUTE = 150
 
-# Default offline voice: small (~60 MB), fetched once from the Piper voice hub.
-_DEFAULT_VOICE = "en_US-amy-low"
+# Default offline voice: a British male voice, fetched once from the Piper hub.
+_DEFAULT_VOICE = "en_GB-alan-medium"
 _VOICE_HUB = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 # Piper's voice files live under <lang_region>/<lang_region>/<name>/<quality>/.
-# e.g. en/en_US/amy/low/en_US-amy-low.onnx(.json)
+# e.g. en/en_GB/alan/medium/en_GB-alan-medium.onnx(.json)
 _VOICE_PATHS = {
+    "en_GB-alan-medium": "en/en_GB/alan/medium",  # British male (default)
+    "en_GB-northern_english_male-medium": "en/en_GB/northern_english_male/medium",
     "en_US-amy-low": "en/en_US/amy/low",
     "en_US-lessac-medium": "en/en_US/lessac/medium",
 }

@@ -42,10 +42,12 @@ maelcom demo --repo /path/to/repo --speak --out news.wav
 ```
 
 The first run downloads a small voice model (~60 MB) into `./voices/`
-(override with `MAELCOM_VOICES_DIR`); later runs are offline. Pick a voice with
-`--voice en_US-amy-low` (default) or `--voice en_US-lessac-medium`, or pass a
-path to your own `.onnx` model. `--speak` needs a normal install — it is not in
-the zero-dependency zipapp.
+(override with `MAELCOM_VOICES_DIR`); later runs are offline. The default voice
+is `en_GB-alan-medium` (British male); other bundled names are
+`en_GB-northern_english_male-medium`, `en_US-amy-low`, and
+`en_US-lessac-medium` — or pass a path to your own `.onnx` model with
+`--voice`. `--speak` needs a normal install — it is not in the zero-dependency
+zipapp.
 
 ### Installed (real models + web)
 

@@ -8,11 +8,41 @@ and no network — and production defaults to the local Claude client via LiteLL
 
 from __future__ import annotations
 
+import re
+
 from ..core.models import NewsItem, Script
 from .llm import LLMClient, LLMConfig
 
 # Rough words-per-minute for spoken radio, used to size the target read length.
 _WORDS_PER_MINUTE = 150
+
+# Trailing issue/MR/PR references, e.g. "(MR meltano/meltano!2665)", "(#123)",
+# "(GH-99)" — metadata that reads as noise when spoken aloud.
+_TRAILING_REF = re.compile(r"\s*\((?:MR|PR|GH|GL|#)[^)]*\)\s*$", re.IGNORECASE)
+_MERGE_PREFIX = re.compile(r"^merged:\s*", re.IGNORECASE)
+
+
+def _clean_headline(title: str) -> str:
+    """Turn a raw commit subject into a spoken-word-friendly headline.
+
+    Drops trailing MR/issue references, the ``Merged:`` prefix, backtick code
+    formatting, and exclamation points, then collapses whitespace — so the
+    result is plain conversational English with no tracker metadata.
+    """
+    text = _TRAILING_REF.sub("", title.strip())
+    text = _MERGE_PREFIX.sub("", text)
+    text = text.replace("`", "").replace("!", "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.rstrip(".")
+
+
+def _join_names(names: list[str]) -> str:
+    """Join names as natural speech: 'a', 'a and b', 'a, b, and c'."""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
 
 
 def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) -> str:
@@ -53,29 +83,36 @@ def naive_radio_script(items: list[NewsItem], style: str, target_seconds: int = 
         raise ValueError("naive_radio_script() requires at least one NewsItem")
 
     sources = sorted({it.source for it in items})
-    desk = "/".join(sources) if sources else "news"
+    desk = " and ".join(sources) if sources else "news"
 
     counts: dict[str, int] = {}
     for it in items:
         for actor in it.actors:
             counts[actor] = counts.get(actor, 0) + 1
-    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
-    if top:
-        names = ", ".join(f"{name} ({n})" for name, n in top)
-        contributors = f"Leading the activity: {names}. "
-    else:
-        contributors = ""
+    top = [name for name, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
+    contributors = f"Most of the work came from {_join_names(top)}. " if top else ""
 
-    headlines = [it.title.strip() for it in items[:5] if it.title.strip()]
+    # Clean each subject, then keep the first few unique headlines — the merge /
+    # underlying-commit pairing in many repos otherwise repeats the same line.
+    seen: set[str] = set()
+    headlines: list[str] = []
+    for it in items:
+        headline = _clean_headline(it.title)
+        if headline and headline.lower() not in seen:
+            seen.add(headline.lower())
+            headlines.append(headline)
+        if len(headlines) == 5:
+            break
     headline_text = " ".join(f"{h}." for h in headlines)
 
+    plural = "s" if len(items) != 1 else ""
     return (
         f"You're listening to the {style} desk. "
-        f"In the latest window, {len(items)} update"
-        f"{'s' if len(items) != 1 else ''} came in from the {desk} desk. "
+        f"In the latest update from the {desk} desk, there {'were' if plural else 'was'} "
+        f"{len(items)} change{plural}. "
         f"{contributors}"
         f"Here are the headlines. {headline_text} "
-        f"That's the recent activity. More as it develops."
+        f"That's the latest from the newsroom. More as it develops."
     )
 
 
