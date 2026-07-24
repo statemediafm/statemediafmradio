@@ -73,14 +73,30 @@ def _source_items(args: argparse.Namespace) -> list | None:
     return items if picked else None
 
 
-def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:
-    """A TTS voice for segment ``index`` — rotating so topics sound distinct.
+def _piper_or_tone(args: argparse.Namespace, *, voice: str, tone_freq: float) -> TTSProvider:
+    """Real speech (Piper) by default; the placeholder tone with ``--tone`` or
+    when the ``[tts]`` extra isn't installed (so the zipapp still runs)."""
+    if not getattr(args, "tone", False):
+        try:
+            return PiperTTS(voice=voice)
+        except ImportError:
+            if not getattr(args, "_tone_warned", False):
+                print(
+                    "(no [tts] extra — using the placeholder tone; "
+                    "run  pip install -e '.[tts]'  for real voices)",
+                    file=sys.stderr,
+                )
+                args._tone_warned = True
+    return ToneWavTTS(frequency=tone_freq)
 
-    Raises ``ImportError`` if ``--speak`` is set without the ``[tts]`` extra.
-    """
-    if getattr(args, "speak", False):
-        return PiperTTS(voice=_SPEAK_VOICES[index % len(_SPEAK_VOICES)])
-    return ToneWavTTS(frequency=_TONE_FREQS[index % len(_TONE_FREQS)])
+
+def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:
+    """A voice for segment ``index`` — rotating so topics sound distinct."""
+    return _piper_or_tone(
+        args,
+        voice=_SPEAK_VOICES[index % len(_SPEAK_VOICES)],
+        tone_freq=_TONE_FREQS[index % len(_TONE_FREQS)],
+    )
 
 
 def _voice_segment(
@@ -128,12 +144,7 @@ def _demo(args: argparse.Namespace) -> int:
     if not items:
         print("No activity found for this source.", file=sys.stderr)
         return 1
-    try:
-        tts = PiperTTS(voice=args.voice) if args.speak else ToneWavTTS()
-    except ImportError:
-        print("--speak needs the [tts] extra: pip install -e '.[tts]'", file=sys.stderr)
-        return 2
-
+    tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
     greeting = time_greeting(datetime.now().astimezone())
     script, audio = _voice_segment(items, args, tts, greeting=greeting)
     segment = single_news_plan(audio, script).segments[0]
@@ -227,11 +238,7 @@ def _broadcast(args: argparse.Namespace) -> int:
         if not items:
             print(f"(skipping {topic}: no activity)", file=sys.stderr)
             continue
-        try:
-            seg_tts = _segment_tts(args, seg_index)
-        except ImportError:
-            print("--speak needs the [tts] extra: pip install -e '.[tts]'", file=sys.stderr)
-            return 2
+        seg_tts = _segment_tts(args, seg_index)
         greeting = time_greeting(datetime.now().astimezone()) if seg_index == 0 else None
         content[topic] = _voice_segment(items, args, seg_tts, greeting=greeting)
         programmes.append(Programme(topic, cadence))
@@ -290,15 +297,20 @@ def _add_source_args(p: argparse.ArgumentParser) -> None:
 def _add_voice_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--style", default="bbc-world", help="Voice/writing style.")
     p.add_argument(
+        "--tone",
+        action="store_true",
+        help="Use the placeholder tone instead of real speech (speech is the default).",
+    )
+    p.add_argument(
         "--speak",
         action="store_true",
-        help="Real speech via Piper (needs the [tts] extra); default is a placeholder tone.",
+        help=argparse.SUPPRESS,  # deprecated: speech is now the default (kept for compatibility)
     )
     p.add_argument(
         "--voice",
         default="alan",
         metavar="VOICE",
-        help="Voice for --speak: alan (British male, default), alba (Scottish "
+        help="Speech voice: alan (British male, default), alba (Scottish "
         "female), northern_english_male, southern_english_female — or a full "
         "Piper name or path to a .onnx model.",
     )

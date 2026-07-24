@@ -40,19 +40,19 @@ It writes a radio script to stdout and saves the voiced audio to
 covering each source in full before the next (depth-first, not interleaved),
 with each source's headlines attributed and voiced in its own voice.
 
-The offline demo builds a deterministic summary from the real activity (top
-contributors + recent headlines) and voices it with a placeholder tone — so it
-needs no credentials or model, yet the output reflects the project.
+The zero-dependency zipapp builds a deterministic summary from the real activity
+(top contributors + recent headlines) and voices it with a placeholder tone — so
+it needs no credentials or model, yet the output reflects the project.
 
 ### Real spoken audio
 
-The tone is a stand-in. For actual speech, install the `[tts]` extra (offline
-neural TTS via [Piper](https://github.com/OHF-Voice/piper1-gpl)) and add
-`--speak`:
+An installed instance **speaks by default** (offline neural TTS via
+[Piper](https://github.com/OHF-Voice/piper1-gpl)); the tone is only a fallback
+for the zipapp, which has no `[tts]` extra. Install it and run normally:
 
 ```sh
 uv pip install -e ".[tts]"          # or: pip install -e ".[tts]"
-maelcom demo --repo /path/to/repo --speak --out news.wav
+maelcom demo --repo /path/to/repo --out news.wav   # spoken; add --tone to force the placeholder
 ```
 
 The first run downloads a small voice model (~60 MB) into `./voices/`
@@ -67,8 +67,8 @@ The first run downloads a small voice model (~60 MB) into `./voices/`
 | `southern_english_female` | Southern English female |
 
 You can also pass a full Piper name (e.g. `en_US-lessac-medium`) or a path to
-your own `.onnx` model. `--speak` needs a normal install — it is not in the
-zero-dependency zipapp.
+your own `.onnx` model. Speech needs a normal install with the `[tts]` extra;
+the zero-dependency zipapp always uses the tone.
 
 ### Installed (real models + web)
 
@@ -129,10 +129,10 @@ offset = "0"
 
 **Audio.** `--out` (default `news.wav`, `''` to skip) writes one combined WAV of
 all segments back to back; `--out-dir DIR` writes one WAV per segment topic. So
-`maelcom broadcast --hn --window 120` alone drops a `news.wav` in the current
-directory. Add `--speak` for real voices —
-each segment is voiced in a **different** rotating voice so the topics sound
-distinct. The broadcast opens with a spoken time greeting ("Good day. It is
+`maelcom broadcast --hn --window 120` alone drops a spoken `news.wav` in the
+current directory (installed instances speak by default; `--tone` forces the
+placeholder). Each segment is voiced in a **different** rotating voice so the
+topics sound distinct. The broadcast opens with a spoken time greeting ("Good day. It is
 16:52."), headlines are **attributed** to their source (Hacker News, the git
 project) and spaced by `--headline-pause` seconds (default `1.0`).
 
