@@ -1,0 +1,42 @@
+
+hosted streaming radio station trained on local team/company collaboration, project, and version control platform data.
+- create standalone pillars in the project for each core feature, then have a main integration module between them
+
+- takes updates from git, jira, slack, etc. parses into news items, summarizes them into radio news items, voices them. 
+	- plugin architecture for adding data and news sources from messengers and collaboration platforms
+	- inherit access control models from platforms, requires a service user as bot for data collection
+	- grafana chart parser
+	- example demo: point at an active git repository or join a slack channel and summarize recent updates into 1-2minute statements of a variation of who, what, where when, why, how
+	
+- choice of voices, plugin voice modules, user configurable:
+	- default theme bbc world circa 1970s-80s, john peel sessions, quiet psychedelic pirate radio
+	- includde bbc pidgin style
+	- rastafarian style 
+	- public radio style 
+	- student radio style
+	- alternative radio style
+
+
+- optional integration module that takes spotify and apple music music usernames and playlists from users and generates a personal playlist, privately compares the playlists of the users on the tenant and mixes in songs based on similarity using the users spotify or apple music accounts (nice to have). 
+
+- generative music module using Strudel that indicates qualities of news activity on data channels, e.g. activity, volatility, number of participants, themes and voices for participants,  etc. have all generated pieces fade in and out. include a user defined  general base-intensity setting that influences the generated music, mark it to alpha, beta, gamma, theta, delta brain wave frequences. Start all sessions at theta wave frequency, and then adapt generative music to higher intensity and focus waves accordingly. 
+	- tintinabuli solo piano and chamber quartet
+	- lofi
+	- space dub
+	- modular bleep bloop
+	- aphex fugue state (closes data match)
+	
+
+- user UI uses edward tufte aesthetic, includes streaming service account configurator where they add their playlists, current song, text headlines and summaries of the last generated news items from the last defined time period, medium sized and incidental visualizer for the generative music that reflects the voices and activity and intensity in the generative music 
+
+
+Architecture interests: 
+- packaging: streaming service hosted in a container, installable by uv or other common package manager
+
+- oauth sso login to gmail, entra and the microsoft graph, ldap, okta, 
+
+- consider integrating the Strudel player into user webpage client and having it poll the server for new generative strudel music as text data, with a fade-in/fade-out between poll events. the overall intention for the user is to have a 2-5 minute rhythm of the day punctuated by generative music that reflects the state of the internal news data sources, news summaries every (configurable) n-minutes (offset however they choose, default is every 15 minutes offset by -9 minutes from the hour), and familiar songs from their personal playlists a few times per hour (configurable) to create a sense of serendipity. 
+
+- make all configurations optional, so that the most basic instance can be set up and tested, but include as many of the pillar features as is viable. e.g. they don't need a spotify account, but it would be best. optionally use free tier music instead just for demo purposes. 
+
+- 

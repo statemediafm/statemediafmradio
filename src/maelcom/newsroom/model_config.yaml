@@ -1,0 +1,30 @@
+# Maelcom — LLM model-selection config (LiteLLM parameters).
+#
+# Each profile is one LLMConfig. `model` is a LiteLLM model string. Any key not
+# recognised as a first-class LLMConfig field is forwarded to litellm.completion
+# untouched (see LLMConfig.extra). Select a profile with load_model_config(name);
+# `default` is used when none is given.
+
+default: dev
+
+profiles:
+  # Development default → the local Claude client.
+  # Auth: LiteLLM's Anthropic provider reads the API key from the environment
+  # (ANTHROPIC_API_KEY, or ANTHROPIC_AUTH_TOKEN). No key is set in this file.
+  # Note: LiteLLM does NOT read a local `ant auth login` profile — the env var
+  # must be present.
+  dev:
+    model: anthropic/claude-opus-4-8
+    # Opus 4.8 only supports temperature=1 (litellm rejects any other value).
+    temperature: 1
+    max_tokens: 1024
+    timeout: 60
+
+  # Example future backend — reachable by config change alone, no code edit.
+  # A self-hosted / OpenAI-compatible endpoint; key read from LOCAL_LLM_KEY.
+  self_hosted:
+    model: openai/local-model
+    api_base: http://localhost:8000/v1
+    api_key_env: LOCAL_LLM_KEY
+    max_tokens: 1024
+    timeout: 60

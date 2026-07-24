@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "maelcom"
+version = "0.1.0"
+description = "Internal streaming radio built on team collaboration, project, and version-control data."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ email = "jamie.f.reid@gmail.com" }]
+
+# The base install has NO third-party dependencies: the offline demo
+# (git source → fake LLM → tone TTS → plan) runs on the standard library alone.
+# Everything richer is an opt-in extra, so the smallest instance stays minimal.
+dependencies = []
+
+[project.optional-dependencies]
+# Real model calls via LiteLLM + config loading (dev default = local Claude client).
+llm = ["litellm>=1.40", "pyyaml>=6.0"]
+# Web client + API.
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+# Real offline speech (Piper neural TTS) for `demo --speak`.
+tts = ["piper-tts>=1.2"]
+# Dev tooling.
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
+# Everything.
+all = ["maelcom[llm,web,tts]"]
+
+[project.scripts]
+maelcom = "maelcom.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/maelcom"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"

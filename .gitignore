@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+# Intermediate zipapp staging (dist/maelcom.pyz is the shippable artifact).
+build/standalone/
+
+# Downloaded Piper voice models (large; fetched on first --speak)
+voices/
+
+# Demo output
+*.wav
