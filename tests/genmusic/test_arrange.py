@@ -11,10 +11,11 @@ from maelcom.genmusic.arrange import (
     TRANSITION_BARS,
     build_plan,
     circle_walk,
-    common_tone,
+    pivot_key,
 )
 
-_WINDOW = {"G", "D", "A", "E", "B"}
+_WINDOW = {"C", "G", "D", "A", "E", "B", "F#"}
+_ORDER = ["C", "G", "D", "A", "E", "B", "F#"]
 
 
 def test_fresh_sections_fill_120_bars():
@@ -28,20 +29,21 @@ def test_circle_walk_starts_home_and_stays_in_window():
         assert all(k in _WINDOW for k in walk)  # never drifts out of the window
 
 
-def test_circle_walk_moves_by_one_fifth_each_step():
-    order = ["G", "D", "A", "E", "B"]
+def test_circle_walk_moves_by_at_most_two_fifths_each_step():
     walk = circle_walk(0b10101, 6)  # a specific up/down pattern
     for a, b in pairwise(walk):
-        assert abs(order.index(a) - order.index(b)) <= 1  # one fifth (or clamped)
+        assert abs(_ORDER.index(a) - _ORDER.index(b)) <= 2  # one or two fifths (or clamped)
 
 
-def test_common_tone_is_shared_and_quartal_root():
-    # Upward fifth A->E: the pivot is E (shared with A minor's triad tone E).
-    assert common_tone("A", "E") == "E"
-    # Downward fifth A->D: the pivot is A (shared with D minor's triad tone A).
-    assert common_tone("A", "D") == "A"
+def test_pivot_key_is_between_and_shares_tones():
+    # Single fifth up A->E: the pivot is the neighbour E.
+    assert pivot_key("A", "E") == "E"
+    # Single fifth down A->D: the pivot is D.
+    assert pivot_key("A", "D") == "D"
+    # Two-fifth leap A->B: the pivot is the key in between (E).
+    assert pivot_key("A", "B") == "E"
     # A non-moving (clamped) step pivots on the key itself.
-    assert common_tone("B", "B") == "B"
+    assert pivot_key("B", "B") == "B"
 
 
 def test_build_plan_length_and_history_repeats():

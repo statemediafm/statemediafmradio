@@ -1,50 +1,32 @@
-"""The ``tintinnabuli`` style — Arvo Pärt's method, largo, modified-piano voices.
+"""The default generative style — dark, low, spacious canon & call-response.
 
-Two voices move together (Pärt's tintinnabuli technique):
+This module is built to an explicit **composition rule base** — see the ``RULES``
+tuple below, which is the single source of truth we build up from. In short:
+confined to **G Dorian**, everything **low** (octave 1) and **low-passed**; the
+texture is mainly **canons and call-and-response** with double-time melodies that
+come and go; the rhythm evolves every 64 bars (turnaround / pause / drop); a brief
+**tintinnabuli** (Pärt M/T) passage recurs ~every 180 bars; no drums for now.
 
-- **M-voice** (melodic): a stepwise diatonic line that develops over four bars.
-- **T-voice** (tintinnabuli): sounds only tonic-triad tones, shadowing the
-  M-voice — alternating the nearest triad note *below* (inferior) and *above*
-  (superior) it from note to note.
-
-They sit over a deep root drone, with a sparse-to-busy, harmonically rich
-sawtooth lead whose density tracks activity. Everything is **largo** and biased
-to whole and quarter notes; the voices evolve as the ``ActivitySignal`` changes.
-
-The piece is arranged over time (see :mod:`maelcom.genmusic.arrange`): 16-bar
-sections joined by 4-bar circle-of-fifths transitions, each transition spelling
-out the current chord, a quartal pivot chord, then the new chord before the
-voices settle into the new key; after ~120 bars, earlier sections repeat.
-
-Voices use a **modified-piano synth** — a *filtered sawtooth* with a piano-like
-envelope. (@strudel/web has no piano soundfont loaded, and per the project's
-timbre rules triangle/square are reserved for low, short sounds — so a filtered
-sawtooth is the piano stand-in for these mid-register, sustained notes.)
+Voices use a dark **modified-piano synth** — a heavily filtered sawtooth with a
+soft envelope (no piano soundfont is loaded in @strudel/web). The circle-of-fifths
+modulation in :mod:`maelcom.genmusic.arrange` is dormant while we're in one key.
 """
 
 from __future__ import annotations
 
 from ...core.models import ActivitySignal
-from ..arrange import SECTION_BARS, TRANSITION_BARS, build_plan, common_tone
 from ..brainwave import clamp01
 
-_KEY = "A"  # A minor tonic — a classic Pärt key
+_KEY = "G"  # confined to G for now
+_MODE = "dorian"  # both voices in the Dorian mode (no minor keys) until further notice
 _TRIAD = (0, 2, 4)  # scale degrees of the tonic triad (root, third, fifth)
+_TOP = 7  # melodic ceiling in scale degrees (G1..G2) — keep everything low
 
-# Voicing tables for the keys in the circle-of-fifths window (see arrange.py).
-# The perfect 4th and 5th above each tonic (quartal pad + drone note names)…
-_FOURTH_OF = {"G": "c", "D": "g", "A": "d", "E": "a", "B": "e"}
-_FIFTH_OF = {"G": "d", "D": "a", "A": "e", "E": "b", "B": "f#"}
-# …and the major 9th above (the gentle add9 dissonance tone).
-_NINTH_OF = {"G": "a", "D": "e", "A": "b", "E": "f#", "B": "c#"}
-
-# Modified-piano synth: a sawtooth with a piano-like amplitude ADSR *and* a
-# filter envelope (bright attack decaying to a mellow body), which shapes the
-# tone of these >C3 notes so they don't sit static/harsh. No samples; no
-# triangle/square in this register per the timbre rules.
+# Dark modified-piano synth: a low-passed sawtooth with a soft amplitude ADSR and
+# a gentle filter envelope. Cutoff stays low so nothing bites.
 _PIANO = (
-    's("sawtooth").lpf(900).lpenv(2.5).lpa(0.005).lpd(0.4).lps(0.15).lpr(0.4)'
-    ".attack(0.004).decay(0.4).sustain(0.08).release(0.6)"
+    's("sawtooth").lpf(480).lpenv(1.2).lpa(0.01).lpd(0.5).lps(0.3).lpr(0.6)'
+    ".attack(0.008).decay(0.5).sustain(0.12).release(0.8)"
 )
 
 
@@ -58,16 +40,29 @@ def _seed(signal: ActivitySignal) -> int:
     )
 
 
-def _m_voice(signal: ActivitySignal, n: int = 16, salt: int = 0) -> list[int]:
-    """A developing, mostly stepwise melodic line of scale degrees (the M-voice)
-    — deterministic, evolving with the signal, spanning ~1.5 octaves. ``salt``
-    varies the line per arrangement section (the same salt reproduces it)."""
+def _rng(n: int) -> int:
+    """A small integer hash — a well-mixed pseudo-random value per index (the old
+    ``seed >> 2*i`` ran out of bits and pinned the melody to one note)."""
+    x = (n * 2654435761 + 1013904223) & 0xFFFFFFFF
+    x ^= x >> 16
+    x = (x * 2246822519) & 0xFFFFFFFF
+    x ^= x >> 13
+    return x
+
+
+def _m_voice(signal: ActivitySignal, n: int = 32, salt: int = 0) -> list[int]:
+    """A developing, mostly stepwise melodic line of scale degrees (the M-voice),
+    kept within a single low octave (``0.._TOP``). ``salt`` varies the line."""
     seed = _seed(signal) + salt
-    steps = (-1, 0, 1, 0, -1, 1, 0, 2, -2, 1)
-    d = 2 + (seed % 4)
+    steps = (-2, -1, -1, 0, 1, 1, 2, -1, 1, 0)
+    d = 2 + (_rng(seed) % 4)  # start mid-low (2..5)
     out = [d]
     for i in range(1, n):
-        d = max(0, min(11, d + steps[(seed >> (i * 2)) % len(steps)]))
+        step = steps[_rng(seed * 31 + i * 7) % len(steps)]
+        nd = d + step
+        if nd < 0 or nd > _TOP:
+            nd = d - step  # reflect at the octave bounds instead of pinning
+        d = nd
         out.append(d)
     return out
 
@@ -92,137 +87,178 @@ def _t_voice(m: list[int]) -> list[int]:
     return [(_t_above(x) if i % 2 else _t_below(x)) for i, x in enumerate(m)]
 
 
-def _bars(degrees: list[int]) -> str:
-    """Format degrees as bars of four quarter notes: ``<[..] [..] ...>`` — the
-    whole-cycle alternation keeps note values to quarters and phrases to bars."""
-    bars = [" ".join(str(x) for x in degrees[i : i + 4]) for i in range(0, len(degrees), 4)]
-    return "<[" + "] [".join(bars) + "]>"
+def _bars(degrees: list[int], gate: tuple[bool, ...], sparse: bool = True) -> str:
+    """Format degrees as gated bars of quarter notes: silent bars become a rest,
+    and (when ``sparse``) each sounding bar keeps only beats 1 and 3 — airy, so
+    the voice floats rather than plods. ``<[..] [..] ...>`` = one bar per cycle."""
+    out: list[str] = []
+    for b, i in enumerate(range(0, len(degrees), 4)):
+        if b >= len(gate) or not gate[b]:
+            out.append("~")
+            continue
+        four = degrees[i : i + 4]
+        if sparse:
+            a = four[0] if len(four) > 0 else "~"
+            c = four[2] if len(four) > 2 else "~"
+            out.append(f"{a} ~ {c} ~")
+        else:
+            out.append(" ".join(str(x) for x in four))
+    return "<[" + "] [".join(out) + "]>"
 
 
-def _lead(signal: ActivitySignal, intensity: float, salt: int = 0) -> str:
-    """A sparse-to-busy lead phrase (an octave above the M-voice), denser with
-    higher intensity."""
-    hi = [x + 7 for x in _m_voice(signal, 8, salt)]
-    if intensity < 0.4:
-        return f"<{hi[0]} ~ {hi[3]} ~>"
-    if intensity < 0.7:
-        return f"<[{hi[0]} ~ {hi[1]} ~] [~ {hi[2]} ~ {hi[3]}]>"
-    return f"<[{hi[0]} {hi[1]} ~ {hi[2]}] [{hi[3]} ~ {hi[4]} {hi[5]}]>"
+# ── The composition rule base ──────────────────────────────────────────────
+# Consolidated from the running direction; the single source of truth. We build
+# up from here. Each rule is enforced by the code below (noted in parentheses).
+RULES: tuple[str, ...] = (
+    "1. Confined to G Dorian — no minor, no major keys; every voice shares the key (consonant).",
+    "2. (Dormant) modulate only to adjacent / consonant circle-of-fifths keys.",
+    "3. Everything low — octave 1 (~49-98 Hz); nothing high.",
+    "4. A low-pass on every voice (no cutoff above ~500 Hz) — nothing harsh.",
+    "5. 4/4, largo (.slow(2)); it should float, not plod.",
+    "6. Mainly canons and call-and-response; voices come and go and trade off.",
+    "7. Melodies run double-time or faster; consonant with the other voices.",
+    "8. Evolve by fractal branching, but only 1-2 branches (a leader + at most two derived voices).",
+    "9. No ostinato longer than 16 bars; keep the material varying.",
+    "10. Evolve the rhythm every 64 bars with a turnaround, a pause, and a drop.",
+    "11. Tintinnabuli (M/T voices) only briefly, ~every 180 bars.",
+    "12. No drums / percussion for now.",
+    "13. A burst of news swells the tonic triad — a consonant emphasis.",
+    "14. Deterministic: the same signal always renders the same music.",
+)
+
+_SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
+_CALL = (True, True, False, False, True, True, False, False)  # leader sings…
+_RESP = (False, False, True, True, False, False, True, True)  # …responder answers in the gaps
 
 
-def _arp(signal: ActivitySignal, salt: int = 0) -> str:
-    """A minimalist quartal/quintal arpeggio cell (Glass/Bach), 8 eighth-notes in
-    4/4, emphasizing 4ths (0->3) and 5ths (0->4)."""
-    cells = (
-        "0 3 4 7 4 3 4 0",
-        "0 4 7 4 3 7 4 0",
-        "0 3 7 3 4 0 4 3",
-        "4 7 4 3 0 3 4 7",
-    )
-    return cells[(_seed(signal) + salt) % len(cells)]
+def _fast(intensity: float) -> int:
+    """Melodic speed — double-time or greater with activity (rule 7)."""
+    return 2 + round(clamp01(intensity) * 2)
 
 
-def _section(
-    signal: ActivitySignal,
-    key: str,
-    salt: int,
-    intensity: float,
-    tension: float,
-    verb: float,
-) -> str:
-    """One 16-bar section in ``key``: the full tintinnabuli texture (quartal pad,
-    minimalist arpeggio, M/T voices, drone, high-note softening, sparse lead, and
-    a gentle add9 accent on news bursts), transposed by scale tonic and voicing
-    tables. The melody ``salt`` evolves the line from section to section."""
-    m = _m_voice(signal, 16, salt)
-    t = _t_voice(m)
-    bars_m, bars_t = _bars(m), _bars(t)
-    lo = key.lower()
-    fourth, fifth, ninth = _FOURTH_OF[key], _FIFTH_OF[key], _NINTH_OF[key]
-    lead_lpf = round(1700 + intensity * 1300)
-
+def _bed(verb: float) -> list[str]:
+    """The sustained low ground (rules 3-5): a held root/fifth drone and a slow
+    quartal pad, both deep and low-passed, so the harmony floats without a pulse."""
+    drone = f'    n("<[0,4]>").scale("{_SCALE}").s("sine").attack(0.4).release(1.6).lpf(150).gain(0.3)'
     pad = (
-        f'    note("<[{lo}2,{fourth}3,{fifth}3] [{lo}2,{fifth}3,{lo}3]>").s("sawtooth")'
-        f'.detune(0.1).lpf(sine.range(500,1200).slow(8)).room({verb}).roomsize(6).gain(0.22)'
+        f'    n("<[0,3,4] [0,4,7]>").scale("{_SCALE}").s("sawtooth").detune(0.08)'
+        f".lpf(sine.range(220,480).slow(8)).room({verb}).roomsize(8).gain(0.16)"
     )
-    arp = (
-        f'    n("{_arp(signal, salt)}").scale("{key}2:minor").s("sawtooth").detune(0.12)'
-        f'.lpf(sine.range(700,1300).slow(6)).room(0.6).roomsize(4).gain(0.18)'
+    return [drone, pad]
+
+
+def _voice(bars_str: str, fast: int, verb: float, gain: float, extra: str = "") -> str:
+    """A dark-piano melodic voice (rules 3-5, 7): low, low-passed, double-time."""
+    return (
+        f'    n("{bars_str}").scale("{_SCALE}").{_PIANO}.detune(0.06).fast({fast})'
+        f"{extra}.room({verb}).roomsize(7).gain({gain})"
     )
-    mvoice = (
-        f'    n("{bars_m}").scale("{key}3:minor").{_PIANO}'
-        f'.detune(0.07).room({verb}).roomsize(4).gain(0.4)'
-    )
-    tvoice = (
-        f'    n("{bars_t}").scale("{key}3:minor").{_PIANO}'
-        f'.detune(0.07).room({verb}).roomsize(4).gain(0.28)'
-    )
-    drone = f'    note("<{lo}1 {fifth}1>").s("sine").lpf(400).gain(0.28)'
-    air = (
-        f'    n("{bars_m}").scale("{key}3:minor").s("white").hpf(1500)'
-        f'.attack(0.004).decay(0.28).sustain(0.03).release(0.35).room(0.3).roomsize(2).gain(0.2)'
-    )
-    lead = (
-        f'    n("{_lead(signal, intensity, salt)}").scale("{key}4:minor").s("sawtooth").detune(0.1)'
-        f'.lpf({lead_lpf}).lpenv(2).lpa(0.01).lpd(0.4).lps(0.2).lpr(0.5).room(0.6).roomsize(4).gain(0.16)'
-    )
-    layers = [pad, arp, mvoice, tvoice, drone, air, lead]
-    # Consonant by default; a gentle Satie-style add9 (root + 9th) accent enters
-    # with a burst of news events.
-    if tension > 0.05:
-        stab_gain = round(0.04 + tension * 0.2, 2)
+
+
+def _stack(layers: list[str]) -> str:
+    return "stack(\n" + ",\n".join(layers) + "\n  )"
+
+
+def _split(span: int, chunk: int = 14) -> list[int]:
+    """Break a span into pieces of at most ``chunk`` bars, so no single phrase
+    (ostinato) persists for more than 16 bars (rule 9)."""
+    sizes: list[int] = []
+    while span > 0:
+        sizes.append(min(chunk, span))
+        span -= sizes[-1]
+    return sizes
+
+
+def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension: float, salt: int) -> str:
+    """Canon + call-and-response (rules 6-8): a leader with at most two branches —
+    a canon follower a bar later, and a response answering in the leader's gaps."""
+    fast = _fast(intensity)
+    line = _m_voice(signal, 32, salt)
+    lead = _bars(line, _CALL, sparse=False)
+    resp = _bars(line, _RESP, sparse=False)
+    layers = _bed(verb)
+    layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
+    layers.append(_voice(lead, fast, verb, 0.2, extra=".late(1)"))  # branch 1: canon
+    layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
+    if tension > 0.05:  # rule 13
+        g = round(0.05 + tension * 0.15, 2)
         layers.append(
-            f'    note("<[{lo}3,{ninth}4] ~ ~ ~>").s("sawtooth").lpf(1400)'
-            f".room(0.7).roomsize(4).gain({stab_gain})"
+            f'    n("<[0,2,4] ~ ~ ~>").scale("{_SCALE}").s("sawtooth")'
+            f".lpf(400).attack(0.05).release(1.2).room(0.8).roomsize(8).gain({g})"
         )
-    body = ",\n".join(layers)
-    return f"stack(\n{body}\n  )"
+    return _stack(layers)
 
 
-# The quartal arpeggio cell used to spell out each chord across a transition.
-_TRANSITION_ARP = "0 3 4 7 4 3 4 0"
+def _canon_body(signal: ActivitySignal, intensity: float, verb: float, tension: float, span: int, base: int) -> str:
+    """A canon/call-response movement body of ``span`` bars, its material varying
+    every <=14 bars so no ostinato outstays 16 bars (rule 9)."""
+    parts = [
+        f"[{sz}, {_canon_chunk(signal, intensity, verb, tension, base + 1 + k * 13)}]"
+        for k, sz in enumerate(_split(span))
+    ]
+    return "arrange(" + ", ".join(parts) + ")"
 
 
-def _transition(k0: str, k1: str, verb: float) -> str:
-    """A 4-bar bridge from ``k0`` to ``k1``: three arpeggios — the current chord,
-    a quartal *pivot* chord on the common tone (shared with both keys, all 4ths
-    and 5ths), then the new chord — voiced as a scale journey
-    ``<k0 pivot pivot k1>`` so one bar each opens and closes and the pivot spans
-    the middle. Thinner than a section, so the modulation reads as a breath."""
-    pivot = common_tone(k0, k1)
-    j3 = f'"<{k0}3:minor {pivot}3:minor {pivot}3:minor {k1}3:minor>"'
-    j2 = f'"<{k0}2:minor {pivot}2:minor {pivot}2:minor {k1}2:minor>"'
-    arp = (
-        f'    n("{_TRANSITION_ARP}").scale({j3}).s("sawtooth").detune(0.12)'
-        f'.lpf(sine.range(700,1300).slow(4)).room(0.6).roomsize(4).gain(0.24)'
+def _turnaround(intensity: float, verb: float) -> str:
+    """A descending quartal turnaround resolving to the tonic (rule 10)."""
+    return _stack([*_bed(verb), _voice("<[7 4 3 0] [4 2 0 ~]>", _fast(intensity), verb, 0.3)])
+
+
+def _pause(verb: float) -> str:
+    """A breath — the bed thins to a lingering root (rule 10)."""
+    return _stack(
+        [f'    n("0").scale("{_SCALE}").s("sine").attack(0.6).release(2.6).lpf(120).gain(0.2)']
     )
-    # A soft quartal pad (root/4th/5th as scale degrees 0/3/4) drifting the keys.
-    pad = (
-        f'    n("<[0,3,4] [0,4,7]>").scale({j2}).s("sawtooth").detune(0.1)'
-        f'.lpf(sine.range(500,1100).slow(4)).room({verb}).roomsize(6).gain(0.18)'
+
+
+def _drop(signal: ActivitySignal, intensity: float, verb: float) -> str:
+    """The drop — a deep sub-root and the canon crashing back in (rule 10)."""
+    fast = _fast(intensity)
+    lead = _bars(_m_voice(signal, 16, salt=3), (True, True, True, True), sparse=False)
+    return _stack(
+        [
+            *_bed(verb),
+            f'    n("<0 ~ ~ ~>").scale("{_SCALE}").s("sine").lpf(110).attack(0.002).decay(0.6).sustain(0).gain(0.34)',
+            _voice(lead, fast, verb, 0.32),
+            _voice(lead, fast, verb, 0.2, extra=".late(0.5)"),
+        ]
     )
-    return f"stack(\n{arp},\n{pad}\n  )"
+
+
+def _tint_passage(signal: ActivitySignal, intensity: float, verb: float) -> str:
+    """The rare tintinnabuli passage — M-voice + T-voice shadow (rule 11)."""
+    fast = _fast(intensity)
+    m = _m_voice(signal, 16, salt=7)
+    t = _t_voice(m)
+    full = (True, True, True, True)
+    return _stack(
+        [
+            *_bed(verb),
+            _voice(_bars(m, full, sparse=False), fast, verb, 0.32),
+            _voice(_bars(t, full, sparse=False), fast, verb, 0.26),
+        ]
+    )
 
 
 def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2000) -> str:
     intensity = clamp01(intensity)
-    verb = round(0.55 + (1.0 - intensity) * 0.3, 2)  # lusher reverb when calm
-    tension = clamp01((signal.volume - 4) / 24.0)  # a burst of news events → dissonance
+    verb = round(0.6 + (1.0 - intensity) * 0.25, 2)  # lusher reverb when calm
+    tension = clamp01((signal.volume - 4) / 24.0)  # a burst of news events → swell (rule 13)
 
-    plan = build_plan(_seed(signal))
+    turn, pause, drop = _turnaround(intensity, verb), _pause(verb), _drop(signal, intensity, verb)
+    # Three ~64-bar movements — canon/call-response body, then a turnaround, a
+    # pause and a drop (rule 10) — and then a brief tintinnabuli passage, so
+    # tintinnabuli recurs ~every 180 bars (rule 11).
     blocks: list[str] = []
-    for unit in plan:
-        section = _section(signal, unit["key"], unit["salt"], intensity, tension, verb)
-        transition = _transition(unit["key"], unit["next"], verb)
-        blocks.append(f"  [{SECTION_BARS}, {section}]")
-        blocks.append(f"  [{TRANSITION_BARS}, {transition}]")
+    for span, base in ((56, 0), (56, 100), (44, 200)):
+        blocks.append(f"  [{span}, {_canon_body(signal, intensity, verb, tension, span, base)}]")
+        blocks.append(f"  [4, {turn}]")
+        blocks.append(f"  [1, {pause}]")
+        blocks.append(f"  [3, {drop}]")
+    blocks.append(f"  [6, {_tint_passage(signal, intensity, verb)}]")
 
-    keys = " ".join(u["key"] for u in plan)
     header = (
-        f"// maelcom tintinnabuli (largo, 4/4) · band={band} · "
-        f"{len(plan)} sections [{keys}] · "
-        f"{signal.volume} change{'s' if signal.volume != 1 else ''}, "
-        f"{signal.participant_count} voice{'s' if signal.participant_count != 1 else ''}"
+        f"// maelcom · dark {_KEY} {_MODE} · canon & call-response, tintinnabuli ~every 180 bars · "
+        f"band={band} · {signal.volume} change{'s' if signal.volume != 1 else ''}"
     )
-    body = ",\n".join(blocks)
-    return f"{header}\narrange(\n{body}\n).slow(2)"  # largo
+    return f"{header}\narrange(\n" + ",\n".join(blocks) + "\n).slow(2)"  # largo (rule 5)

@@ -14,10 +14,10 @@ whole arrangement renders byte-identical.
 
 from __future__ import annotations
 
-# A gentle window on the circle of fifths, centred on A minor. Adjacent entries
-# are a perfect fifth apart, so stepping +/-1 modulates by exactly one fifth and
-# never drifts into remote, accidental-heavy keys.
-_FIFTHS = ("G", "D", "A", "E", "B")
+# A wide window on the circle of fifths, centred on A minor. Adjacent entries are
+# a perfect fifth apart; the walk may step one OR two fifths at a time, so it
+# roams to fairly remote keys (C .. F#) for more adventurous modulations.
+_FIFTHS = ("C", "G", "D", "A", "E", "B", "F#")
 _HOME = _FIFTHS.index("A")
 
 SECTION_BARS = 16
@@ -30,25 +30,29 @@ REPEAT_SECTIONS = 3
 
 
 def circle_walk(seed: int, n: int) -> list[str]:
-    """A gentle walk on the circle of fifths from A minor: one fifth up or down
-    per section (seeded), clamped to the comfortable window."""
+    """An adventurous walk on the circle of fifths from A minor: one OR two
+    fifths up or down per section (seeded), clamped to the window."""
     idx = _HOME
     out: list[str] = []
     for i in range(n):
         out.append(_FIFTHS[idx])
-        step = 1 if (seed >> i) & 1 else -1
+        mag = 2 if (seed >> (i + 8)) & 1 else 1  # sometimes leap two fifths
+        step = mag if (seed >> i) & 1 else -mag
         idx = min(len(_FIFTHS) - 1, max(0, idx + step))
     return out
 
 
-def common_tone(k0: str, k1: str) -> str:
-    """The pitch bridging two adjacent circle-of-fifths keys — the root of the
-    quartal pivot chord. For an upward fifth (A->E) it is the new tonic; for a
-    downward fifth (A->D) the old tonic; either way a tone shared by both minor
-    triads. When the keys are equal (a clamped, non-moving step), it is that key.
-    """
+def pivot_key(k0: str, k1: str) -> str:
+    """The bridging key for a transition — the root of the quartal pivot chord,
+    whose 4th/5th voicing shares tones with both keys. It is the circle-of-fifths
+    entry midway between the two (biased toward the destination), so for a single
+    fifth it is a neighbour and for a two-fifth leap it is the key in between.
+    When the keys are equal (a clamped, non-moving step), it is that key."""
     i0, i1 = _FIFTHS.index(k0), _FIFTHS.index(k1)
-    return k1 if i1 > i0 else k0
+    if i1 == i0:
+        return k0
+    mid = (i0 + i1 + 1) // 2 if i1 > i0 else (i0 + i1) // 2
+    return _FIFTHS[mid]
 
 
 def build_plan(
