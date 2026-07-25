@@ -123,13 +123,14 @@ RULES: tuple[str, ...] = (
     "9. No ostinato longer than 16 bars; material re-varies every <=14 bars.",
     "10. Every ~2 minutes (a ~30-bar movement) evolve BOTH rhythmically (turnaround/pause/drop) AND tonally (a new key).",
     "11. Tintinnabuli (M/T voices) only briefly, ~every 180 bars.",
-    "12. No drums / percussion.",
+    "12. No drum kit / snare / noise percussion (a pitched sub-bass pedal pulse is fine — rule 19).",
     "13. A burst of news swells the tonic triad — a consonant emphasis.",
     "14. Deterministic: the same signal always renders the same music.",
     "15. Glints from the parallel major (B, F#), bright & high (G4:major, up to ~880 Hz, filter 1400): rare — one bar every 32, rotating cells.",
     "16. Canon voices fade in and out over ~1-2 minutes (slow, staggered gain LFOs).",
     "17. A delayed chime rings out one beat every 64 bars — many repeats over ~2 bars, a theta-rate LFO on the delay.",
     "18. Sometimes, after ~3 minutes, a 16-bar full silence.",
+    "19. A deep sub-bass G pedal pulse (~5 BPM, long release) underpins everything.",
 )
 
 _CALL = (True, True, False, False, True, True, False, False)  # leader sings…
@@ -203,9 +204,9 @@ def _canon_chunk(signal: ActivitySignal, key: str, verb: float, tension: float, 
     lead = _bars(line, _CALL, sparse=False)
     resp = _bars(line, _RESP, sparse=False)
     layers = _bed(key, verb)
-    layers.append(_voice(key, lead, verb, _fade(0.32, 18)))  # leader (call), fades ~72 s
-    layers.append(_voice(key, lead, verb, _fade(0.2, 26), extra=f".late({_CANON_LATE})"))  # canon, ~104 s
-    layers.append(_voice(key, resp, verb, _fade(0.26, 22)))  # response, ~88 s
+    layers.append(_voice(key, lead, verb, _fade(0.32, 48)))  # leader (call) — slow fade
+    layers.append(_voice(key, lead, verb, _fade(0.2, 64), extra=f".late({_CANON_LATE})"))  # canon — slower
+    layers.append(_voice(key, resp, verb, _fade(0.26, 56)))  # response — slow, offset phase
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)
         layers.append(
@@ -317,6 +318,15 @@ def _chime_delay_overlay(signal: ActivitySignal) -> str:
     return f"arrange([1, {chime}], [63, silence])"
 
 
+def _sub_bass() -> str:
+    """A deep sub-bass pedal on G (a tone shared by every key in the window, so it
+    stays consonant through modulation) — a slow quarter-note pulse at ~5 BPM (one
+    hit every 3 bars) with a long release, so the sub throbs and rings (rule 19)."""
+    return (
+        '  note("<g1 ~ ~>").s("sine").attack(0.2).release(8).lpf(100).gain(0.3)'
+    )
+
+
 def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2000) -> str:
     intensity = clamp01(intensity)
     verb = round(0.6 + (1.0 - intensity) * 0.25, 2)  # lusher reverb when calm
@@ -341,8 +351,9 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
         f"modulating ~every 2 min, tintinnabuli ~every 180 bars · band={band} · "
         f"{signal.volume} change{'s' if signal.volume != 1 else ''}"
     )
-    # The main arrangement plus two independent long-form overlays: rare glints
-    # and the delayed chime.
+    # The main arrangement plus independent long-form overlays: a sub-bass pedal
+    # pulse, the rare glints, and the delayed chime.
     return (
-        f"{header}\nstack(\n{main},\n{_glint_overlay(signal)},\n  {_chime_delay_overlay(signal)}\n).slow(2)"
+        f"{header}\nstack(\n{main},\n{_sub_bass()},\n{_glint_overlay(signal)},\n"
+        f"  {_chime_delay_overlay(signal)}\n).slow(2)"
     )

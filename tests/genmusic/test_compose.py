@@ -107,8 +107,15 @@ def test_tintinnabuli_base_canons_are_theta_slow():
 
 def test_tintinnabuli_canon_voices_fade_in_and_out():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # canon voices' gain is a slow sine LFO (fade in/out over ~1-2 minutes)
-    assert re.search(r"\.gain\(sine\.range\([0-9.]+,0\.32\)\.slow\(\d+\)\)", text)
+    # canon voices' gain is a slow sine LFO (long fade in/out)
+    m = re.search(r"\.gain\(sine\.range\([0-9.]+,0\.32\)\.slow\((\d+)\)\)", text)
+    assert m and int(m.group(1)) >= 40  # slow fades
+
+
+def test_tintinnabuli_has_sub_bass_pedal_pulse():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    # a deep, long-release sub-bass G pedal pulse underpins everything (rule 19)
+    assert re.search(r'note\("<g1 ~ ~>"\)\.s\("sine"\)\.attack\([0-9.]+\)\.release\(8\)\.lpf\(100\)', text)
 
 
 def test_tintinnabuli_evolves_tonally_across_movements():
