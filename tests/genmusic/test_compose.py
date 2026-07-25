@@ -23,7 +23,7 @@ def _signal(volume: int, participants: int, volatility: float = 0.2) -> Activity
 def test_compose_returns_program_with_matching_band():
     program = compose(_signal(3, 2))
     assert isinstance(program, StrudelProgram)
-    assert program.style == "lofi"
+    assert program.style == "tintinnabuli"  # the default style
     assert 0.0 <= program.intensity <= 1.0
     # The band is exactly the one the intensity falls in.
     from maelcom.genmusic.brainwave import band_for_intensity
@@ -51,7 +51,7 @@ def test_quiet_repo_idles_low_busy_repo_energizes():
 
 
 def test_program_text_is_valid_looking_strudel():
-    text = compose(_signal(20, 5, volatility=0.5)).text
+    text = compose(_signal(20, 5, volatility=0.5), style="lofi").text
     assert "stack(" in text and ").fast(" in text
     # @strudel/web has neither, and using them makes the whole program fail.
     assert "setcps" not in text and "fadeIn" not in text
@@ -63,6 +63,22 @@ def test_program_text_is_valid_looking_strudel():
         assert "//" not in line
 
 
+def test_no_style_uses_unsupported_strudel_functions():
+    # Guard every style against the setcps/fadeIn trap that silently kills audio.
+    for style in ("tintinnabuli", "lofi"):
+        text = compose(_signal(8, 3, volatility=0.4), style=style).text
+        assert "setcps" not in text and "fadeIn" not in text, style
+
+
+def test_tintinnabuli_has_m_and_t_voices_largo_piano():
+    text = compose(_signal(8, 3, volatility=0.4), style="tintinnabuli").text
+    assert "tintinnabuli" in text and text.rstrip().endswith(".slow(2)")  # largo
+    # Two piano voices (modified-piano synth) + a harmonically rich sawtooth lead.
+    assert text.count('s("triangle").attack') == 2  # M-voice and T-voice
+    assert 's("sawtooth")' in text  # synth lead, high harmonic content
+    assert 'scale("A3:minor")' in text
+
+
 def test_compose_is_deterministic():
     a = compose(_signal(12, 3, volatility=0.4)).text
     b = compose(_signal(12, 3, volatility=0.4)).text
@@ -70,9 +86,9 @@ def test_compose_is_deterministic():
 
 
 def test_synth_beat_is_always_present():
-    # The whole beat is synthesized (sine kick, noise snare + hats, plucky
+    # The lofi beat is synthesized (sine kick, noise snare + hats, plucky
     # melody), so it sounds without samples even for a quiet, solo repo.
-    solo = compose(_signal(1, 1, volatility=0.0)).text
+    solo = compose(_signal(1, 1, volatility=0.0), style="lofi").text
     assert "scale(" in solo  # melody
     assert '.s("sine")' in solo  # kick
     assert 's("white").struct' in solo  # snare on the backbeat
@@ -81,7 +97,7 @@ def test_synth_beat_is_always_present():
 
 
 def test_hats_get_denser_with_intensity():
-    calm = compose(_signal(2, 1), intensity=0.2).text
-    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.9).text
+    calm = compose(_signal(2, 1), intensity=0.2, style="lofi").text
+    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.9, style="lofi").text
     assert "white*4" in calm
     assert "white*8" in busy

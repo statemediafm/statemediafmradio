@@ -41,7 +41,7 @@ def test_genmusic_empty_then_published():
     )
     state.set_program(program)
     body = client.get("/genmusic").json()
-    assert body["style"] == "lofi"
+    assert body["style"] == "tintinnabuli"
     assert body["brainwave_band"] == program.brainwave_band
     assert "stack(" in body["text"]
     assert body["fade_ms"] == 2000
@@ -64,6 +64,6 @@ def test_serve_refresh_makes_genmusic_and_plan_live():
 
     refresh_once(state, [("HN", _FakeSource(), Cadence(900, 0), 5)], ToneWavTTS(), cache={})
     music = client.get("/genmusic").json()
-    assert music["style"] == "lofi" and "stack(" in music["text"]
+    assert music["style"] == "tintinnabuli" and "stack(" in music["text"]
     plan = client.get("/plan").json()
     assert plan["segments"] and plan["segments"][0]["title"] == "HN"

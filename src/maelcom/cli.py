@@ -369,7 +369,9 @@ def main(argv: list[str] | None = None) -> int:
 
     gm = sub.add_parser("genmusic", help="Turn a source's activity into a generative Strudel program.")
     _add_source_args(gm)
-    gm.add_argument("--style", default="lofi", help="Generative style (M2: lofi).")
+    gm.add_argument(
+        "--style", default="tintinnabuli", help="Generative style: tintinnabuli (default) or lofi."
+    )
     gm.add_argument(
         "--base-intensity",
         type=float,

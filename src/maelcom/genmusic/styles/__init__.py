@@ -1,14 +1,15 @@
 """Generative-music styles: each renders an ``ActivitySignal`` to Strudel text.
 
-M2 ships one style (``lofi``). Space-dub, modular-bleep, tintinnabuli, and
-aphex-fugue land in M4 behind the same ``render`` signature.
+``tintinnabuli`` (the default) is a largo, Pärt-style M/T-voice piece on modified
+piano; ``lofi`` is the chilled beat. Space-dub, modular-bleep and aphex-fugue
+land later behind the same ``render`` signature.
 """
 
 from __future__ import annotations
 
-from . import lofi
+from . import lofi, tintinnabuli
 
 # Style name → render(signal, intensity, band, fade_ms) -> str
-STYLES = {"lofi": lofi.render}
+STYLES = {"tintinnabuli": tintinnabuli.render, "lofi": lofi.render}
 
-__all__ = ["STYLES", "lofi"]
+__all__ = ["STYLES", "lofi", "tintinnabuli"]
