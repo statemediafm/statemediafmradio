@@ -25,9 +25,14 @@ from ..brainwave import clamp01
 _KEY = "A"  # A minor tonic — a classic Pärt key
 _TRIAD = (0, 2, 4)  # scale degrees of the tonic triad (root, third, fifth)
 
-# Modified-piano synth: a filtered sawtooth with a piano-like ADSR (no samples,
-# and no triangle/square in this mid register per the timbre rules).
-_PIANO = 's("sawtooth").lpf(1300).attack(0.004).decay(0.4).sustain(0.08).release(0.6)'
+# Modified-piano synth: a sawtooth with a piano-like amplitude ADSR *and* a
+# filter envelope (bright attack decaying to a mellow body), which shapes the
+# tone of these >C3 notes so they don't sit static/harsh. No samples; no
+# triangle/square in this register per the timbre rules.
+_PIANO = (
+    's("sawtooth").lpf(900).lpenv(2.5).lpa(0.005).lpd(0.4).lps(0.15).lpr(0.4)'
+    ".attack(0.004).decay(0.4).sustain(0.08).release(0.6)"
+)
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -102,14 +107,14 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
 
     lead_layer = (
         f'  n("{_lead(signal, intensity)}").scale("{_KEY}4:minor").s("sawtooth").lpf({lead_lpf})'
-        ".room(0.6).roomsize(3).gain(0.2)"
+        ".lpenv(2).lpa(0.005).lpd(0.35).lps(0.2).lpr(0.4).room(0.6).roomsize(3).gain(0.2)"
     )
-    # Above-C3 softening: a breathy white-noise "air" on the melody's rhythm,
-    # high-passed and heavily reverbed (~60% level), so the high notes read as
-    # less jarring/tense to the ear.
+    # Above-C3 softening: white noise as *part of each high note* — a breathy
+    # transient on the melody's attack, following the note's own ADSR (short,
+    # lightly reverbed), not a constant background drone.
     air = (
-        f'  n("{_bars(m)}").scale("{scale}").s("white").hpf(2000)'
-        ".room(0.85).roomsize(6).gain(0.3)"
+        f'  n("{_bars(m)}").scale("{scale}").s("white").hpf(1500)'
+        ".attack(0.004).decay(0.28).sustain(0.03).release(0.35).room(0.3).roomsize(2).gain(0.22)"
     )
     layers = [
         # M-voice — the developing stepwise piano melody (quarter notes).

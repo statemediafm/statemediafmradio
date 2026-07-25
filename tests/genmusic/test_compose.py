@@ -73,8 +73,8 @@ def test_no_style_uses_unsupported_strudel_functions():
 def test_tintinnabuli_has_m_and_t_voices_largo_piano():
     text = compose(_signal(8, 3, volatility=0.4), style="tintinnabuli").text
     assert "tintinnabuli" in text and text.rstrip().endswith(".slow(2)")  # largo
-    # Two modified-piano voices (filtered sawtooth + piano ADSR) + sawtooth lead.
-    assert text.count(".attack(0.004)") == 2  # M-voice and T-voice
+    # Two modified-piano voices (sawtooth + piano amplitude ADSR) + sawtooth lead.
+    assert text.count(".sustain(0.08)") == 2  # M-voice and T-voice
     assert 's("sawtooth")' in text  # piano voices and the lead
     assert 'scale("A3:minor")' in text
 
@@ -86,11 +86,15 @@ def test_tintinnabuli_dissonance_scales_with_news_volume():
     assert "d#5" in burst  # dissonance accent enters with a burst of news
 
 
-def test_tintinnabuli_softens_high_notes_with_air():
+def test_tintinnabuli_softens_high_notes_via_note_shaping():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # A high-passed, reverberant white-noise "air" softens the high (>C3) notes.
-    assert 's("white").hpf(2000)' in text
-    assert "roomsize(6)" in text
+    # White noise is part of the high notes: a transient following the note's
+    # ADSR (short attack/decay/sustain), not a reverb drone.
+    assert 's("white").hpf(1500)' in text
+    assert ".attack(0.004).decay(0.28)" in text  # note-shaped noise transient
+    assert "roomsize(6)" not in text  # no big reverb wash
+    # A filter envelope shapes the ADSR filter of the >C3 voices.
+    assert ".lpenv(" in text
 
 
 def test_no_triangle_or_square_above_c2():
