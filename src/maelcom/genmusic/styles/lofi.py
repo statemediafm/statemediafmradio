@@ -67,7 +67,7 @@ def render(
     # ~0.6x (theta, laid-back) to ~1.5x (gamma, driving).
     fast = round(0.6 + intensity * 0.9, 2)
     lpf = round(400 + intensity * 1600)  # darker when calm, brighter when busy
-    room = round(max(0.2, 0.6 - intensity * 0.3), 2)  # spacious when calm
+    verb = round(0.5 + (1.0 - intensity) * 0.4, 2)  # reverb wash: lusher when calm
 
     variant = _seed(signal) % len(_PROGRESSIONS)
     prog = _PROGRESSIONS[variant]
@@ -83,17 +83,27 @@ def render(
     lead_lpf = min(3000, lpf + 600)
     hats = 8 if intensity >= 0.5 else 4
 
+    # Melody carries lush reverb tails — the incidental mid/high harmonics.
     melody = (
         f'  n("{steps}").scale("C:minor:pentatonic").s("triangle")'
-        f".decay(0.15).sustain(0).lpf({lead_lpf}).gain(0.4)"
+        f".decay(0.2).sustain(0).lpf({lead_lpf}).room({round(verb - 0.1, 2)})"
+        ".roomsize(4).gain(0.28)"
+    )
+    # Ambient pad — a big reverb wash sets the "room".
+    pad = (
+        f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({verb})'
+        ".roomsize(5).gain(0.32).slow(2)"
     )
     layers = [
-        f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({room}).gain(0.4).slow(2)',
-        f'  note("{bass}").s("sawtooth").lpf(300).gain(0.5).slow(2)',
+        pad,
+        # Bass stays dry and low so the low end doesn't turn to mud.
+        f'  note("{bass}").s("sawtooth").lpf(260).gain(0.38).slow(2)',
         melody,
-        f'  note("{kick}").s("sine").decay(0.16).sustain(0).gain(1.1)',
-        '  s("white").struct("~ x ~ x").decay(0.09).sustain(0).gain(0.45)',
-        f'  s("white*{hats}").decay(0.014).sustain(0).hpf(9000).gain(0.3)',
+        # The beat sits softly under the wash — present, not driving.
+        f'  note("{kick}").s("sine").decay(0.16).sustain(0).gain(0.6)',
+        '  s("white").struct("~ x ~ x").decay(0.07).sustain(0).room(0.3).gain(0.18)',
+        # Airy hats with their own reverb shimmer (high frequencies).
+        f'  s("white*{hats}").decay(0.02).sustain(0).hpf(9000).room(0.45).roomsize(3).gain(0.16)',
     ]
 
     # Metadata lives only in the header comment — never inline, so it can't eat
