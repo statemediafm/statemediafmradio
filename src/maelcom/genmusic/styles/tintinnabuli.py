@@ -124,6 +124,7 @@ RULES: tuple[str, ...] = (
     "12. No drums / percussion for now.",
     "13. A burst of news swells the tonic triad — a consonant emphasis.",
     "14. Deterministic: the same signal always renders the same music.",
+    "15. Occasional incidental notes from the parallel major (B natural, F#) glint bright over the bed.",
 )
 
 _SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
@@ -156,6 +157,20 @@ def _voice(bars_str: str, fast: int, verb: float, gain: float, extra: str = "") 
     )
 
 
+def _incidental(signal: ActivitySignal, salt: int) -> str:
+    """A sparse, mostly-rests phrase favouring the tones the parallel MAJOR adds
+    over Dorian — B natural (deg 2) and F# (deg 6) — for occasional bright color
+    (rule 15). Two bars of eighth-note slots, nearly all rests, varied by salt."""
+    cells = (
+        "~ ~ 2 ~ ~ ~ ~ ~",
+        "~ ~ ~ ~ ~ 6 ~ ~",
+        "~ 6 ~ ~ ~ ~ 2 ~",
+        "~ ~ ~ ~ 2 ~ ~ 6",
+    )
+    s = _seed(signal) + salt
+    return f"<[{cells[s % len(cells)]}] [{cells[(s + 2) % len(cells)]}]>"
+
+
 def _stack(layers: list[str]) -> str:
     return "stack(\n" + ",\n".join(layers) + "\n  )"
 
@@ -181,6 +196,12 @@ def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension:
     layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
     layers.append(_voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE})"))  # branch 1: canon
     layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
+    # Occasional bright glints from the parallel major (rule 15) — low, low-passed,
+    # long tails, so they colour the Dorian bed rather than sit on top of it.
+    layers.append(
+        f'    n("{_incidental(signal, salt)}").scale("{_KEY}1:major").s("sine")'
+        f".attack(0.02).release(2.2).lpf(500).room(0.9).roomsize(8).gain(0.12)"
+    )
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)
         layers.append(

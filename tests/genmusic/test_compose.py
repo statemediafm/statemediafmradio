@@ -114,6 +114,13 @@ def test_tintinnabuli_rhythm_evolves_with_turnaround_pause_drop():
     assert "[4, stack(" in text and "[1, stack(" in text and "[3, stack(" in text
 
 
+def test_tintinnabuli_has_parallel_major_incidental_glints():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    # Bright incidental color borrowed from the parallel major, low and low-passed.
+    assert 'scale("G1:major")' in text
+    assert re.search(r'scale\("G1:major"\)\.s\("sine"\)\.attack\(0\.02\)\.release\(2\.2\)\.lpf\(500\)', text)
+
+
 def test_tintinnabuli_news_burst_adds_consonant_swell():
     calm = compose(_signal(2, 2), style="tintinnabuli").text  # few news items
     burst = compose(_signal(30, 5), style="tintinnabuli").text  # a burst of news
