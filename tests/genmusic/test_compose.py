@@ -191,15 +191,29 @@ def test_ambient_models_are_registered():
         assert model in STYLES  # each selectable model has a renderer
 
 
-def test_entrainment_renders_minimal_valid_program():
+def test_entrainment_renders_binaural_isochronic_program():
     prog = compose(_signal(8, 3, volatility=0.4), style="Entrainment 0.1")
     assert prog.style == "Entrainment 0.1"
     text = prog.text
     assert "Entrainment 0.1" in text
-    assert "stack(" in text and text.rstrip().endswith(".slow(2)")
+    assert "stack(" in text and text.rstrip().endswith(")")
     assert "setcps" not in text and "fadeIn" not in text  # the traps
-    # a bare canvas — starts as a low drone, deterministic
+    # a binaural pair panned hard L/R + an isochronic amplitude throb
+    assert ".pan(0)" in text and ".pan(1)" in text
+    assert re.search(r"gain\(sine\.range\([0-9.,]+\)\.fast\(\d+\)\)", text)  # isochronic pulse
+    assert "freq(110)" in text  # the carrier
+    # deterministic
     assert compose(_signal(8, 3, volatility=0.4), style="Entrainment 0.1").text == text
+
+
+def test_entrainment_beat_tracks_the_brainwave_band():
+    calm = compose(_signal(1, 1, volatility=0.0), intensity=0.05, style="Entrainment 0.1").text  # delta
+    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.95, style="Entrainment 0.1").text  # gamma
+
+    def iso(t: str) -> int:
+        return int(re.search(r"\.fast\((\d+)\)", t).group(1))
+
+    assert iso(busy) > iso(calm)  # higher band → faster entrainment pulse
 
 
 def test_synth_beat_is_always_present():
