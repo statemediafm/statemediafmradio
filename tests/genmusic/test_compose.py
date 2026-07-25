@@ -191,29 +191,39 @@ def test_ambient_models_are_registered():
         assert model in STYLES  # each selectable model has a renderer
 
 
-def test_entrainment_renders_binaural_isochronic_program():
+def test_entrainment_renders_a_journey_over_a_drifting_frame():
     prog = compose(_signal(8, 3, volatility=0.4), style="Entrainment 0.1")
     assert prog.style == "Entrainment 0.1"
     text = prog.text
-    assert "Entrainment 0.1" in text
-    assert "stack(" in text and text.rstrip().endswith(")")
+    assert "Entrainment 0.1" in text and "journey" in text
     assert "setcps" not in text and "fadeIn" not in text  # the traps
-    # a binaural pair panned hard L/R + an isochronic amplitude throb
-    assert ".pan(0)" in text and ".pan(1)" in text
-    assert re.search(r"gain\(sine\.range\([0-9.,]+\)\.fast\(\d+\)\)", text)  # isochronic pulse
-    assert "freq(110)" in text  # the carrier
+    # a multi-phase arrangement (10+ phases), each a stack, no abrupt top-level cut
+    assert "arrange(" in text and text.count(f"[{36}, stack(") >= 10
+    # a continuous low drone frame + a pulsing entrainment carrier
+    assert 'note("<[a1,e2]>")' in text
+    assert re.search(r"\.fast\(\d+\)", text)  # the entrainment pulse rate (amplitude/filter/pan)
     # deterministic
     assert compose(_signal(8, 3, volatility=0.4), style="Entrainment 0.1").text == text
 
 
-def test_entrainment_beat_tracks_the_brainwave_band():
-    calm = compose(_signal(1, 1, volatility=0.0), intensity=0.05, style="Entrainment 0.1").text  # delta
-    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.95, style="Entrainment 0.1").text  # gamma
+def test_entrainment_frame_drifts_down_toward_relaxation():
+    # the header records the frame's start→end; busy (gamma 40) descends a long way
+    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.95, style="Entrainment 0.1").text
+    m = re.search(r"frame (\d+(?:\.\d+)?)→(\d+(?:\.\d+)?) Hz", busy)
+    assert m and float(m.group(2)) <= float(m.group(1))  # never drifts up
 
-    def iso(t: str) -> int:
-        return int(re.search(r"\.fast\((\d+)\)", t).group(1))
 
-    assert iso(busy) > iso(calm)  # higher band → faster entrainment pulse
+def test_entrainment_grammar_stays_uncluttered_and_uses_effect_voices():
+    text = compose(_signal(20, 5, volatility=0.6), style="Entrainment 0.1").text
+    # ducking (anti-phase gain LFO), spatial auto-pan, colored-noise, delay echoes
+    assert re.search(r"\.pan\(sine\.range\(", text)  # slow spatial movement
+    assert re.search(r"gain\(sine\.range\([0-9.]+,[0-9.]+\)\.slow\(", text)  # slow gain waves / ducking
+    # occasional binaural sessions appear for at least one signal in a sweep
+    seen_binaural = any(
+        ".pan(0)" in compose(_signal(v, 4, volatility=0.5), style="Entrainment 0.1").text
+        for v in range(1, 14)
+    )
+    assert seen_binaural
 
 
 def test_synth_beat_is_always_present():

@@ -218,7 +218,44 @@ paced-breathing cue. Constrain to one mode/key; cap dynamic range.
 
 ---
 
-## 7. Open questions
+## 7. The associative grammar (built in `styles/entrainment.py`)
+
+Entrainment now generates deterministic **~13–17 min journeys** as an
+`arrange` of ~11–14 **phases** (~72 s each), built from a small motif grammar.
+
+**Frame (every phase, continuous):**
+- a low **drone** (root+fifth, slow filter breath, slow spatial pan);
+- a soft modal **pad** (A-minor-pentatonic; ducks anti-phase to the noise wave);
+- an **entrainment carrier** at the phase's band frequency, delivered per phase as
+  one of three modalities (seeded) — **amplitude** (isochronic tone), a **filter
+  pulse** (cutoff LFO at the band rate), or a **pan pulse** — so *an effect can
+  hold the entrainment tempo*, not only a tone/clock/drum.
+- The **frame frequency drifts slowly downward** toward relaxation across the
+  journey (small seeded steps, floored at ~2 Hz).
+
+**Occasional motifs** (scheduled): `binaural` (sessions of minutes), `sub_wave`
+(long slow sub swells), `noise_wave` (white/brown/airy colored-noise washes),
+`chime` (echoed bells), `water` (rising-pitch drops), `rainstick` (scattered
+noise grains), `arp` (plucked basso continuo), `drum` (rare soft heartbeat).
+
+**Grammar rules (the "associative" part):** each occasional motif has
+`(probability, min/max length, cooldown)`; rarer/longer things (binaural, sub,
+drum) have low probability, longer minimum length and longer cooldowns. An
+**affinity** map biases additions toward motifs that associate with what's already
+sounding (chime↔rainstick/water, drum↔arp, sub↔binaural, noise↔rainstick). A hard
+**cap of 3** simultaneous occasional motifs keeps the space uncluttered, and the
+active set changes by **~one element per phase**.
+
+**Smoothness (never interrupt attention):** the drone + pad are always present;
+every motif uses long attack/release and heavy reverb/delay whose tails bridge the
+`arrange` seams; the frame steps are small; density changes are gradual. Aesthetic:
+low frequencies, low-passed-saw harmonics, reverb + delay echoes, colored-noise
+waves, anti-phase **ducking** (pad vs noise) and slow **spatial** auto-pan — "a
+space that slowly reveals itself."
+
+---
+
+## 8. Open questions
 
 - **cps calibration.** The engine doesn't expose cps to read back, so isochronic
   _rate_ is calibrated via `_CYCLE_S` (binaural/monaural are exact). Confirm by ear
