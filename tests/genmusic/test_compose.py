@@ -79,6 +79,20 @@ def test_tintinnabuli_has_m_and_t_voices_largo_piano():
     assert 'scale("A3:minor")' in text
 
 
+def test_tintinnabuli_dissonance_scales_with_news_volume():
+    calm = compose(_signal(2, 2), style="tintinnabuli").text  # few news items
+    burst = compose(_signal(30, 5), style="tintinnabuli").text  # a burst of news
+    assert "d#5" not in calm  # consonant baseline — no dissonant stab
+    assert "d#5" in burst  # dissonance accent enters with a burst of news
+
+
+def test_tintinnabuli_softens_high_notes_with_air():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    # A high-passed, reverberant white-noise "air" softens the high (>C3) notes.
+    assert 's("white").hpf(2000)' in text
+    assert "roomsize(6)" in text
+
+
 def test_no_triangle_or_square_above_c2():
     # Timbre rule: triangle/square are reserved for low (<=C2), short sounds; the
     # styles here have no such notes, so they use none at all.

@@ -97,11 +97,19 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
     t = _t_voice(m)
     lead_lpf = round(2000 + intensity * 1800)  # brighter (more harmonics) when busy
     verb = round(0.5 + (1.0 - intensity) * 0.3, 2)  # lusher reverb when calm
+    tension = clamp01((signal.volume - 4) / 24.0)  # a burst of news events → dissonance
     scale = f"{_KEY}3:minor"
 
     lead_layer = (
         f'  n("{_lead(signal, intensity)}").scale("{_KEY}4:minor").s("sawtooth").lpf({lead_lpf})'
-        ".room(0.5).roomsize(3).gain(0.2)"
+        ".room(0.6).roomsize(3).gain(0.2)"
+    )
+    # Above-C3 softening: a breathy white-noise "air" on the melody's rhythm,
+    # high-passed and heavily reverbed (~60% level), so the high notes read as
+    # less jarring/tense to the ear.
+    air = (
+        f'  n("{_bars(m)}").scale("{scale}").s("white").hpf(2000)'
+        ".room(0.85).roomsize(6).gain(0.3)"
     )
     layers = [
         # M-voice — the developing stepwise piano melody (quarter notes).
@@ -112,7 +120,16 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
         f'  note("<{_KEY.lower()}1 e1>").s("sine").lpf(500).gain(0.32)',
         # Synth lead — high harmonic content (sawtooth), high register.
         lead_layer,
+        air,
     ]
+    # Consonant by default; dissonance enters as accents that grow with a burst
+    # of news events — a soft tritone stab (A + D#) on each phrase downbeat.
+    if tension > 0.05:
+        stab_gain = round(0.06 + tension * 0.3, 2)
+        layers.append(
+            f'  note("<[a4,d#5] ~ ~ ~>").s("sawtooth").lpf(2200)'
+            f".room(0.7).roomsize(4).gain({stab_gain})"
+        )
     header = (
         f"// maelcom tintinnabuli (largo) · band={band} · "
         f"{signal.volume} change{'s' if signal.volume != 1 else ''}, "
