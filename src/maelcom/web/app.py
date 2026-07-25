@@ -163,12 +163,12 @@ btn.addEventListener('click', async ()=>{
   statusEl.textContent='starting…';
   try{ initStrudel(); }
   catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
-  // Load drum samples (bonus rhythm layer). The synth pad/melody/hats already
-  // carry the beat, so if this fails the music still plays.
-  statusEl.textContent='loading drum samples…';
-  try{ await samples('github:tidalcycles/dirt-samples'); }
-  catch(e){ console.warn('samples failed (synths still play):', e); }
+  // Load drum samples in the BACKGROUND — never block playback on the download.
+  // The synth pad/melody/hats carry the beat immediately; the sample drums just
+  // join in once they finish loading (or never, if the fetch fails).
+  samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
   await pollMusic();
+  pollNews();   // read the latest news promptly, don't wait for the next poll tick
 });
 pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
