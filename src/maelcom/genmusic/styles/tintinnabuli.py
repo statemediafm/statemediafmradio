@@ -113,7 +113,7 @@ RULES: tuple[str, ...] = (
     "1. Confined to G Dorian — no minor keys; every voice shares the key (consonant).",
     "2. (Dormant) modulate only to adjacent / consonant circle-of-fifths keys.",
     "3. Everything low — octave 1 (~49-98 Hz); nothing high, except the glints (rule 15).",
-    "4. A low-pass on every voice (no cutoff above ~500 Hz) — nothing harsh.",
+    "4. A low-pass on the bed & voices (no cutoff above ~700 Hz) — nothing harsh; the glints (rule 15) are the exception.",
     "5. 4/4, largo (.slow(2)); it should float, not plod.",
     "6. Mainly canons and call-and-response; voices come and go and trade off.",
     "7. Melodies run double-time or faster; consonant with the other voices.",
@@ -124,7 +124,7 @@ RULES: tuple[str, ...] = (
     "12. No drums / percussion for now.",
     "13. A burst of news swells the tonic triad — a consonant emphasis.",
     "14. Deterministic: the same signal always renders the same music.",
-    "15. Incidental notes from the parallel major (B, F#) glint bright over the bed, rising up to ~440 Hz (A4).",
+    "15. Incidental notes from the parallel major (B, F#) glint bright & high over the bed (G4:major, up to ~880 Hz, filter open to 1400 Hz).",
 )
 
 _SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
@@ -197,12 +197,12 @@ def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension:
     layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
     layers.append(_voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE})"))  # branch 1: canon
     layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
-    # Bright glints from the parallel major (rule 15) — lifted into a high
-    # register (up to A4/440 Hz), a slightly buzzier sawtooth with a bit more
-    # filter open (still dog-safe), long tails, to sparkle over the low bed.
+    # Bright glints from the parallel major (rule 15) — lifted high (G4:major,
+    # up to A5/~880 Hz) with the filter well open (1400 Hz) for real sparkle; a
+    # detuned sawtooth with long tails, sitting above the dark low bed.
     layers.append(
-        f'    n("{_incidental(signal, salt)}").scale("{_KEY}3:major").s("sawtooth").detune(0.1)'
-        f".lpf(600).attack(0.01).release(2.0).room(0.9).roomsize(8).gain(0.11)"
+        f'    n("{_incidental(signal, salt)}").scale("{_KEY}4:major").s("sawtooth").detune(0.1)'
+        f".lpf(1400).attack(0.01).release(2.0).room(0.9).roomsize(8).gain(0.1)"
     )
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)

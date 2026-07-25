@@ -80,13 +80,16 @@ def test_tintinnabuli_is_dark_g_dorian_and_low():
     # Everything is low (octave 1) except the incidental major glints, which may
     # rise to ~440 Hz (A4) — the only octave-2+ voice allowed.
     highs = set(re.findall(r"[A-G]#?[2-9]:(?:dorian|major|minor)", text))
-    assert highs <= {"G3:major"}
+    assert highs <= {"G4:major"}
 
 
-def test_tintinnabuli_low_pass_everywhere_no_harsh_highs():
+def test_tintinnabuli_low_pass_bed_and_voices_stay_dark():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    cutoffs = [int(x) for x in re.findall(r"\.lpf\((\d+)\)", text)]  # numeric cutoffs
-    assert cutoffs and max(cutoffs) <= 700  # nothing bright/harsh (dog-safe)
+    for line in text.splitlines():
+        if ":major" in line:  # the bright glints are the deliberate exception (rule 15)
+            continue
+        for c in re.findall(r"\.lpf\((\d+)\)", line):
+            assert int(c) <= 700  # bed & voices stay dark (dog-safe)
     assert "sine.range(220,480)" in text  # the pad's slow, low filter LFO
 
 
@@ -118,10 +121,10 @@ def test_tintinnabuli_rhythm_evolves_with_turnaround_pause_drop():
 
 def test_tintinnabuli_has_parallel_major_incidental_glints():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # Bright incidental color from the parallel major, lifted up to A4 (~440 Hz),
-    # a buzzier sawtooth with the filter a bit more open (still <=700 Hz).
-    assert 'scale("G3:major")' in text
-    assert re.search(r'scale\("G3:major"\)\.s\("sawtooth"\)\.detune\(0\.1\)\.lpf\(600\)', text)
+    # Bright incidental color from the parallel major, lifted high (G4:major, up
+    # to ~880 Hz) with the filter well open (1400 Hz) for sparkle.
+    assert 'scale("G4:major")' in text
+    assert re.search(r'scale\("G4:major"\)\.s\("sawtooth"\)\.detune\(0\.1\)\.lpf\(1400\)', text)
 
 
 def test_tintinnabuli_news_burst_adds_consonant_swell():
