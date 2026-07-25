@@ -8,9 +8,9 @@ drone's filter pulse carries it). See ENTRAINMENT.md for the research.
 
 - **Bass (every phase):** a stable low‑A pedal — a1 sub + a2 as every chord's
   lowest voice — so the bottom never walks.
-- **Drone (every phase):** the upper voices evolve through consonant **A‑major
-  chords** (A / D / E / add9…), one per 16‑bar phase; rich low‑passed‑saw
-  harmonics, slow filter breath, spatial pan.
+- **Drone (every phase):** a true **A pedal** — the root never moves; only the
+  upper *color* evolves (A / add9 / maj7 / 6 / sus4 / 5), one per 16‑bar phase,
+  with long crossfades. Rich low‑passed‑saw harmonics, slow filter breath, pan.
 - **Entrainment (every phase):** a **binaural** beat from the harmony root A (two
   pure sines a `hz` beat apart, hard L/R, exact via ``freq()``) where viable
   (beat ≤ 30 Hz); for gamma the drone's **filter** pulses at the band rate.
@@ -35,16 +35,16 @@ _PHASE_BARS = 16  # a voice may hold at most one 16-bar phase, then it must evol
 _BINAURAL_CARRIER = 220.0  # A3 — the harmony's root, high enough for a viable low-Hz beat
 _BINAURAL_MAX_HZ = 30.0  # above this the two tones separate into distinct pitches — not viable
 
-# Per-phase material pools. Every A-major chord voices its LOWEST note on a2, so
-# the bass pedals (never walks); the upper voices carry the evolving major harmony.
+# Per-phase material pools. The harmony is a true A PEDAL: every chord is rooted
+# on A (a1 sub + a2 lowest voice + A the harmonic root) — only the upper *color*
+# evolves (major / add9 / maj7 / 6 / sus4 / 5). The bass and root never move.
 _CHORDS = (
-    "<[a2,c#3,e3]>",  # A
+    "<[a2,c#3,e3]>",  # A major
     "<[a2,c#3,e3,b3]>",  # A add9
-    "<[a2,d3,f#3]>",  # D / A
-    "<[a2,e3,g#3,b3]>",  # E / A (gentle sus over the pedal)
-    "<[a2,e3,a3]>",  # open fifth (a resting point)
-    "<[a2,c#3,e3] [a2,d3,f#3]>",  # A → D
-    "<[a2,d3,f#3] [a2,e3,g#3]>",  # D → E
+    "<[a2,c#3,e3,g#3]>",  # A major 7
+    "<[a2,c#3,e3,f#3]>",  # A 6
+    "<[a2,d3,e3]>",  # A sus4
+    "<[a2,e3,a3]>",  # A5 (open — a resting point)
 )
 _CHIME_CELLS = ("<~ ~ ~ {d} ~ ~ ~ ~>", "<~ {d} ~ ~ ~ ~ ~ ~>", "<~ ~ ~ ~ ~ ~ {d} ~>")
 
@@ -76,8 +76,8 @@ def _variant(pool: tuple[str, ...], seed: int, i: int, tag: str) -> str:
 
 
 def _sub_pedal() -> str:
-    """The stable low-A bass pedal — never walks."""
-    return '    note("a1").s("sine").lpf(120).attack(2).release(3).gain(0.18)'
+    """The stable low-A bass pedal — never walks; long fades so it stays seamless."""
+    return '    note("a1").s("sine").lpf(120).attack(6).release(10).gain(0.18)'
 
 
 def _chord_drone(i: int, seed: int, hz: float, viable: bool) -> str:
@@ -88,8 +88,8 @@ def _chord_drone(i: int, seed: int, hz: float, viable: bool) -> str:
         filt = "lpf(sine.range(220,560).slow(24))"
     else:
         filt = f"lpf(sine.range(160,600).fast({max(1, round(hz * _CYCLE_S))}))"
-    return (
-        f'    note("{chord}").s("sawtooth").attack(4).release(6).{filt}'
+    return (  # long attack/release: chords overlap and crossfade across phases
+        f'    note("{chord}").s("sawtooth").attack(8).release(12).{filt}'
         f".pan(sine.range(0.4,0.6).slow(46)).room(0.85).roomsize(9).gain(0.18)"
     )
 
@@ -100,8 +100,8 @@ def _binaural(hz: float) -> list[str]:
     if hz > _BINAURAL_MAX_HZ:
         return []
     return [
-        f'    freq({_BINAURAL_CARRIER:g}).s("sine").pan(0).attack(4).release(4).room(0.6).roomsize(7).gain(0.11)',
-        f'    freq({round(_BINAURAL_CARRIER + hz, 3):g}).s("sine").pan(1).attack(4).release(4).room(0.6).roomsize(7).gain(0.11)',
+        f'    freq({_BINAURAL_CARRIER:g}).s("sine").pan(0).attack(8).release(10).room(0.6).roomsize(7).gain(0.11)',
+        f'    freq({round(_BINAURAL_CARRIER + hz, 3):g}).s("sine").pan(1).attack(8).release(10).room(0.6).roomsize(7).gain(0.11)',
     ]
 
 
@@ -153,8 +153,8 @@ def _frame(seed: int, start_hz: float, n: int) -> list[float]:
 
 
 RULES: tuple[str, ...] = (
-    "1. Basic mode: an evolving multivoice MAJOR-chord drone + occasional chimes + colored-noise (tide/rain) waves. No melody voice.",
-    "2. Stable low-A bass pedal (a1 sub + a2 chord root) — the bass NEVER walks; only the upper chord voices evolve.",
+    "1. Basic mode: an evolving A-major-color drone + occasional chimes + colored-noise (tide/rain) waves. No melody voice.",
+    "2. A true A PEDAL — the root NEVER moves (a1 sub + a2 lowest voice + A the harmonic root); only the upper color evolves (A / add9 / maj7 / 6 / sus4 / 5), with long crossfades.",
     "3. Entrainment rides a BINAURAL beat off the harmony root A where viable (beat ≤ 30 Hz); for gamma the drone's filter pulses at the band rate. No pulsing tone/melody.",
     "4. The frame drifts slowly downward toward relaxation over ~13–15 min; 16-bar phases.",
     "5. No voice repeats past 16 bars: each phase re-derives its material by a small, consonant step (a new chord voicing, chime, noise).",
