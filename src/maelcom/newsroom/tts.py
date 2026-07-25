@@ -114,7 +114,8 @@ def render_reads(
     except a ``"headline"`` whose ``origin`` maps to another provider via
     ``voice_for(origin)`` — so headlines from different sources speak in
     different voices (all must share audio format to concatenate). A
-    ``headline_pause_ms`` silence separates consecutive ``"headline"`` reads.
+    ``headline_pause_ms`` silence brackets the headline block — before the first
+    headline, between headlines, and after the last (before the sign-off).
     Raises ``ValueError`` if nothing is voiceable.
     """
     clips: list[AudioRef] = []
@@ -129,7 +130,10 @@ def render_reads(
         provider = tts
         if role == "headline" and voice_for is not None and origin is not None:
             provider = voice_for(origin) or tts
-        gap = headline_pause_ms if (role == "headline" and prev_role == "headline") else 0
+        # Pause whenever we cross into, within, or out of the headline block: a
+        # beat before the first headline, between headlines, and after the last
+        # (before the "…more as it develops" sign-off).
+        gap = headline_pause_ms if "headline" in (role, prev_role) else 0
         clips.append(provider.render(Script(text=text, style=style), voice=voice))
         gaps.append(gap)
         prev_role = role

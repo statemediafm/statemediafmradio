@@ -70,14 +70,15 @@ def test_concat_wavs_rejects_empty_and_format_mismatch():
         concat_wavs([a, b])
 
 
-def test_render_reads_pauses_only_between_headlines():
+def test_render_reads_brackets_the_headline_block_with_pauses():
     tts = ToneWavTTS()
     reads = [("other", "Intro."), ("headline", "One."), ("headline", "Two."), ("other", "Bye.")]
     tight = render_reads(reads, tts, headline_pause_ms=0)
     spaced = render_reads(reads, tts, headline_pause_ms=1000)
     assert spaced.data[:4] == b"RIFF"
-    # Exactly one gap (between the two consecutive headlines) → ~1s longer.
-    assert spaced.duration_ms - tight.duration_ms >= 900
+    # Three ~1s gaps: before the first headline, between the two, and after the
+    # last (before the sign-off) → ~3s longer.
+    assert spaced.duration_ms - tight.duration_ms >= 2700
 
 
 def test_render_reads_requires_content():
