@@ -1,26 +1,28 @@
-"""The default generative style — dark, low, spacious canon & call-response.
+"""The default generative style — dark, low, slow-canon ambient with rare glints.
 
 This module is built to an explicit **composition rule base** — see the ``RULES``
-tuple below, which is the single source of truth we build up from. In short:
-confined to **G Dorian**, everything **low** (octave 1) and **low-passed**; the
-texture is mainly **canons and call-and-response** with double-time melodies that
-come and go; the rhythm evolves every 64 bars (turnaround / pause / drop); a brief
-**tintinnabuli** (Pärt M/T) passage recurs ~every 180 bars; no drums for now.
+tuple below, the single source of truth we build up from. In short: **Dorian**
+throughout (no minor keys), everything **low** and **low-passed**; the texture is
+slow, theta-paced **canons and call-and-response** whose voices fade in and out;
+the piece evolves both **rhythmically and tonally every ~2 minutes** (a new
+adjacent key + turnaround/pause/drop); bright **glints** from the parallel major
+appear rarely and high; a delayed **chime** rings out every 64 bars; a brief
+**tintinnabuli** (Pärt M/T) passage recurs ~every 180 bars; no drums.
 
 Voices use a dark **modified-piano synth** — a heavily filtered sawtooth with a
-soft envelope (no piano soundfont is loaded in @strudel/web). The circle-of-fifths
-modulation in :mod:`maelcom.genmusic.arrange` is dormant while we're in one key.
+soft envelope (no piano soundfont is loaded in @strudel/web).
 """
 
 from __future__ import annotations
 
 from ...core.models import ActivitySignal
+from ..arrange import pivot_key
 from ..brainwave import clamp01
 
-_KEY = "G"  # confined to G for now
-_MODE = "dorian"  # both voices in the Dorian mode (no minor keys) until further notice
+_KEY = "G"  # home key
+_MODE = "dorian"  # Dorian mode throughout (no minor keys)
 _TRIAD = (0, 2, 4)  # scale degrees of the tonic triad (root, third, fifth)
-_TOP = 7  # melodic ceiling in scale degrees (G1..G2) — keep everything low
+_TOP = 7  # melodic ceiling in scale degrees (octave 1) — keep everything low
 
 # Dark modified-piano synth: a low-passed sawtooth with a soft amplitude ADSR and
 # a gentle filter envelope. Cutoff stays low so nothing bites.
@@ -89,8 +91,8 @@ def _t_voice(m: list[int]) -> list[int]:
 
 def _bars(degrees: list[int], gate: tuple[bool, ...], sparse: bool = True) -> str:
     """Format degrees as gated bars of quarter notes: silent bars become a rest,
-    and (when ``sparse``) each sounding bar keeps only beats 1 and 3 — airy, so
-    the voice floats rather than plods. ``<[..] [..] ...>`` = one bar per cycle."""
+    and (when ``sparse``) each sounding bar keeps only beats 1 and 3. One bar per
+    cycle: ``<[..] [..] ...>``."""
     out: list[str] = []
     for b, i in enumerate(range(0, len(degrees), 4)):
         if b >= len(gate) or not gate[b]:
@@ -110,66 +112,73 @@ def _bars(degrees: list[int], gate: tuple[bool, ...], sparse: bool = True) -> st
 # Consolidated from the running direction; the single source of truth. We build
 # up from here. Each rule is enforced by the code below (noted in parentheses).
 RULES: tuple[str, ...] = (
-    "1. Confined to G Dorian — no minor keys; every voice shares the key (consonant).",
-    "2. (Dormant) modulate only to adjacent / consonant circle-of-fifths keys.",
-    "3. Everything low — octave 1 (~49-98 Hz); nothing high, except the glints (rule 15).",
-    "4. A low-pass on the bed & voices (no cutoff above ~700 Hz) — nothing harsh; the glints (rule 15) are the exception.",
+    "1. Dorian mode throughout, no minor keys; home key G.",
+    "2. Modulate only to adjacent / consonant circle-of-fifths Dorian keys (G D A E) — one per movement.",
+    "3. Bed & voices low (octave 1, ~49-98 Hz); nothing high except the glints (rule 15).",
+    "4. Low-pass the bed & voices (no cutoff above ~700 Hz) — nothing harsh; the glints are the exception.",
     "5. 4/4, largo (.slow(2)); it should float, not plod.",
-    "6. Mainly canons and call-and-response; voices come and go and trade off.",
-    "7. Melodies run double-time or faster; consonant with the other voices.",
-    "8. Evolve by fractal branching, but only 1-2 branches (a leader + at most two derived voices).",
-    "9. No ostinato longer than 16 bars; keep the material varying.",
-    "10. Evolve the rhythm every 64 bars with a turnaround, a pause, and a drop.",
+    "6. Texture is canons and call-and-response; voices come and go and trade off.",
+    "7. Base canons are SLOW — theta-paced, meditative (.fast(1)); motion/brightness comes from the glints.",
+    "8. Fractal branching, only 1-2 branches (a leader + a canon follower + a response).",
+    "9. No ostinato longer than 16 bars; material re-varies every <=14 bars.",
+    "10. Every ~2 minutes (a ~30-bar movement) evolve BOTH rhythmically (turnaround/pause/drop) AND tonally (a new key).",
     "11. Tintinnabuli (M/T voices) only briefly, ~every 180 bars.",
-    "12. No drums / percussion for now.",
+    "12. No drums / percussion.",
     "13. A burst of news swells the tonic triad — a consonant emphasis.",
     "14. Deterministic: the same signal always renders the same music.",
-    "15. Incidental notes from the parallel major (B, F#) glint bright & high over the bed (G4:major, up to ~880 Hz, filter open to 1400 Hz).",
+    "15. Glints from the parallel major (B, F#), bright & high (G4:major, up to ~880 Hz, filter 1400): rare — one bar every 32, rotating cells.",
+    "16. Canon voices fade in and out over ~1-2 minutes (slow, staggered gain LFOs).",
+    "17. A delayed chime rings out one beat every 64 bars — many repeats over ~2 bars, a theta-rate LFO on the delay.",
+    "18. Sometimes, after ~3 minutes, a 16-bar full silence.",
 )
 
-_SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
 _CALL = (True, True, False, False, True, True, False, False)  # leader sings…
 _RESP = (False, False, True, True, False, False, True, True)  # …responder answers in the gaps
 _CANON_LATE = 3  # bars the canon follower trails the leader (well apart in time)
+_CANON_FAST = 1  # theta-slow, meditative base canons (rule 7)
+_KEYS = ("G", "D", "A", "E")  # adjacent Dorian keys (sharp-side, so the glints stay consonant)
+_GLINT_SCALE = f"{_KEY}4:major"  # bright parallel-major register for the glints (rules 15, 17)
 
 
-def _fast(intensity: float) -> int:
-    """Melodic speed — double-time or greater with activity (rule 7)."""
-    return 2 + round(clamp01(intensity) * 2)
+def _sc(key: str, octv: int, mode: str = _MODE) -> str:
+    return f"{key}{octv}:{mode}"
 
 
-def _bed(verb: float) -> list[str]:
+def _key_walk(seed: int, n: int) -> list[str]:
+    """An adjacent walk through the Dorian key window from G (rule 2)."""
+    idx = 0
+    out: list[str] = []
+    for i in range(n):
+        out.append(_KEYS[idx])
+        idx = min(len(_KEYS) - 1, max(0, idx + (1 if (seed >> i) & 1 else -1)))
+    return out
+
+
+def _bed(key: str, verb: float) -> list[str]:
     """The sustained low ground (rules 3-5): a held root/fifth drone and a slow
     quartal pad, both deep and low-passed, so the harmony floats without a pulse."""
-    drone = f'    n("<[0,4]>").scale("{_SCALE}").s("sine").attack(0.4).release(1.6).lpf(150).gain(0.3)'
+    sc1 = _sc(key, 1)
+    drone = f'    n("<[0,4]>").scale("{sc1}").s("sine").attack(0.4).release(1.6).lpf(150).gain(0.3)'
     pad = (
-        f'    n("<[0,3,4] [0,4,7]>").scale("{_SCALE}").s("sawtooth").detune(0.08)'
+        f'    n("<[0,3,4] [0,4,7]>").scale("{sc1}").s("sawtooth").detune(0.08)'
         f".lpf(sine.range(220,480).slow(8)).room({verb}).roomsize(8).gain(0.16)"
     )
     return [drone, pad]
 
 
-def _voice(bars_str: str, fast: int, verb: float, gain: float, extra: str = "") -> str:
-    """A dark-piano melodic voice (rules 3-5, 7): low, low-passed, double-time."""
+def _fade(base: float, period: int) -> str:
+    """A slow gain LFO so a canon voice fades in and out over ~1-2 minutes
+    (period is in bars; ~4 s/bar → 18 bars ≈ 72 s). Rule 16."""
+    return f"sine.range({round(base * 0.12, 3)},{base}).slow({period})"
+
+
+def _voice(key: str, bars_str: str, verb: float, gain_expr: object, extra: str = "") -> str:
+    """A dark-piano melodic voice (rules 3-7): low, low-passed, theta-slow. The
+    gain may be a number or a fade LFO expression (rule 16)."""
     return (
-        f'    n("{bars_str}").scale("{_SCALE}").{_PIANO}.detune(0.06).fast({fast})'
-        f"{extra}.room({verb}).roomsize(7).gain({gain})"
+        f'    n("{bars_str}").scale("{_sc(key, 1)}").{_PIANO}.detune(0.06).fast({_CANON_FAST})'
+        f"{extra}.room({verb}).roomsize(7).gain({gain_expr})"
     )
-
-
-def _incidental(signal: ActivitySignal, salt: int) -> str:
-    """A bright, fairly frequent phrase favouring the tones the parallel MAJOR
-    adds over Dorian — B (deg 2) and F# (deg 6) — plus D (4) and A (8, = A4/440 Hz
-    at the top). Two bars of eighth-note slots with room to breathe, varied by
-    salt (rule 15)."""
-    cells = (
-        "~ 2 ~ 6 ~ ~ 4 ~",
-        "6 ~ ~ 8 ~ 4 ~ 2",
-        "~ 4 ~ 2 ~ 6 ~ ~",
-        "2 ~ 6 ~ 8 ~ 6 ~",
-    )
-    s = _seed(signal) + salt
-    return f"<[{cells[s % len(cells)]}] [{cells[(s + 2) % len(cells)]}]>"
 
 
 def _stack(layers: list[str]) -> str:
@@ -186,103 +195,154 @@ def _split(span: int, chunk: int = 14) -> list[int]:
     return sizes
 
 
-def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension: float, salt: int) -> str:
-    """Canon + call-and-response (rules 6-8): a leader with at most two branches —
-    a canon follower a bar later, and a response answering in the leader's gaps."""
-    fast = _fast(intensity)
+def _canon_chunk(signal: ActivitySignal, key: str, verb: float, tension: float, salt: int) -> str:
+    """Canon + call-and-response (rules 6-8): a leader with two branches — a canon
+    follower trailing by _CANON_LATE bars and a response answering in the gaps.
+    Each voice fades in and out on its own slow LFO (rule 16)."""
     line = _m_voice(signal, 32, salt)
     lead = _bars(line, _CALL, sparse=False)
     resp = _bars(line, _RESP, sparse=False)
-    layers = _bed(verb)
-    layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
-    layers.append(_voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE})"))  # branch 1: canon
-    layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
-    # Bright glints from the parallel major (rule 15) — lifted high (G4:major,
-    # up to A5/~880 Hz) with the filter well open (1400 Hz) for real sparkle; a
-    # detuned sawtooth with long tails, sitting above the dark low bed.
-    layers.append(
-        f'    n("{_incidental(signal, salt)}").scale("{_KEY}4:major").s("sawtooth").detune(0.1)'
-        f".lpf(1400).attack(0.01).release(2.0).room(0.9).roomsize(8).gain(0.1)"
-    )
+    layers = _bed(key, verb)
+    layers.append(_voice(key, lead, verb, _fade(0.32, 18)))  # leader (call), fades ~72 s
+    layers.append(_voice(key, lead, verb, _fade(0.2, 26), extra=f".late({_CANON_LATE})"))  # canon, ~104 s
+    layers.append(_voice(key, resp, verb, _fade(0.26, 22)))  # response, ~88 s
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)
         layers.append(
-            f'    n("<[0,2,4] ~ ~ ~>").scale("{_SCALE}").s("sawtooth")'
+            f'    n("<[0,2,4] ~ ~ ~>").scale("{_sc(key, 1)}").s("sawtooth")'
             f".lpf(400).attack(0.05).release(1.2).room(0.8).roomsize(8).gain({g})"
         )
     return _stack(layers)
 
 
-def _canon_body(signal: ActivitySignal, intensity: float, verb: float, tension: float, span: int, base: int) -> str:
+def _canon_body(signal: ActivitySignal, key: str, verb: float, tension: float, span: int, base: int) -> str:
     """A canon/call-response movement body of ``span`` bars, its material varying
     every <=14 bars so no ostinato outstays 16 bars (rule 9)."""
     parts = [
-        f"[{sz}, {_canon_chunk(signal, intensity, verb, tension, base + 1 + k * 13)}]"
+        f"[{sz}, {_canon_chunk(signal, key, verb, tension, base + 1 + k * 13)}]"
         for k, sz in enumerate(_split(span))
     ]
     return "arrange(" + ", ".join(parts) + ")"
 
 
-def _turnaround(intensity: float, verb: float) -> str:
-    """A descending quartal turnaround resolving to the tonic (rule 10)."""
-    return _stack([*_bed(verb), _voice("<[7 4 3 0] [4 2 0 ~]>", _fast(intensity), verb, 0.3)])
+def _turnaround(k0: str, k1: str, verb: float) -> str:
+    """A descending quartal turnaround that pivots from k0 toward k1 (rules 2, 10)
+    via a scale journey through the pivot key."""
+    piv = pivot_key(k0, k1)
+    journey = f'"<{_sc(k0, 1)} {_sc(piv, 1)} {_sc(piv, 1)} {_sc(k1, 1)}>"'
+    fig = (
+        f'    n("<[7 4 3 0] [4 2 0 ~]>").scale({journey}).{_PIANO}'
+        f".detune(0.06).fast({_CANON_FAST}).room({verb}).roomsize(7).gain(0.3)"
+    )
+    return _stack([*_bed(k0, verb), fig])
 
 
-def _pause(verb: float) -> str:
+def _pause(key: str, verb: float) -> str:
     """A breath — the bed thins to a lingering root (rule 10)."""
     return _stack(
-        [f'    n("0").scale("{_SCALE}").s("sine").attack(0.6).release(2.6).lpf(120).gain(0.2)']
+        [f'    n("0").scale("{_sc(key, 1)}").s("sine").attack(0.6).release(2.6).lpf(120).gain(0.2)']
     )
 
 
-def _drop(signal: ActivitySignal, intensity: float, verb: float) -> str:
+def _drop(signal: ActivitySignal, key: str, verb: float) -> str:
     """The drop — a deep sub-root and the canon crashing back in (rule 10)."""
-    fast = _fast(intensity)
     lead = _bars(_m_voice(signal, 16, salt=3), (True, True, True, True), sparse=False)
     return _stack(
         [
-            *_bed(verb),
-            f'    n("<0 ~ ~ ~>").scale("{_SCALE}").s("sine").lpf(110).attack(0.002).decay(0.6).sustain(0).gain(0.34)',
-            _voice(lead, fast, verb, 0.32),
-            _voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE - 1})"),
+            *_bed(key, verb),
+            f'    n("<0 ~ ~ ~>").scale("{_sc(key, 1)}").s("sine").lpf(110).attack(0.002).decay(0.6).sustain(0).gain(0.34)',
+            _voice(key, lead, verb, 0.32),
+            _voice(key, lead, verb, 0.2, extra=f".late({_CANON_LATE - 1})"),
         ]
     )
 
 
-def _tint_passage(signal: ActivitySignal, intensity: float, verb: float) -> str:
+def _movement(signal: ActivitySignal, k0: str, k1: str, verb: float, tension: float, base: int) -> str:
+    """A ~30-bar movement in key ``k0`` that evolves rhythmically and tonally
+    (rule 10): a canon body, a turnaround pivoting toward ``k1``, a pause, a drop."""
+    body = _canon_body(signal, k0, verb, tension, 22, base)
+    return (
+        "arrange("
+        f"[22, {body}], "
+        f"[4, {_turnaround(k0, k1, verb)}], "
+        f"[1, {_pause(k0, verb)}], "
+        f"[3, {_drop(signal, k0, verb)}])"
+    )
+
+
+def _tint_passage(signal: ActivitySignal, key: str, verb: float) -> str:
     """The rare tintinnabuli passage — M-voice + T-voice shadow (rule 11)."""
-    fast = _fast(intensity)
     m = _m_voice(signal, 16, salt=7)
     t = _t_voice(m)
     full = (True, True, True, True)
     return _stack(
         [
-            *_bed(verb),
-            _voice(_bars(m, full, sparse=False), fast, verb, 0.32),
-            _voice(_bars(t, full, sparse=False), fast, verb, 0.26),
+            *_bed(key, verb),
+            _voice(key, _bars(m, full, sparse=False), verb, 0.32),
+            _voice(key, _bars(t, full, sparse=False), verb, 0.26),
         ]
     )
+
+
+def _glint(cell: str) -> str:
+    """One bar of bright parallel-major chime (rule 15)."""
+    return (
+        f'n("{cell}").scale("{_GLINT_SCALE}").s("sawtooth").detune(0.1)'
+        f".lpf(1400).attack(0.01).release(2.0).room(0.9).roomsize(8).gain(0.1)"
+    )
+
+
+def _glint_overlay(signal: ActivitySignal) -> str:
+    """Rare glints (rule 15): one bar of chime every 32, cells rotating so the
+    sequence changes then restarts."""
+    cells = ("~ 2 ~ 6 ~ ~ 4 ~", "6 ~ ~ 8 ~ 4 ~ 2", "~ 4 ~ 2 ~ 6 ~ ~", "2 ~ 6 ~ 8 ~ 6 ~")
+    s = _seed(signal)
+    parts: list[str] = []
+    for k in range(4):
+        parts.append(f"  [1, {_glint(cells[(s + k) % len(cells)])}]")  # one bar of chime…
+        parts.append("  [31, silence]")  # …then silent for 31 more (rare)
+    return "arrange(\n" + ",\n".join(parts) + "\n)"
+
+
+def _chime_delay_overlay(signal: ActivitySignal) -> str:
+    """A delayed chime one beat every 64 bars (rule 17): a bright note drenched in
+    a many-repeat delay (~2 bars of tail), the delay time wobbled by a theta-rate
+    LFO (sine.fast(24) ≈ 6 Hz at ~4 s/bar)."""
+    note = (_seed(signal) % 5) * 2  # a bright even degree 0..8
+    chime = (
+        f'n("{note} ~ ~ ~").scale("{_GLINT_SCALE}").s("sawtooth").detune(0.1).lpf(1400)'
+        ".delay(0.9).delaytime(sine.range(0.34,0.46).fast(24)).delayfeedback(0.86)"
+        ".room(0.7).roomsize(8).gain(0.13)"
+    )
+    return f"arrange([1, {chime}], [63, silence])"
 
 
 def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2000) -> str:
     intensity = clamp01(intensity)
     verb = round(0.6 + (1.0 - intensity) * 0.25, 2)  # lusher reverb when calm
     tension = clamp01((signal.volume - 4) / 24.0)  # a burst of news events → swell (rule 13)
+    seed = _seed(signal)
 
-    turn, pause, drop = _turnaround(intensity, verb), _pause(verb), _drop(signal, intensity, verb)
-    # Three ~64-bar movements — canon/call-response body, then a turnaround, a
-    # pause and a drop (rule 10) — and then a brief tintinnabuli passage, so
-    # tintinnabuli recurs ~every 180 bars (rule 11).
+    # Six ~30-bar movements (~2 min each), modulating through adjacent Dorian keys
+    # and each evolving rhythmically (rule 10); a brief tintinnabuli passage closes
+    # the loop, ~every 180 bars (rule 11).
+    keys = _key_walk(seed, 6)
     blocks: list[str] = []
-    for span, base in ((56, 0), (56, 100), (44, 200)):
-        blocks.append(f"  [{span}, {_canon_body(signal, intensity, verb, tension, span, base)}]")
-        blocks.append(f"  [4, {turn}]")
-        blocks.append(f"  [1, {pause}]")
-        blocks.append(f"  [3, {drop}]")
-    blocks.append(f"  [6, {_tint_passage(signal, intensity, verb)}]")
+    for i, k in enumerate(keys):
+        nk = keys[(i + 1) % len(keys)]
+        blocks.append(f"  [30, {_movement(signal, k, nk, verb, tension, i * 50)}]")
+        if i == 1 and seed % 2 == 0:  # sometimes, ~3-4 min in, a 16-bar full silence (rule 18)
+            blocks.append("  [16, silence]")
+    blocks.append(f"  [6, {_tint_passage(signal, keys[0], verb)}]")
+    main = "arrange(\n" + ",\n".join(blocks) + "\n)"
 
     header = (
-        f"// maelcom · dark {_KEY} {_MODE} · canon & call-response, tintinnabuli ~every 180 bars · "
-        f"band={band} · {signal.volume} change{'s' if signal.volume != 1 else ''}"
+        f"// maelcom tintinnabuli · dark {keys[0]} {_MODE} · slow canons, rare glints, "
+        f"modulating ~every 2 min, tintinnabuli ~every 180 bars · band={band} · "
+        f"{signal.volume} change{'s' if signal.volume != 1 else ''}"
     )
-    return f"{header}\narrange(\n" + ",\n".join(blocks) + "\n).slow(2)"  # largo (rule 5)
+    # The main arrangement plus two independent long-form overlays: rare glints
+    # and the delayed chime.
+    return (
+        f"{header}\nstack(\n{main},\n{_glint_overlay(signal)},\n  {_chime_delay_overlay(signal)}\n).slow(2)"
+    )

@@ -99,10 +99,22 @@ def test_tintinnabuli_voices_come_and_go_and_trade_off():
     assert text.count(".sustain(0.12)") >= 2  # multiple dark-piano voices (leader/canon/response)
 
 
-def test_tintinnabuli_melodies_run_double_time_or_greater():
+def test_tintinnabuli_base_canons_are_theta_slow():
     text = compose(_signal(8, 3, volatility=0.4), style="tintinnabuli").text
-    fasts = [int(x) for x in re.findall(r"\.fast\((\d+)\)", text)]  # the melodic voices
-    assert fasts and min(fasts) >= 2  # double-time or faster over the slow bed
+    voice_fasts = {int(x) for x in re.findall(r"\.detune\(0\.06\)\.fast\((\d+)\)", text)}
+    assert voice_fasts == {1}  # slow, meditative base canons — never doubled up
+
+
+def test_tintinnabuli_canon_voices_fade_in_and_out():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    # canon voices' gain is a slow sine LFO (fade in/out over ~1-2 minutes)
+    assert re.search(r"\.gain\(sine\.range\([0-9.]+,0\.32\)\.slow\(\d+\)\)", text)
+
+
+def test_tintinnabuli_evolves_tonally_across_movements():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    keys = set(re.findall(r'scale\("([A-G]#?)1:dorian"\)', text))
+    assert "G" in keys and len(keys) >= 2  # modulates to adjacent Dorian keys
 
 
 def test_tintinnabuli_canon_call_response_and_rare_tintinnabuli():
@@ -115,16 +127,28 @@ def test_tintinnabuli_canon_call_response_and_rare_tintinnabuli():
 
 def test_tintinnabuli_rhythm_evolves_with_turnaround_pause_drop():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # each ~64-bar movement ends with a turnaround (4), a pause (1) and a drop (3)
+    # each ~30-bar movement ends with a turnaround (4), a pause (1) and a drop (3)
     assert "[4, stack(" in text and "[1, stack(" in text and "[3, stack(" in text
 
 
-def test_tintinnabuli_has_parallel_major_incidental_glints():
+def test_tintinnabuli_glints_are_rare_one_bar_every_32():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # Bright incidental color from the parallel major, lifted high (G4:major, up
-    # to ~880 Hz) with the filter well open (1400 Hz) for sparkle.
     assert 'scale("G4:major")' in text
     assert re.search(r'scale\("G4:major"\)\.s\("sawtooth"\)\.detune\(0\.1\)\.lpf\(1400\)', text)
+    assert "[31, silence]" in text  # one bar of glint, then silent for 31 more
+
+
+def test_tintinnabuli_delayed_chime_every_64_bars():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    # one beat of chime with a many-repeat delay + a theta-rate LFO, then 63 bars off
+    assert re.search(r"\.delay\(0\.9\)\.delaytime\(sine\.range\([0-9.,]+\)\.fast\(24\)\)\.delayfeedback\(", text)
+    assert "[63, silence]" in text
+
+
+def test_tintinnabuli_sometimes_has_a_16_bar_silence():
+    # deterministic per signal; scan a range of signals for the occasional rest
+    seen = any("[16, silence]" in compose(_signal(v, 3), style="tintinnabuli").text for v in range(1, 12))
+    assert seen  # rule 18: sometimes, a 16-bar full silence
 
 
 def test_tintinnabuli_news_burst_adds_consonant_swell():
