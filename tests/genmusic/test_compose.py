@@ -73,8 +73,10 @@ def test_no_style_uses_unsupported_strudel_functions():
 def test_tintinnabuli_has_m_and_t_voices_largo_piano():
     text = compose(_signal(8, 3, volatility=0.4), style="tintinnabuli").text
     assert "tintinnabuli" in text and text.rstrip().endswith(".slow(2)")  # largo
-    # Two modified-piano voices (sawtooth + piano amplitude ADSR) + sawtooth lead.
-    assert text.count(".sustain(0.08)") == 2  # M-voice and T-voice
+    # Modified-piano voices (sawtooth + piano amplitude ADSR): an M/T pair per
+    # arranged section, so an even, non-zero count.
+    piano_voices = text.count(".sustain(0.08)")
+    assert piano_voices >= 2 and piano_voices % 2 == 0  # paired M-voice + T-voice
     assert 's("sawtooth")' in text  # piano voices and the lead
     assert 'scale("A3:minor")' in text
 
@@ -101,6 +103,21 @@ def test_tintinnabuli_quartal_arpeggio_and_analog_movement():
     assert 'scale("A2:minor")' in text  # the minimalist quartal arpeggio register
     assert ".detune(" in text  # analog detuned oscillators
     assert "sine.range(" in text and ".slow(" in text  # slow analog filter LFO
+
+
+def test_tintinnabuli_arranges_sections_with_transitions():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    assert text.rstrip().endswith(").slow(2)")  # arranged, largo
+    assert "arrange(" in text
+    # 16-bar sections joined by 4-bar transitions.
+    assert f"[{16}, stack(" in text and f"[{4}, stack(" in text
+    # Transitions modulate on the circle of fifths: a scale journey through a
+    # pivot key spelled out as an arpeggio.
+    assert ":minor E3:minor" in text or ":minor D3:minor" in text  # a fifth up/down from A
+    # First section is home (A minor); the walk also visits other window keys.
+    assert 'scale("A3:minor")' in text
+    header = text.splitlines()[0]
+    assert "sections" in header and "[A" in header  # arrangement summarized, starts home
 
 
 def test_no_triangle_or_square_above_c2():
