@@ -8,10 +8,14 @@ composed with the long-form techniques of Max Richter's _Sleep_, Eno, Stars of
 the Lid and Harold Budd.
 
 > **Framing / responsibility.** Entrainment efficacy evidence is genuinely
-> **mixed** (a 2023 review of 14 studies found only 5 supporting it; individual
-> response varies widely). Entrainment is shipped as **ambient music with a
-> plausible neuro-rationale — not a therapeutic or clinical claim.** No health
-> promises in UI copy. Sub-bass is kept to safe, moderate levels.
+> **mixed** (a 2023 review of 14 studies found only 5 supporting it; binaural
+> meta-analyses land around g ≈ 0.40–0.45 but with notable nulls; individual
+> response varies widely). Likewise, **"superlearning" / accelerated-learning
+> claims (learning 3–25× faster) are debunked/unsupported** (§5) — the
+> Baroque-largo aesthetic is a sound *design rationale*, not a learning guarantee.
+> Entrainment is shipped as **ambient music with a plausible neuro-rationale — not
+> a therapeutic, clinical, or learning claim.** No health/learning promises in UI
+> copy. Sub-bass is kept to safe, moderate levels.
 
 Status: **v0.1 shipped** (binaural + isochronic carrier that tracks the band).
 Everything below the roadmap is research grounding for what comes next.
@@ -122,7 +126,73 @@ on laptop/phone speakers; low freqs are least safe when loud, so keep gain moder
 
 ---
 
-## 5. Roadmap (versioned, incremental — we build up rule by rule)
+## 5. Superlearning & a study / learning mode
+
+"Superlearning" (Ostrander & Schroeder, 1979) popularized **Georgi Lozanov's
+Suggestopedia**: the premise that the main barrier to learning is *psychological*
+(anxiety, inhibition), removed via relaxation + suggestion + **music** to reach a
+**relaxed-alert** state, with content paced to slow rhythmic breathing.
+
+> **⚠️ The grand claims are debunked.** "Learn 3–25× faster" is **not** supported —
+> Suggestopedia failed to replicate; a 1988 US Army Research Institute review found
+> no support; Wagner & Tilney (1983) found no vocabulary advantage and no reliable
+> alpha boost. It's widely classed as pseudoscience/overstated. **The defensible
+> kernel:** relaxation + reduced anxiety + focused attention + pleasant, low-arousal
+> instrumental music can *modestly* help *some* learners settle and sustain
+> attention. Ship it as music-with-a-rationale, never a learning guarantee.
+
+**The useful part is the aesthetic spec.** Superlearning prescribes **Baroque
+largo at ~60 BPM** — ~1 beat/sec ≈ resting heart rate, a "calm alertness" cue.
+Baroque's structural traits are exactly what a low-distraction study bed wants:
+a steady **basso continuo** (regular, predictable pulse); **one tempo, one dynamic
+level** per movement (no swells to hijack attention); a **well-defined key** with
+consonant, standardized harmony; slow largo/adagio, small consonant ensemble.
+(Cited pieces: slow movements of Bach, Vivaldi, Corelli, Handel, Telemann;
+Pachelbel's Canon; "Air on the G String.") Lozanov's "concert" technique has an
+**active** phase (material read expressively over the music) and a **passive**
+phase (relaxed listening, for consolidation).
+
+**Learning brainwave states:** **alpha ~8–13 Hz** = relaxed-alert receptivity (the
+state superlearning targets); **theta ~4–8 Hz** = memory **encoding**, with
+**theta–gamma coupling** ordering/binding what gets recalled; **delta/slow-wave** =
+offline **consolidation during sleep** (that's the _Sleep_ territory of §3, not a
+waking study tool). Most "study" tracks target **~10 Hz alpha** (default) or
+**~6 Hz theta** (memory/creativity).
+
+**Binaural-and-memory evidence (honest):** real but small and inconsistent —
+meta-analyses ~**g ≈ 0.40–0.45** (Garcia-Argibay 2019; Basu & Banerjee 2023), but
+notable **nulls/negatives** (a 2023 home-use study found binaural beats *worsened*
+performance). Helpful moderators: **longer exposure (~15–30 min)**, **pre-task**
+exposure, and the right band+carrier. Isochronic drives a stronger cortical
+response than binaural and works on speakers.
+
+**Music-while-studying, generally:** **lyrics** are the main culprit (semantic
+interference on verbal tasks) → **no vocals**; least disruptive = **familiar,
+low-arousal, slow, non-lyrical**; novelty/deviance breaks concentration; large
+individual differences.
+
+### → Study/Learning mode — parameters
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Tempo | **60 BPM** (1 Hz pulse) | heart-rate largo; calm-alertness cue |
+| Entrainment target | **~10 Hz alpha** default; **~6 Hz theta** preset | most-used study bands |
+| Method | **isochronic** primary (speaker-safe); **binaural** (~200 Hz carrier, Δ = target) headphones-only | isochronic entrains on speakers |
+| Harmony | consonant, single key, slow harmonic rhythm (change every 2–4 bars) | Baroque simplicity; no surprise |
+| Dynamics | flat, quiet, narrow range | avoid attention capture |
+| Instruments | soft strings/pad + a plucked "basso continuo" arpeggio; no percussion transients; **no lyrics** | Baroque-ish, unobtrusive |
+| Session | fade-in; steady 15–30 min blocks | matches effective exposure durations |
+
+**Strudel translation:** a **1 Hz** gain/`lpf` LFO on the pad/sub as the heartbeat
+pulse; a steady quarter-note plucked arpeggio, one consonant chord per ~2 bars, as
+basso continuo; a soft-edged **10 Hz** (alpha) isochronic amplitude gate on a mid
+tone/bus (speaker-safe), with a **6 Hz** theta preset and a headphone-gated
+binaural pair (200/210 Hz → 10 Hz); optional very-slow **~0.1 Hz** pad swell as a
+paced-breathing cue. Constrain to one mode/key; cap dynamic range.
+
+---
+
+## 6. Roadmap (versioned, incremental — we build up rule by rule)
 
 - **0.1 — Entrainment core (done).** Binaural pair (`freq`+`pan`) + isochronic
   throb + grounding sub; beat tracks the band (delta 2 → gamma 40 Hz). 5 founding
@@ -138,12 +208,17 @@ on laptop/phone speakers; low freqs are least safe when loud, so keep gain moder
 - **0.5 — Session arc (Richter).** Erosion over time: start with motif cells,
   progressively strip toward drone-fog; slow Δ slew between states; optional
   time-of-day / focus-vs-relax mode.
+- **0.6 — Study / learning mode (§5).** A selectable relaxed-alert preset: a
+  60 BPM largo "heartbeat" pulse, a consonant single-key Baroque-ish bed (plucked
+  basso continuo), 10 Hz alpha isochronic (6 Hz theta option; headphone binaural),
+  flat dynamics, no percussion/lyrics, 15–30 min blocks. Framed as
+  music-with-rationale, not a learning claim.
 - **Later.** Headphone detection & a binaural/speaker toggle in the UI; per-state
   presets exposed; smooth cross-model transitions.
 
 ---
 
-## 6. Open questions
+## 7. Open questions
 
 - **cps calibration.** The engine doesn't expose cps to read back, so isochronic
   _rate_ is calibrated via `_CYCLE_S` (binaural/monaural are exact). Confirm by ear
@@ -168,3 +243,10 @@ train horn chord: train-horn.com/guides/train-horn-chord-trumpet-tuning ·
 water/rain synthesis: audiokinetic.com/en/blog/generating-rain-with-pure-synthesis · Minnaert resonance (Wikipedia) ·
 Max Richter _Sleep_ / Eagleman: grainsmusic.com/articles/the-science-of-sleep-dr-eagleman · en.wikipedia.org/wiki/Sleep_(album) ·
 Stars of the Lid / Budd: en.wikipedia.org/wiki/Stars_of_the_Lid · themusictheoryprofessor.com (Eno/Budd waveform techniques)
+
+Superlearning / Suggestopedia: en.wikipedia.org/wiki/Suggestopedia · link.springer.com/referenceworkentry/10.1007/978-1-4419-1428-6_611 ·
+debunking (no support for accelerated learning): link.gale.com/apps/doc/A91803906/AONE · Wagner & Tilney 1983 (TESOL Q, no vocab advantage): onlinelibrary.wiley.com/doi/abs/10.2307/3586420 ·
+Baroque-largo-60-BPM rationale: baroquemusic.org/506Web.html · sleeplearning.com/info/baroque-music ·
+binaural & memory/cognition meta-analyses (g≈0.40–0.45) + nulls: link.springer.com/article/10.1007/s00426-022-01706-7 · brain.fm/blog/binaural-beats-for-studying ·
+theta–gamma coupling & memory: biorxiv.org/content/10.1101/191189v2 · roxiva.com/theta-and-gamma-brainwaves-work-together ·
+music-while-studying (lyrics interfere; arousal/mood): journalofcognition.org/articles/10.5334/joc.273 · ncbi.nlm.nih.gov/pmc/articles/PMC11045806 · journals.sagepub.com/doi/10.1177/03057356261421209
