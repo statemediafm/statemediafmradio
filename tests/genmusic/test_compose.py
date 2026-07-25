@@ -73,10 +73,18 @@ def test_no_style_uses_unsupported_strudel_functions():
 def test_tintinnabuli_has_m_and_t_voices_largo_piano():
     text = compose(_signal(8, 3, volatility=0.4), style="tintinnabuli").text
     assert "tintinnabuli" in text and text.rstrip().endswith(".slow(2)")  # largo
-    # Two piano voices (modified-piano synth) + a harmonically rich sawtooth lead.
-    assert text.count('s("triangle").attack') == 2  # M-voice and T-voice
-    assert 's("sawtooth")' in text  # synth lead, high harmonic content
+    # Two modified-piano voices (filtered sawtooth + piano ADSR) + sawtooth lead.
+    assert text.count(".attack(0.004)") == 2  # M-voice and T-voice
+    assert 's("sawtooth")' in text  # piano voices and the lead
     assert 'scale("A3:minor")' in text
+
+
+def test_no_triangle_or_square_above_c2():
+    # Timbre rule: triangle/square are reserved for low (<=C2), short sounds; the
+    # styles here have no such notes, so they use none at all.
+    for style in ("tintinnabuli", "lofi"):
+        text = compose(_signal(8, 3, volatility=0.4), style=style).text
+        assert '"triangle"' not in text and '"square"' not in text, style
 
 
 def test_compose_is_deterministic():

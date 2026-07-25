@@ -2,15 +2,19 @@
 
 Two voices move together (Pärt's tintinnabuli technique):
 
-- **M-voice** (melodic): a stepwise diatonic line around the tonic.
-- **T-voice** (tintinnabuli): sounds only the tonic-triad tones, shadowing the
-  M-voice at the nearest triad note at or below it.
+- **M-voice** (melodic): a stepwise diatonic line that develops over four bars.
+- **T-voice** (tintinnabuli): sounds only tonic-triad tones, shadowing the
+  M-voice — alternating the nearest triad note *below* (inferior) and *above*
+  (superior) it from note to note.
 
-They sit over a deep root drone, with a sparse, harmonically rich sawtooth lead.
-Everything is **largo** and biased to whole and quarter notes. Voices are
-generated deterministically from the ``ActivitySignal`` and evolve as it changes.
-Piano is a *modified-piano synth* (a triangle with a piano-like envelope), since
-@strudel/web has no piano samples loaded.
+They sit over a deep root drone, with a sparse-to-busy, harmonically rich
+sawtooth lead whose density tracks activity. Everything is **largo** and biased
+to whole and quarter notes; the voices evolve as the ``ActivitySignal`` changes.
+
+Voices use a **modified-piano synth** — a *filtered sawtooth* with a piano-like
+envelope. (@strudel/web has no piano soundfont loaded, and per the project's
+timbre rules triangle/square are reserved for low, short sounds — so a filtered
+sawtooth is the piano stand-in for these mid-register, sustained notes.)
 """
 
 from __future__ import annotations
@@ -21,8 +25,9 @@ from ..brainwave import clamp01
 _KEY = "A"  # A minor tonic — a classic Pärt key
 _TRIAD = (0, 2, 4)  # scale degrees of the tonic triad (root, third, fifth)
 
-# Modified-piano synth (no samples): a mellow triangle with a piano-like ADSR.
-_PIANO = 's("triangle").attack(0.004).decay(0.4).sustain(0.08).release(0.6)'
+# Modified-piano synth: a filtered sawtooth with a piano-like ADSR (no samples,
+# and no triangle/square in this mid register per the timbre rules).
+_PIANO = 's("sawtooth").lpf(1300).attack(0.004).decay(0.4).sustain(0.08).release(0.6)'
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -35,57 +40,77 @@ def _seed(signal: ActivitySignal) -> int:
     )
 
 
-def _m_voice(signal: ActivitySignal, n: int = 8) -> list[int]:
-    """A stepwise melodic line of scale degrees (the M-voice) — deterministic,
-    mostly stepwise motion, evolving with the signal."""
+def _m_voice(signal: ActivitySignal, n: int = 16) -> list[int]:
+    """A developing, mostly stepwise melodic line of scale degrees (the M-voice)
+    — deterministic, evolving with the signal, spanning ~1.5 octaves."""
     seed = _seed(signal)
-    steps = (-1, 0, 1, 0, -1, 1, 0, 2)
+    steps = (-1, 0, 1, 0, -1, 1, 0, 2, -2, 1)
     d = 2 + (seed % 4)
     out = [d]
     for i in range(1, n):
-        d = max(0, min(9, d + steps[(seed >> (i * 3)) % len(steps)]))
+        d = max(0, min(11, d + steps[(seed >> (i * 2)) % len(steps)]))
         out.append(d)
     return out
 
 
 def _t_below(m: int) -> int:
-    """Tintinnabuli T-voice: nearest tonic-triad scale degree at or below ``m``
-    (triad tones are the scale degrees congruent to 0, 2 or 4 mod 7)."""
     d = m
     while d % 7 not in _TRIAD:
         d -= 1
     return d
 
 
+def _t_above(m: int) -> int:
+    d = m
+    while d % 7 not in _TRIAD:
+        d += 1
+    return d
+
+
+def _t_voice(m: list[int]) -> list[int]:
+    """The tintinnabuli shadow: nearest triad tone, alternating inferior (below)
+    and superior (above) from note to note."""
+    return [(_t_above(x) if i % 2 else _t_below(x)) for i, x in enumerate(m)]
+
+
 def _bars(degrees: list[int]) -> str:
-    """Two bars of four quarter notes: ``<[a b c d] [e f g h]>`` (whole-cycle
-    alternation keeps the note values to quarters and the phrase to two bars)."""
-    first = " ".join(str(x) for x in degrees[:4])
-    second = " ".join(str(x) for x in degrees[4:8])
-    return f"<[{first}] [{second}]>"
+    """Format degrees as bars of four quarter notes: ``<[..] [..] ...>`` — the
+    whole-cycle alternation keeps note values to quarters and phrases to bars."""
+    bars = [" ".join(str(x) for x in degrees[i : i + 4]) for i in range(0, len(degrees), 4)]
+    return "<[" + "] [".join(bars) + "]>"
+
+
+def _lead(signal: ActivitySignal, intensity: float) -> str:
+    """A sparse-to-busy lead phrase (an octave above the M-voice), denser with
+    higher intensity."""
+    hi = [x + 7 for x in _m_voice(signal, 8)]
+    if intensity < 0.4:
+        return f"<{hi[0]} ~ {hi[3]} ~>"
+    if intensity < 0.7:
+        return f"<[{hi[0]} ~ {hi[1]} ~] [~ {hi[2]} ~ {hi[3]}]>"
+    return f"<[{hi[0]} {hi[1]} ~ {hi[2]}] [{hi[3]} ~ {hi[4]} {hi[5]}]>"
 
 
 def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2000) -> str:
     intensity = clamp01(intensity)
-    m = _m_voice(signal, 8)
-    t = [_t_below(x) for x in m]
-    lead = f"<{m[0] + 7} ~ {m[3] + 7} ~>"  # sparse, an octave up
-    lead_lpf = round(1800 + intensity * 1600)  # brighter (more harmonics) when busy
+    m = _m_voice(signal, 16)
+    t = _t_voice(m)
+    lead_lpf = round(2000 + intensity * 1800)  # brighter (more harmonics) when busy
     verb = round(0.5 + (1.0 - intensity) * 0.3, 2)  # lusher reverb when calm
     scale = f"{_KEY}3:minor"
 
-    # Synth lead — high harmonic content (sawtooth), sparse and high.
     lead_layer = (
-        f'  n("{lead}").scale("{_KEY}4:minor").s("sawtooth").lpf({lead_lpf})'
+        f'  n("{_lead(signal, intensity)}").scale("{_KEY}4:minor").s("sawtooth").lpf({lead_lpf})'
         ".room(0.5).roomsize(3).gain(0.2)"
     )
     layers = [
-        # M-voice — stepwise piano melody in quarter notes.
+        # M-voice — the developing stepwise piano melody (quarter notes).
         f'  n("{_bars(m)}").scale("{scale}").{_PIANO}.room({verb}).roomsize(4).gain(0.5)',
-        # T-voice — the tintinnabuli triad shadow, softer.
-        f'  n("{_bars(t)}").scale("{scale}").{_PIANO}.room({verb}).roomsize(4).gain(0.36)',
-        # Root drone — deep whole notes.
+        # T-voice — the tintinnabuli triad shadow (alternating below/above).
+        f'  n("{_bars(t)}").scale("{scale}").{_PIANO}.room({verb}).roomsize(4).gain(0.34)',
+        # Root drone — deep whole notes, low register.
         f'  note("<{_KEY.lower()}1 e1>").s("sine").lpf(500).gain(0.32)',
+        # Synth lead — high harmonic content (sawtooth), high register.
         lead_layer,
     ]
     header = (

@@ -84,8 +84,10 @@ def render(
     hats = 8 if intensity >= 0.5 else 4
 
     # Melody carries lush reverb tails — the incidental mid/high harmonics.
+    # Filtered sawtooth, not triangle — triangle/square are reserved for low,
+    # short sounds; this melody sits above C2.
     melody = (
-        f'  n("{steps}").scale("C:minor:pentatonic").s("triangle")'
+        f'  n("{steps}").scale("C:minor:pentatonic").s("sawtooth")'
         f".decay(0.2).sustain(0).lpf({lead_lpf}).room({round(verb - 0.1, 2)})"
         ".roomsize(4).gain(0.28)"
     )
