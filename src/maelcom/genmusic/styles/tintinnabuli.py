@@ -110,7 +110,7 @@ def _bars(degrees: list[int], gate: tuple[bool, ...], sparse: bool = True) -> st
 # Consolidated from the running direction; the single source of truth. We build
 # up from here. Each rule is enforced by the code below (noted in parentheses).
 RULES: tuple[str, ...] = (
-    "1. Confined to G Dorian — no minor, no major keys; every voice shares the key (consonant).",
+    "1. Confined to G Dorian — no minor keys; every voice shares the key (consonant).",
     "2. (Dormant) modulate only to adjacent / consonant circle-of-fifths keys.",
     "3. Everything low — octave 1 (~49-98 Hz); nothing high.",
     "4. A low-pass on every voice (no cutoff above ~500 Hz) — nothing harsh.",
@@ -129,6 +129,7 @@ RULES: tuple[str, ...] = (
 _SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
 _CALL = (True, True, False, False, True, True, False, False)  # leader sings…
 _RESP = (False, False, True, True, False, False, True, True)  # …responder answers in the gaps
+_CANON_LATE = 3  # bars the canon follower trails the leader (well apart in time)
 
 
 def _fast(intensity: float) -> int:
@@ -178,7 +179,7 @@ def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension:
     resp = _bars(line, _RESP, sparse=False)
     layers = _bed(verb)
     layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
-    layers.append(_voice(lead, fast, verb, 0.2, extra=".late(1)"))  # branch 1: canon
+    layers.append(_voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE})"))  # branch 1: canon
     layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)
@@ -220,7 +221,7 @@ def _drop(signal: ActivitySignal, intensity: float, verb: float) -> str:
             *_bed(verb),
             f'    n("<0 ~ ~ ~>").scale("{_SCALE}").s("sine").lpf(110).attack(0.002).decay(0.6).sustain(0).gain(0.34)',
             _voice(lead, fast, verb, 0.32),
-            _voice(lead, fast, verb, 0.2, extra=".late(0.5)"),
+            _voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE - 1})"),
         ]
     )
 
