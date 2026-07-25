@@ -32,7 +32,10 @@ class _State:
         self.audio: dict[str, AudioRef] = {}
         self.program: StrudelProgram | None = None
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
-        self.last_signal = None  # last ActivitySignal, for immediate model switches
+        self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
+        self.quiet_mode: bool = False  # music only around the news, silent between
+        self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
+        self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -65,8 +68,21 @@ def create_app(state: _State | None = None):
     @app.get("/genmusic")
     def genmusic() -> dict:
         if store.program is None:
-            return {"text": None}
-        return program_to_dict(store.program)
+            return {"text": None, "play": store.music_on}
+        # `play` is the quiet-mode gate: the client silences the music when False.
+        return {**program_to_dict(store.program), "play": store.music_on}
+
+    @app.get("/quiet")
+    def quiet() -> dict:
+        return {"quiet_mode": store.quiet_mode, "music_on": store.music_on}
+
+    @app.post("/quiet")
+    def set_quiet(on: bool) -> dict:
+        """Turn quiet mode on/off. Off resumes continuous play immediately."""
+        store.quiet_mode = on
+        if not on:
+            store.music_on = True
+        return {"quiet_mode": store.quiet_mode, "music_on": store.music_on}
 
     @app.get("/models")
     def models() -> dict:
@@ -85,8 +101,28 @@ def create_app(state: _State | None = None):
             raise HTTPException(status_code=400, detail="unknown model")
         store.model = name
         if store.last_signal is not None:
-            store.set_program(compose(store.last_signal, style=name))
+            store.set_program(compose(store.last_signal, style=name, tuning_a=store.tuning))
         return {"current": store.model}
+
+    @app.get("/tuning")
+    def tuning() -> dict:
+        """The selectable concert-A tuning references (Hz) and the current one."""
+        from ..genmusic.compose import TUNINGS
+
+        return {"tunings": list(TUNINGS), "current": store.tuning}
+
+    @app.post("/tuning")
+    def set_tuning(a: float) -> dict:
+        """Set the concert-A reference (Hz); recompose immediately if we have a signal."""
+        from ..genmusic import compose
+        from ..genmusic.compose import TUNINGS
+
+        if a not in TUNINGS:
+            raise HTTPException(status_code=400, detail="unsupported tuning")
+        store.tuning = a
+        if store.last_signal is not None:
+            store.set_program(compose(store.last_signal, style=store.model, tuning_a=a))
+        return {"current": store.tuning}
 
     @app.get("/audio/{clip_id}")
     def audio(clip_id: str) -> Response:
@@ -124,7 +160,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   button{font:inherit;padding:.5rem 1rem;margin:1rem 0;cursor:pointer;
          background:#111;color:#fffff8;border:0;border-radius:2px}
   button[disabled]{opacity:.6;cursor:default}
-  #modelwrap{display:inline-block;margin-left:1rem}
+  #modelwrap,#tuningwrap,#quietwrap{display:inline-block;margin-left:1rem}
   select{font:inherit;font-size:.85rem;margin-left:.35rem}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
@@ -139,6 +175,10 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <label class='muted' id='modelwrap'>ambient generator
   <select id='model'></select>
 </label>
+<label class='muted' id='tuningwrap'>tuning A=
+  <select id='tuning'></select>
+</label>
+<label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <canvas id='viz'></canvas>
 <section id='news'><p class='muted'>Loading…</p></section>
 
@@ -167,6 +207,34 @@ modelSel.addEventListener('change', async ()=>{
     await pollMusic();
   }catch(e){}
 });
+
+// Concert-A tuning selector (440 / 435 / 432 Hz) — retunes all notes.
+const tuningSel=document.getElementById('tuning');
+async function loadTunings(){
+  try{
+    const d=await (await fetch('/tuning')).json();
+    tuningSel.innerHTML='';
+    for(const t of d.tunings){
+      const o=document.createElement('option'); o.value=t; o.textContent=t+' Hz';
+      if(t===d.current) o.selected=true; tuningSel.appendChild(o);
+    }
+  }catch(e){}
+}
+tuningSel.addEventListener('change', async ()=>{
+  try{
+    await fetch('/tuning?a='+encodeURIComponent(tuningSel.value), {method:'POST'});
+    lastProgram=''; await pollMusic();
+  }catch(e){}
+});
+
+// Quiet mode — music only around the news, silent between.
+const quietBox=document.getElementById('quiet');
+async function loadQuiet(){
+  try{ const d=await (await fetch('/quiet')).json(); quietBox.checked=!!d.quiet_mode; }catch(e){}
+}
+quietBox.addEventListener('change', async ()=>{
+  try{ await fetch('/quiet?on='+(quietBox.checked?'true':'false'), {method:'POST'}); await pollMusic(); }catch(e){}
+});
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
 const newsPlayer=new Audio(); let lastNewsUrl='';
 
@@ -185,12 +253,22 @@ newsPlayer.addEventListener('play', ()=>setDuck(true));
 newsPlayer.addEventListener('ended', ()=>setDuck(false));
 newsPlayer.addEventListener('pause', ()=>setDuck(false));
 
+let musicSilenced=false;
 async function pollMusic(){
   try{
     const d=await (await fetch('/genmusic')).json();
+    // Quiet-mode gate: silence the music when the server says not to play.
+    if(started && d.play===false){
+      if(!musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
+      viz.on=false; statusEl.textContent='● quiet · silent (music returns before the news)';
+      return;
+    }
     if(!d.text){ statusEl.textContent='waiting for activity…'; return; }
     viz.intensity=d.intensity; viz.band=d.brainwave_band; viz.on=started;
-    if(started && d.text!==lastProgram){ lastProgram=d.text; currentProg=d.text; await playCurrent(); }
+    // (re)start when the program changes OR the gate just re-opened after silence
+    if(started && (d.text!==lastProgram || musicSilenced)){
+      lastProgram=d.text; currentProg=d.text; musicSilenced=false; await playCurrent();
+    }
     const ctx=(typeof getAudioContext==='function')?getAudioContext():null;
     const ac=ctx?(' · audio '+ctx.state):'';
     statusEl.textContent=(started?(ducked?'● news over music':'● on air'):'ready')+
@@ -233,7 +311,7 @@ btn.addEventListener('click', async ()=>{
   await pollMusic();
   pollNews();
 });
-loadModels(); pollMusic(); pollNews();
+loadModels(); loadTunings(); loadQuiet(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 

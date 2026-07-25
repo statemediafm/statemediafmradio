@@ -67,8 +67,10 @@ def _phase_harmony(i: int, seed: int) -> tuple[str, str]:
     if i % _HARMONY_CYCLE >= 5:
         return "d", _variant(_D_CHORDS, seed, i, "dchord")
     return "a", _variant(_A_CHORDS, seed, i, "achord")
-# A chime is a color tone {d} that always RESOLVES to the tonic (degree 0 = A).
-_CHIME_CELLS = ("<~ ~ {d} ~ ~ ~ 0 ~>", "<~ {d} ~ ~ ~ ~ ~ 0>", "<~ ~ ~ {d} ~ ~ 0 ~>")
+# A chime is a 1-, 2-, or 3-tone gesture in a4:major that steps down to a
+# resolution note — the tonic (A = degree 0) or the upcoming resolution (D = 3).
+_CHIME_NS = (1, 2, 3, 5)  # a chime is a 1-, 2-, 3-, or 5-tone gesture
+_CHIME_POS = {1: (6,), 2: (3, 6), 3: (2, 4, 6), 5: (1, 2, 3, 4, 6)}  # slot placements per count
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -128,32 +130,44 @@ def _binaural(hz: float) -> list[str]:
     ]
 
 
+def _chime_resolution(i: int, seed: int) -> int:
+    """Where the chime resolves: the tonic (A = 0), or the root of the harmonic
+    target coming up next (A = 0, or the resolved D = degree 3), chosen at random."""
+    if _pick(seed, i, "chimeres", 2) == 0:
+        return 0
+    return 3 if _phase_harmony(i + 1, seed)[0] == "d" else 0
+
+
 def _m_chime(i: int, seed: int) -> str:
-    """A sparse high major-pentatonic chime with a long echo — a color tone that
-    always resolves to the tonic (A). Sine only, with an occasional square
-    (softened by a low-pass); never a triangle or sawtooth."""
-    d = 1 + _pick(seed, i, "chime", 4)  # a non-tonic color degree 1..4, resolving to 0
-    cell = _variant(_CHIME_CELLS, seed, i, "chimepos").format(d=d)
+    """A 1-, 2-, 3-, or 5-tone chime: a short stepwise gesture that resolves to
+    the tonic or the next resolution note, with a long echo. Sine only, with an
+    occasional square (softened by a low-pass); never a triangle or sawtooth."""
+    n = _CHIME_NS[_pick(seed, i, "chimen", len(_CHIME_NS))]
+    res = _chime_resolution(i, seed)
+    gesture = list(range(res + n - 1, res - 1, -1))  # step down to the resolution note
+    slots = ["~"] * 8
+    for k, p in enumerate(_CHIME_POS[n]):
+        slots[p] = str(gesture[k])
+    cell = "<" + " ".join(slots) + ">"
     square = _pick(seed, i, "chimewave", 4) == 0  # ~1 in 4 chimes is a (tamed) square
     wave = ".s(\"square\").lpf(2200)" if square else '.s("sine")'
     return (  # more delay + a longer fade-off — a deeper, more hypnotic echo trail
-        f'    n("{cell}").scale("a4:major:pentatonic"){wave}'
+        f'    n("{cell}").scale("a4:major"){wave}'
         f".attack(0.005).release(6).delay(0.9).delaytime(0.66).delayfeedback(0.74)"
         f".pan(sine.range(0.25,0.75).slow(34)).room(0.9).roomsize(9).gain(0.09)"
     )
 
 
 def _m_noise(i: int, seed: int) -> str:
-    """A wave of colored noise — a slow low-passed TIDE rolling in and out, or a
-    high-passed RAIN hiss — drifting spatially."""
-    if _pick(seed, i, "noisekind", 2) == 0:  # tide: brown-ish wash, very slow swell
-        return (
-            '    s("white").lpf(600).room(0.85).roomsize(9)'
-            ".pan(sine.range(0.3,0.7).slow(40)).gain(sine.range(0,0.13).slow(28))"
-        )
-    return (  # rain: airy high-passed grains, steadier
-        '    s("white").hpf(2500).lpf(9000).room(0.6).roomsize(7)'
-        ".pan(rand).gain(rand.range(0.01,0.05).fast(24))"
+    """A wave of colored noise that swells and recedes like a TIDE — a long slow
+    attack/release plus a very slow gain swell, never a fast (respirator-like)
+    flutter. Colored by filtering (brown/soft/airy), drifting spatially."""
+    color = ["", ".lpf(500)", ".lpf(900).hpf(150)", ".hpf(2200).lpf(9000)"][
+        _pick(seed, i, "noisecol", 4)
+    ]
+    return (
+        f'    s("white"){color}.attack(8).release(10).room(0.85).roomsize(9)'
+        f".pan(sine.range(0.3,0.7).slow(48)).gain(sine.range(0.02,0.11).slow(32))"
     )
 
 
@@ -182,8 +196,10 @@ RULES: tuple[str, ...] = (
     "3. Entrainment rides a BINAURAL beat off the harmony root A where viable (beat ≤ 30 Hz); for gamma the drone's filter pulses at the band rate. No pulsing tone/melody.",
     "4. The frame drifts slowly downward toward relaxation over ~13–15 min; 16-bar phases.",
     "5. No voice repeats past 16 bars: each phase re-derives its material by a small, consonant step (a new chord voicing, chime, noise).",
-    "6. Low frequencies, rich (low-passed saw) harmonics, heavy reverb + delay echoes, colored-noise waves, slow spatial pan; nothing enters/leaves abruptly.",
-    "7. Deterministic per signal.",
+    "6. Chimes are occasional 1-, 2-, 3-, or 5-tone gestures that step down and RESOLVE to the tonic (A) or the upcoming resolution (D); long echo; sine or an occasional tamed square.",
+    "7. Any white/colored noise is a slow TIDE — long attack/release + a very slow swell, never a fast respirator-like flutter.",
+    "8. Low frequencies, rich (low-passed saw) harmonics, heavy reverb + delay echoes, slow spatial pan; nothing enters/leaves abruptly.",
+    "9. Deterministic per signal.",
 )
 
 

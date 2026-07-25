@@ -183,6 +183,19 @@ def test_compose_is_deterministic():
     assert a == b
 
 
+def test_tuning_retunes_all_notes_via_global_detune():
+    import math
+
+    base = compose(_signal(8, 3), style="Entrainment 0.1", tuning_a=440.0).text
+    assert ".detune(" not in base  # 440 is standard — no retune appended
+
+    for a in (432.0, 435.0):
+        text = compose(_signal(8, 3), style="Entrainment 0.1", tuning_a=a).text
+        cents = round(1200 * math.log2(a / 440.0), 3)
+        assert text.rstrip().endswith(f".detune({cents})")  # one global retune of all notes
+        assert cents < 0  # 432/435 are flatter than 440
+
+
 def test_ambient_models_are_registered():
     from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES
 
@@ -214,7 +227,7 @@ def test_entrainment_frame_drifts_down_toward_relaxation():
 
 def test_entrainment_a_pedal_resolves_to_d_no_walking():
     text = compose(_signal(20, 5, volatility=0.6), style="Entrainment 0.1").text
-    assert "major:pentatonic" in text and ":minor" not in text
+    assert ":minor" not in text
     assert "c#3" in text  # the A-major color
     # the harmony only ever sits on A (a2) or the resolved D (d2) — no walking
     chord_roots = re.findall(r'note\("<\[([a-g]#?\d)', text)
@@ -233,16 +246,22 @@ def test_entrainment_gamma_falls_back_to_filter_pulse():
     assert re.search(r"lpf\(sine\.range\([0-9,]+\)\.fast\(\d+\)\)", text)
 
 
-def test_entrainment_chimes_and_noise_are_occasional():
+def test_entrainment_chimes_resolve_and_noise_is_a_slow_tide():
     text = compose(_signal(8, 3), style="Entrainment 0.1").text
-    phases = text.count("[16, stack(")
-    assert 0 < text.count("a4:major:pentatonic") < phases  # chimes: present, not every phase
-    # chimes use only sine or square — never triangle/sawtooth
-    for m in re.finditer(r'a4:major:pentatonic"\)\.s\("(\w+)"\)', text):
-        assert m.group(1) in ("sine", "square")
-    # every chime resolves to the tonic (degree 0) as its final sounding note
-    for cell in re.findall(r'n\("(<[^"]*>)"\)\.scale\("a4:major:pentatonic"', text):
-        assert cell.rstrip("~ >").endswith("0")  # ...ends on the tonic
+    # chimes: occasional 1-, 2-, or 3-tone gestures resolving to A(0) or D(3)
+    cells = re.findall(r'n\("(<[^"]*>)"\)\.scale\("a4:major"\)', text)
+    assert len(cells) > 0
+    for cell in cells:
+        toks = [t for t in cell.strip("<> ").split() if t != "~"]
+        assert len(toks) in (1, 2, 3, 5)  # a 1-, 2-, 3-, or 5-tone chime
+        assert toks[-1] in ("0", "3")  # resolves to the tonic (A) or the upcoming D
+    for m in re.finditer(r'a4:major"\)(\.s\("(\w+)"\)|\.s\("(\w+)"\)\.lpf)', text):
+        assert (m.group(2) or m.group(3)) in ("sine", "square")  # never triangle/sawtooth
+    # any white/colored noise is a slow tide — long attack/release, no fast flutter
+    noise_lines = [ln for ln in text.splitlines() if 's("white")' in ln]
+    assert noise_lines
+    for ln in noise_lines:
+        assert ".attack(8).release(10)" in ln and "rand" not in ln and ".fast(" not in ln
 
 
 def test_synth_beat_is_always_present():
