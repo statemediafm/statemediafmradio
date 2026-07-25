@@ -82,8 +82,8 @@ def test_tintinnabuli_has_m_and_t_voices_largo_piano():
 def test_tintinnabuli_dissonance_scales_with_news_volume():
     calm = compose(_signal(2, 2), style="tintinnabuli").text  # few news items
     burst = compose(_signal(30, 5), style="tintinnabuli").text  # a burst of news
-    assert "d#5" not in calm  # consonant baseline — no dissonant stab
-    assert "d#5" in burst  # dissonance accent enters with a burst of news
+    assert "b4" not in calm  # consonant baseline — no dissonant add9
+    assert "b4" in burst  # gentle add9 dissonance enters with a burst of news
 
 
 def test_tintinnabuli_softens_high_notes_via_note_shaping():
@@ -91,10 +91,16 @@ def test_tintinnabuli_softens_high_notes_via_note_shaping():
     # White noise is part of the high notes: a transient following the note's
     # ADSR (short attack/decay/sustain), not a reverb drone.
     assert 's("white").hpf(1500)' in text
-    assert ".attack(0.004).decay(0.28)" in text  # note-shaped noise transient
-    assert "roomsize(6)" not in text  # no big reverb wash
+    assert ".attack(0.004).decay(0.28).sustain(0.03)" in text  # note-shaped transient
     # A filter envelope shapes the ADSR filter of the >C3 voices.
     assert ".lpenv(" in text
+
+
+def test_tintinnabuli_quartal_arpeggio_and_analog_movement():
+    text = compose(_signal(8, 3), style="tintinnabuli").text
+    assert 'scale("A2:minor")' in text  # the minimalist quartal arpeggio register
+    assert ".detune(" in text  # analog detuned oscillators
+    assert "sine.range(" in text and ".slow(" in text  # slow analog filter LFO
 
 
 def test_no_triangle_or_square_above_c2():
