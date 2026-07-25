@@ -52,8 +52,9 @@ def test_quiet_repo_idles_low_busy_repo_energizes():
 
 def test_program_text_is_valid_looking_strudel():
     text = compose(_signal(20, 5, volatility=0.5)).text
-    assert "setcps(" in text
-    assert "stack(" in text and ").fadeIn(" in text
+    assert "stack(" in text and ").fast(" in text
+    # @strudel/web has neither, and using them makes the whole program fail.
+    assert "setcps" not in text and "fadeIn" not in text
     # Metadata appears only in the leading header comment — never inline, so it
     # can't comment out a layer-separating comma.
     lines = text.splitlines()
@@ -68,16 +69,19 @@ def test_compose_is_deterministic():
     assert a == b
 
 
-def test_rhythm_layers_are_always_present():
-    # A plucky pentatonic melody and synth hats sound without any samples, so
-    # there is audible rhythm even for a quiet, single-participant repo.
+def test_synth_beat_is_always_present():
+    # The whole beat is synthesized (sine kick, noise snare + hats, plucky
+    # melody), so it sounds without samples even for a quiet, solo repo.
     solo = compose(_signal(1, 1, volatility=0.0)).text
     assert "scale(" in solo  # melody
-    assert "c5*" in solo  # synth hats
+    assert '.s("sine")' in solo  # kick
+    assert 's("white").struct' in solo  # snare on the backbeat
+    assert 's("white*' in solo  # hats
+    assert '"bd' not in solo and "RolandTR909" not in solo  # no sample drums
 
 
 def test_hats_get_denser_with_intensity():
     calm = compose(_signal(2, 1), intensity=0.2).text
     busy = compose(_signal(40, 8, volatility=0.9), intensity=0.9).text
-    assert "c5*4" in calm
-    assert "c5*8" in busy
+    assert "white*4" in calm
+    assert "white*8" in busy

@@ -90,7 +90,7 @@ def _render_page(store: _State) -> str:
 # on an interval; a start button satisfies the browser's audio-gesture rule, then
 # each changed program is evaluate()'d (its built-in .fadeIn crossfades the swap).
 # An incidental canvas visualizer reflects intensity + brainwave band.
-_PLAYER_HTML = """<!doctype html><meta charset='utf-8'>
+_PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 <title>Maelcom</title>
 <style>
@@ -120,22 +120,33 @@ _PLAYER_HTML = """<!doctype html><meta charset='utf-8'>
 const statusEl=document.getElementById('status');
 const newsEl=document.getElementById('news');
 const btn=document.getElementById('play');
-let started=false, lastProgram='', viz={intensity:0, band:'theta', on:false};
+let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
+const newsPlayer=new Audio(); let lastNewsUrl='';
+
+// Play the current program; while the news reads, duck the music by scaling the
+// whole stack's gain (drop the fadeIn so the toggle is immediate).
+async function playCurrent(){
+  if(!currentProg) return;
+  const base=currentProg.replace(/\.fadeIn\([0-9.]+\)\s*$/,'');
+  const code=ducked?base+'.gain(0.25)':currentProg;
+  // evaluate() is async; await it so a rejection is caught here (not "uncaught").
+  try{ await evaluate(code); }
+  catch(e){ console.error('strudel:',e); statusEl.textContent='music error: '+((e&&e.message)||e); }
+}
+function setDuck(on){ if(started && ducked!==on){ ducked=on; playCurrent(); } }
+newsPlayer.addEventListener('play', ()=>setDuck(true));
+newsPlayer.addEventListener('ended', ()=>setDuck(false));
+newsPlayer.addEventListener('pause', ()=>setDuck(false));
 
 async function pollMusic(){
   try{
     const d=await (await fetch('/genmusic')).json();
     if(!d.text){ statusEl.textContent='waiting for activity…'; return; }
     viz.intensity=d.intensity; viz.band=d.brainwave_band; viz.on=started;
-    if(started && d.text!==lastProgram){
-      lastProgram=d.text;
-      try{ evaluate(d.text); }
-      catch(e){ console.error('strudel:',e);
-        statusEl.textContent='music error: '+((e&&e.message)||e); return; }
-    }
+    if(started && d.text!==lastProgram){ lastProgram=d.text; currentProg=d.text; await playCurrent(); }
     const ctx=(typeof getAudioContext==='function')?getAudioContext():null;
     const ac=ctx?(' · audio '+ctx.state):'';
-    statusEl.textContent=(started?'● on air':'ready')+
+    statusEl.textContent=(started?(ducked?'● news over music':'● on air'):'ready')+
       ' · '+d.style+' · '+d.brainwave_band+' · intensity '+d.intensity.toFixed(2)+ac;
   }catch(e){}
 }
@@ -149,7 +160,6 @@ async function pollNews(){
             (s.audio_url?'<audio controls src="'+s.audio_url+'"></audio>':'')+'</article>';
     }
     newsEl.innerHTML=html||'<p class="muted">No broadcast yet.</p>';
-    // Once on air, read the latest news aloud automatically (over the music bed).
     const first=segs.find(s=>s.audio_url);
     if(started && first && first.audio_url!==lastNewsUrl){
       lastNewsUrl=first.audio_url; newsPlayer.src=first.audio_url;
@@ -157,18 +167,24 @@ async function pollNews(){
     }
   }catch(e){}
 }
-const newsPlayer=new Audio(); let lastNewsUrl='';
 btn.addEventListener('click', async ()=>{
   if(started) return; started=true; btn.disabled=true; btn.textContent='● On air';
   statusEl.textContent='starting…';
-  try{ initStrudel(); }
+  try{ await initStrudel(); }
   catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
-  // Load drum samples in the BACKGROUND — never block playback on the download.
-  // The synth pad/melody/hats carry the beat immediately; the sample drums just
-  // join in once they finish loading (or never, if the fetch fails).
-  samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
+  // Warm up: the first evaluate can reject with "setcps is not defined" until
+  // Strudel finishes registering its runtime. Retry a tiny silent pattern until
+  // it succeeds, THEN play the real program.
+  statusEl.textContent='warming up…';
+  for(let i=0;i<80;i++){
+    try{ await evaluate('setcps(0.5)\ns("~")'); break; }
+    catch(e){ await new Promise(r=>setTimeout(r,80)); }
+  }
+  if(typeof window.samples==='function'){
+    samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
+  }
   await pollMusic();
-  pollNews();   // read the latest news promptly, don't wait for the next poll tick
+  pollNews();
 });
 pollMusic(); pollNews();
 setInterval(pollMusic, 8000);

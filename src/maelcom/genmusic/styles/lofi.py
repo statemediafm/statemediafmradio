@@ -33,12 +33,12 @@ _BASS_ROOTS = (
     "<e2 c2 a1 b1>",
     "<d2 g1 c2 a1>",
 )
-# Drum patterns from sparse to busy, indexed by intensity.
-_DRUMS = (
-    "bd ~ ~ ~",
-    "bd ~ [~ sd] ~",
-    "bd ~ sd ~, ~ ~ [~ bd] ~",
-    "bd*2 ~ sd ~, ~ [~ bd] sd ~",
+# Synth kick patterns (a low sine blip), sparse to busy by intensity.
+_KICKS = (
+    "c1 ~ ~ ~",
+    "c1 ~ c1 ~",
+    "c1 ~ c1 ~",
+    "c1 ~ c1 [~ c1]",
 )
 # A pentatonic-ish lead phrase per number of scattered notes (2..5).
 _LEAD_STEPS = {
@@ -63,19 +63,20 @@ def render(
 ) -> str:
     """Render a lofi Strudel program from the signal and derived energy."""
     intensity = clamp01(intensity)
-    cps = round(0.30 + intensity * 0.45, 3)  # 0.30 (theta) .. 0.75 (gamma)
+    # Tempo rides on the pattern via .fast() — @strudel/web has no setcps.
+    # ~0.6x (theta, laid-back) to ~1.5x (gamma, driving).
+    fast = round(0.6 + intensity * 0.9, 2)
     lpf = round(400 + intensity * 1600)  # darker when calm, brighter when busy
     room = round(max(0.2, 0.6 - intensity * 0.3), 2)  # spacious when calm
-    fade_s = round(fade_ms / 1000.0, 3)
 
     variant = _seed(signal) % len(_PROGRESSIONS)
     prog = _PROGRESSIONS[variant]
     bass = _BASS_ROOTS[variant]
-    drums = _DRUMS[min(3, int(intensity * 4))]
+    kick = _KICKS[min(3, int(intensity * 4))]
 
-    # Rhythm comes from SYNTHS (always audible — no samples needed): a plucky
-    # pentatonic melody and ticking hats. Sample drums are a bonus layer that
-    # only sounds if the browser has loaded a drum sample set.
+    # The whole beat is SYNTHESIZED (no samples): a sine-blip kick, a white-noise
+    # snare on the backbeat, and filtered white-noise hats — so a lofi beat plays
+    # immediately and reliably, even before/without any sample download.
     note_count = 2 + min(3, round(clamp01(signal.volatility) * 3))
     steps = _LEAD_STEPS[note_count]
     lead_voice = next(iter(signal.actor_voices.values()), "rhodes")
@@ -87,12 +88,12 @@ def render(
         f".decay(0.15).sustain(0).lpf({lead_lpf}).gain(0.4)"
     )
     layers = [
-        # Pad + bass (sustained), then an always-on plucky melody for movement.
         f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({room}).gain(0.4).slow(2)',
         f'  note("{bass}").s("sawtooth").lpf(300).gain(0.5).slow(2)',
         melody,
-        f'  note("c5*{hats}").s("square").decay(0.02).sustain(0).gain(0.12)',
-        f'  s("{drums}").gain(0.8)',
+        f'  note("{kick}").s("sine").decay(0.16).sustain(0).gain(1.1)',
+        '  s("white").struct("~ x ~ x").decay(0.09).sustain(0).gain(0.45)',
+        f'  s("white*{hats}").decay(0.014).sustain(0).hpf(9000).gain(0.3)',
     ]
 
     # Metadata lives only in the header comment — never inline, so it can't eat
@@ -105,4 +106,4 @@ def render(
         f"{lead_note}"
     )
     body = ",\n".join(layers)
-    return f"{header}\nsetcps({cps})\nstack(\n{body}\n).fadeIn({fade_s})"
+    return f"{header}\nstack(\n{body}\n).fast({fast})"
