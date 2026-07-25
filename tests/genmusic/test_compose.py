@@ -25,7 +25,7 @@ def _signal(volume: int, participants: int, volatility: float = 0.2) -> Activity
 def test_compose_returns_program_with_matching_band():
     program = compose(_signal(3, 2))
     assert isinstance(program, StrudelProgram)
-    assert program.style == "ScratchPad"  # the default ambient generator
+    assert program.style == "Entrainment 0.1"  # the default ambient generator
     assert 0.0 <= program.intensity <= 1.0
     # The band is exactly the one the intensity falls in.
     from maelcom.genmusic.brainwave import band_for_intensity
@@ -186,7 +186,7 @@ def test_compose_is_deterministic():
 def test_ambient_models_are_registered():
     from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES
 
-    assert AMBIENT_MODELS == ("ScratchPad", "Entrainment 0.1")
+    assert AMBIENT_MODELS == ("Entrainment 0.1", "ScratchPad")  # default first
     for model in AMBIENT_MODELS:
         assert model in STYLES  # each selectable model has a renderer
 
@@ -240,6 +240,9 @@ def test_entrainment_chimes_and_noise_are_occasional():
     # chimes use only sine or square — never triangle/sawtooth
     for m in re.finditer(r'a4:major:pentatonic"\)\.s\("(\w+)"\)', text):
         assert m.group(1) in ("sine", "square")
+    # every chime resolves to the tonic (degree 0) as its final sounding note
+    for cell in re.findall(r'n\("(<[^"]*>)"\)\.scale\("a4:major:pentatonic"', text):
+        assert cell.rstrip("~ >").endswith("0")  # ...ends on the tonic
 
 
 def test_synth_beat_is_always_present():

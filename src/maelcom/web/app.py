@@ -31,7 +31,7 @@ class _State:
         self.plan: BroadcastPlan | None = None
         self.audio: dict[str, AudioRef] = {}
         self.program: StrudelProgram | None = None
-        self.model: str = "ScratchPad"  # the selected ambient generator
+        self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
         self.last_signal = None  # last ActivitySignal, for immediate model switches
 
     def set_plan(self, plan: BroadcastPlan) -> None:

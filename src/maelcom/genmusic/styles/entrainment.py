@@ -67,7 +67,8 @@ def _phase_harmony(i: int, seed: int) -> tuple[str, str]:
     if i % _HARMONY_CYCLE >= 5:
         return "d", _variant(_D_CHORDS, seed, i, "dchord")
     return "a", _variant(_A_CHORDS, seed, i, "achord")
-_CHIME_CELLS = ("<~ ~ ~ {d} ~ ~ ~ ~>", "<~ {d} ~ ~ ~ ~ ~ ~>", "<~ ~ ~ ~ ~ ~ {d} ~>")
+# A chime is a color tone {d} that always RESOLVES to the tonic (degree 0 = A).
+_CHIME_CELLS = ("<~ ~ {d} ~ ~ ~ 0 ~>", "<~ {d} ~ ~ ~ ~ ~ 0>", "<~ ~ ~ {d} ~ ~ 0 ~>")
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -128,10 +129,11 @@ def _binaural(hz: float) -> list[str]:
 
 
 def _m_chime(i: int, seed: int) -> str:
-    """A sparse high major-pentatonic chime with a long echo — evolves each phase.
-    Sine only, with an occasional square (softened by a low-pass); never a
-    triangle or sawtooth."""
-    cell = _variant(_CHIME_CELLS, seed, i, "chimepos").format(d=_pick(seed, i, "chime", 5))
+    """A sparse high major-pentatonic chime with a long echo — a color tone that
+    always resolves to the tonic (A). Sine only, with an occasional square
+    (softened by a low-pass); never a triangle or sawtooth."""
+    d = 1 + _pick(seed, i, "chime", 4)  # a non-tonic color degree 1..4, resolving to 0
+    cell = _variant(_CHIME_CELLS, seed, i, "chimepos").format(d=d)
     square = _pick(seed, i, "chimewave", 4) == 0  # ~1 in 4 chimes is a (tamed) square
     wave = ".s(\"square\").lpf(2200)" if square else '.s("sine")'
     return (  # more delay + a longer fade-off — a deeper, more hypnotic echo trail

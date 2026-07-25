@@ -2,9 +2,11 @@
 
 The user-selectable **ambient generators** are named compositional *models*:
 
-- ``ScratchPad`` (default) — the grown-up rule base: dark, low, slow-canon
-  Dorian ambient with rare glints, modulation, fades and a synced sub-bass.
-- ``Entrainment 0.1`` — a fresh model built from the ground up (a bare canvas).
+- ``Entrainment 0.1`` (default) — brainwave-entrainment ambient journeys: an
+  evolving A-pedal major-chord drone (resolving to D), binaural/isochronic
+  entrainment, chimes and colored-noise tide/rain waves.
+- ``ScratchPad`` — the grown-up rule base: dark, low, slow-canon Dorian ambient
+  with rare glints, modulation, fades and a synced sub-bass.
 
 ``lofi`` is a separate chilled-beat style (not an ambient generator). All share
 the same ``render(signal, intensity, band, fade_ms) -> str`` signature.
@@ -14,13 +16,13 @@ from __future__ import annotations
 
 from . import entrainment, lofi, scratchpad
 
-# The user-selectable ambient-generator models, in display order.
-AMBIENT_MODELS = ("ScratchPad", "Entrainment 0.1")
+# The user-selectable ambient-generator models, in display order (default first).
+AMBIENT_MODELS = ("Entrainment 0.1", "ScratchPad")
 
 # Style/model name → render(signal, intensity, band, fade_ms) -> str
 STYLES = {
-    "ScratchPad": scratchpad.render,
     "Entrainment 0.1": entrainment.render,
+    "ScratchPad": scratchpad.render,
     "lofi": lofi.render,
 }
 

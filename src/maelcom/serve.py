@@ -57,7 +57,7 @@ def refresh_once(
     # model switch can recompose immediately.
     signal = activity(all_items)
     state.last_signal = signal
-    state.set_program(compose(signal, style=getattr(state, "model", "ScratchPad")))
+    state.set_program(compose(signal, style=getattr(state, "model", "Entrainment 0.1")))
 
     # News plan only when the item set changed (voicing is the expensive part).
     signature = tuple(sorted(item.id for item in all_items))
