@@ -14,16 +14,29 @@ the same ``render(signal, intensity, band, fade_ms) -> str`` signature.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from . import entrainment, lofi, scratchpad
 
 # The user-selectable ambient-generator models, in display order (default first).
-AMBIENT_MODELS = ("Entrainment 0.1", "ScratchPad")
+# A list so user/contributor generators can be registered at runtime (see
+# ``maelcom.genmusic.generators``).
+AMBIENT_MODELS = ["Entrainment 0.1", "ScratchPad"]
 
 # Style/model name → render(signal, intensity, band, fade_ms) -> str
-STYLES = {
+STYLES: dict[str, Callable] = {
     "Entrainment 0.1": entrainment.render,
     "ScratchPad": scratchpad.render,
     "lofi": lofi.render,
 }
 
-__all__ = ["AMBIENT_MODELS", "STYLES", "entrainment", "lofi", "scratchpad"]
+
+def register_model(name: str, render: Callable, *, ambient: bool = True) -> None:
+    """Register a generator's ``render`` under ``name`` (idempotent). When
+    ``ambient`` it also appears as a selectable ambient generator."""
+    STYLES[name] = render
+    if ambient and name not in AMBIENT_MODELS:
+        AMBIENT_MODELS.append(name)
+
+
+__all__ = ["AMBIENT_MODELS", "STYLES", "entrainment", "lofi", "register_model", "scratchpad"]

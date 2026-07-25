@@ -1,0 +1,28 @@
+# Ambient generator — template. Copy this to `<your-name>.toml` and edit.
+# (This file is named `template.toml`, so the loader skips it.)
+
+# How the generator appears; `generator = "…"` and the UI dropdown use this name.
+name = "My Generator"
+
+# One line shown in listings.
+description = "A calm, evolving ambient bed."
+
+# The composition rule base / aesthetic, in prose. Write this FIRST — it is the
+# design spec (and a hook for a future prompt-driven renderer). See ENTRAINMENT.md
+# for the style of rule base the built-ins were grown from.
+prompt = """
+- Stay low and consonant; nothing harsh.
+- One slowly-evolving chord bed over a stable pedal.
+- Occasional bright chimes that resolve to the tonic.
+- Everything long attack/release, heavy reverb; no abrupt changes.
+"""
+
+# OPTIONAL — makes the generator playable & selectable. A dotted module path and
+# a function name of a render(signal, intensity, band, fade_ms) -> str. Remove
+# this line to keep the entry as a design spec only (loaded, not registered).
+# renderer = "my_generators.my_generator:render"
+
+# OPTIONAL — free-form parameters your renderer may read.
+[params]
+key = "C"
+mode = "major"

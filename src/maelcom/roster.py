@@ -43,6 +43,22 @@ def load_config(path: str | Path) -> dict:
     return tomllib.loads(raw.decode("utf-8"))
 
 
+_DEFAULT_GENERATOR = "Entrainment 0.1"
+
+
+def genmusic_settings(config: dict) -> dict:
+    """The ``[genmusic]`` config: which ambient generator to use, whether to show
+    the UI selector (off by default), and an optional dir of user/contributor
+    generators to load. Sensible defaults when the section is absent.
+    """
+    g = config.get("genmusic", {}) if isinstance(config, dict) else {}
+    return {
+        "generator": g.get("generator", _DEFAULT_GENERATOR),
+        "selector": bool(g.get("selector", False)),
+        "generators_dir": g.get("generators"),
+    }
+
+
 def _build_source(topic: str, seg: dict) -> Source:
     kind = seg.get("source")
     max_count = int(seg.get("max_count", 25))

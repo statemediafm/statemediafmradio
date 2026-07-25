@@ -199,7 +199,7 @@ def test_tuning_retunes_all_notes_via_global_detune():
 def test_ambient_models_are_registered():
     from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES
 
-    assert AMBIENT_MODELS == ("Entrainment 0.1", "ScratchPad")  # default first
+    assert list(AMBIENT_MODELS[:2]) == ["Entrainment 0.1", "ScratchPad"]  # defaults, first is default
     for model in AMBIENT_MODELS:
         assert model in STYLES  # each selectable model has a renderer
 

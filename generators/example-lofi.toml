@@ -1,0 +1,10 @@
+# A working example: register the built-in lo-fi renderer as a config generator,
+# to demonstrate the plugin path. Loading this directory makes "Lo-Fi (config)"
+# selectable. Point `renderer` at your own module to add a real new generator.
+name = "Lo-Fi (config)"
+description = "The built-in chilled lo-fi beat, registered from a config file (demo)."
+prompt = """
+Chilled lo-fi: a jazzy ii-V-I pad, a plucky pentatonic lead, a synthesized beat
+(sine kick, noise snare/hats). See maelcom/genmusic/styles/lofi.py.
+"""
+renderer = "maelcom.genmusic.styles.lofi:render"

@@ -133,18 +133,37 @@ def run(
     refresh: float = 60.0,
     headline_pause_ms: int = 1000,
     style: str = "bbc-world",
+    generator: str = "Entrainment 0.1",
+    show_selector: bool = False,
+    generators_dir: str | None = None,
 ) -> int:
-    """Boot the FastAPI app and drive ``refresh_once`` on an interval."""
+    """Boot the FastAPI app and drive ``refresh_once`` on an interval.
+
+    The **ambient generator** is a config item: ``generator`` is the default
+    model; ``show_selector`` controls whether the UI dropdown is shown (off by
+    default); ``generators_dir`` is an optional directory of user/contributor
+    generator configs to register before serving.
+    """
     try:
         import asyncio
 
         import uvicorn
 
+        from .genmusic.generators import load_generators, register_generators
+        from .genmusic.styles import STYLES
         from .web.app import _State, create_app
     except ImportError as exc:
         raise SystemExit("serve needs the [web] extra: pip install -e '.[web]'") from exc
 
+    if generators_dir:  # register user/contributor generators before serving
+        register_generators(load_generators(generators_dir))
+
     state = _State()
+    if generator in STYLES:
+        state.model = generator
+    else:
+        print(f"unknown generator {generator!r}; using {state.model!r}", file=sys.stderr)
+    state.show_selector = show_selector
     app = create_app(state)
     cache: dict = {}
 

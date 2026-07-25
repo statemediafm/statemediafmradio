@@ -66,6 +66,14 @@ def test_models_list_and_switch():
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
+def test_models_selector_hidden_by_default():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/models").json()["selector"] is False  # config item, off by default
+    state.show_selector = True
+    assert client.get("/models").json()["selector"] is True
+
+
 def test_tuning_list_and_switch():
     state = _State()
     client = TestClient(create_app(state))

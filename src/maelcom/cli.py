@@ -29,7 +29,7 @@ from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
 from .newsroom.summarize import radio_reads, summarize, time_greeting
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs, render_reads
-from .roster import build_roster, load_config
+from .roster import build_roster, genmusic_settings, load_config
 from .sources import HackerNewsSource, Source, open_source
 
 # Voices rotated across broadcast segments so each topic/source sounds distinct.
@@ -294,6 +294,9 @@ def _serve(args: argparse.Namespace) -> int:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
     tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
+    # The ambient generator is a config item ([genmusic] in the --config file);
+    # by default the UI selector is hidden and Entrainment 0.1 is used.
+    gm = genmusic_settings(load_config(args.config) if args.config else {})
     return serve_mod.run(
         roster,
         tts,
@@ -302,6 +305,9 @@ def _serve(args: argparse.Namespace) -> int:
         refresh=args.refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
         style=args.style,
+        generator=gm["generator"],
+        show_selector=gm["selector"],
+        generators_dir=gm["generators_dir"],
     )
 
 

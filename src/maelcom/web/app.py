@@ -32,6 +32,7 @@ class _State:
         self.audio: dict[str, AudioRef] = {}
         self.program: StrudelProgram | None = None
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
+        self.show_selector: bool = False  # show the generator dropdown in the UI? (config)
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
@@ -86,10 +87,15 @@ def create_app(state: _State | None = None):
 
     @app.get("/models")
     def models() -> dict:
-        """The user-selectable ambient generators and the current selection."""
+        """The user-selectable ambient generators, the current one, and whether
+        the UI should show the selector at all (off by default, set by config)."""
         from ..genmusic.styles import AMBIENT_MODELS
 
-        return {"models": list(AMBIENT_MODELS), "current": store.model}
+        return {
+            "models": list(AMBIENT_MODELS),
+            "current": store.model,
+            "selector": store.show_selector,
+        }
 
     @app.post("/model")
     def set_model(name: str) -> dict:
@@ -193,6 +199,8 @@ const modelSel=document.getElementById('model');
 async function loadModels(){
   try{
     const d=await (await fetch('/models')).json();
+    // The generator selector is hidden unless enabled by config (default off).
+    document.getElementById('modelwrap').style.display = d.selector ? 'inline-block' : 'none';
     modelSel.innerHTML='';
     for(const m of d.models){
       const o=document.createElement('option'); o.value=m; o.textContent=m;
