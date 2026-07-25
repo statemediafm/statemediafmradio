@@ -212,14 +212,16 @@ def test_entrainment_frame_drifts_down_toward_relaxation():
     assert m and float(m.group(2)) <= float(m.group(1))  # never drifts up
 
 
-def test_entrainment_major_chords_over_a_stable_bass():
+def test_entrainment_a_pedal_resolves_to_d_no_walking():
     text = compose(_signal(20, 5, volatility=0.6), style="Entrainment 0.1").text
-    # major key throughout; the drone is a major chord (has the major third c#)
     assert "major:pentatonic" in text and ":minor" not in text
-    assert "c#3" in text
-    # stable low-A pedal: a1 sub + every chord voiced on a2 — the bass never walks
-    assert 'note("a1").s("sine")' in text
-    assert set(re.findall(r'note\("<\[([a-g]#?\d)', text)) == {"a2"}
+    assert "c#3" in text  # the A-major color
+    # the harmony only ever sits on A (a2) or the resolved D (d2) — no walking
+    chord_roots = re.findall(r'note\("<\[([a-g]#?\d)', text)
+    assert set(chord_roots) <= {"a2", "d2"}
+    assert chord_roots.count("a2") > chord_roots.count("d2")  # A is home; D is the resolution
+    # the deep bass pedal follows the root (a1, and d1 an octave down when resolved)
+    assert 'note("a1").s("sine")' in text and 'note("d1").s("sine")' in text
     # entrainment rides a binaural beat (an exact freq() pair, hard L/R) where viable
     assert "freq(220)" in text and ".pan(0)" in text and ".pan(1)" in text
     assert re.search(r"\.pan\(sine\.range\(", text)  # slow spatial movement

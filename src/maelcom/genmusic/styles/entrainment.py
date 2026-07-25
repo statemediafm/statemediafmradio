@@ -8,9 +8,11 @@ drone's filter pulse carries it). See ENTRAINMENT.md for the research.
 
 - **Bass (every phase):** a stable low‑A pedal — a1 sub + a2 as every chord's
   lowest voice — so the bottom never walks.
-- **Drone (every phase):** a true **A pedal** — the root never moves; only the
-  upper *color* evolves (A / add9 / maj7 / 6 / sus4 / 5), one per 16‑bar phase,
-  with long crossfades. Rich low‑passed‑saw harmonics, slow filter breath, pan.
+- **Drone (every phase):** an A pedal whose upper *color* evolves (A / add9 /
+  maj7 / 6 / sus4 / 5) with long crossfades. Over a slow ~4-min arc it makes a
+  deliberate **resolution to a deep D** (an octave down, with G/F color), dwells
+  there a while, then returns to A — a resolution, never a walking bass. Rich
+  low-passed-saw harmonics, slow filter breath, spatial pan.
 - **Entrainment (every phase):** a **binaural** beat from the harmony root A (two
   pure sines a `hz` beat apart, hard L/R, exact via ``freq()``) where viable
   (beat ≤ 30 Hz); for gamma the drone's **filter** pulses at the band rate.
@@ -35,10 +37,11 @@ _PHASE_BARS = 16  # a voice may hold at most one 16-bar phase, then it must evol
 _BINAURAL_CARRIER = 220.0  # A3 — the harmony's root, high enough for a viable low-Hz beat
 _BINAURAL_MAX_HZ = 30.0  # above this the two tones separate into distinct pitches — not viable
 
-# Per-phase material pools. The harmony is a true A PEDAL: every chord is rooted
-# on A (a1 sub + a2 lowest voice + A the harmonic root) — only the upper *color*
-# evolves (major / add9 / maj7 / 6 / sus4 / 5). The bass and root never move.
-_CHORDS = (
+# Per-phase material pools. The harmony sits on an A pedal and, every fourth
+# phase, makes a slow *deliberate resolution to D* — a deep octave-down D with G/F
+# color — then returns to A. This is a resolution, not a walking bass: the root
+# moves at most once per ~2 minutes and only between A and D.
+_A_CHORDS = (
     "<[a2,c#3,e3]>",  # A major
     "<[a2,c#3,e3,b3]>",  # A add9
     "<[a2,c#3,e3,g#3]>",  # A major 7
@@ -46,6 +49,24 @@ _CHORDS = (
     "<[a2,d3,e3]>",  # A sus4
     "<[a2,e3,a3]>",  # A5 (open — a resting point)
 )
+_D_CHORDS = (  # the resolution — a low D (sub adds d1 an octave down), with G and F
+    "<[d2,a2,d3]>",  # D open (fifth)
+    "<[d2,f3,a3]>",  # D with F natural (modal color)
+    "<[d2,g3,a3]>",  # D with G (sus)
+    "<[d2,a2,f3,g3]>",  # D with both F and G
+)
+
+
+_HARMONY_CYCLE = 8  # phases: ~5 on A, then ~3 resolved on D, then back to A
+
+
+def _phase_harmony(i: int, seed: int) -> tuple[str, str]:
+    """A slow harmonic arc: spend a while on the A pedal, resolve to a deep D and
+    dwell there a few phases (~1.5 min), then return to A. The root moves at most
+    twice per ~4-minute cycle — a resolution, never a walking bass."""
+    if i % _HARMONY_CYCLE >= 5:
+        return "d", _variant(_D_CHORDS, seed, i, "dchord")
+    return "a", _variant(_A_CHORDS, seed, i, "achord")
 _CHIME_CELLS = ("<~ ~ ~ {d} ~ ~ ~ ~>", "<~ {d} ~ ~ ~ ~ ~ ~>", "<~ ~ ~ ~ ~ ~ {d} ~>")
 
 
@@ -75,15 +96,16 @@ def _variant(pool: tuple[str, ...], seed: int, i: int, tag: str) -> str:
     return pool[_hash(seed, i, tag) % len(pool)]
 
 
-def _sub_pedal() -> str:
-    """The stable low-A bass pedal — never walks; long fades so it stays seamless."""
-    return '    note("a1").s("sine").lpf(120).attack(6).release(10).gain(0.18)'
+def _sub_pedal(root: str) -> str:
+    """The deep bass pedal on the current root (a1, or d1 when resolved to D);
+    long fades so it stays seamless and moves only on the slow resolution."""
+    return f'    note("{root}1").s("sine").lpf(120).attack(6).release(10).gain(0.18)'
 
 
-def _chord_drone(i: int, seed: int, hz: float, viable: bool) -> str:
-    """The multivoice major-chord drone — its upper voices evolve each phase. When
-    binaural isn't viable (gamma) its filter pulses at the band rate instead."""
-    chord = _variant(_CHORDS, seed, i, "chord")
+def _chord_drone(chord: str, hz: float, viable: bool) -> str:
+    """The multivoice chord drone — its color evolves each phase; long attack/
+    release so chords crossfade. When binaural isn't viable (gamma) its filter
+    pulses at the band rate instead."""
     if viable:
         filt = "lpf(sine.range(220,560).slow(24))"
     else:
@@ -112,9 +134,9 @@ def _m_chime(i: int, seed: int) -> str:
     cell = _variant(_CHIME_CELLS, seed, i, "chimepos").format(d=_pick(seed, i, "chime", 5))
     square = _pick(seed, i, "chimewave", 4) == 0  # ~1 in 4 chimes is a (tamed) square
     wave = ".s(\"square\").lpf(2200)" if square else '.s("sine")'
-    return (
+    return (  # more delay + a longer fade-off — a deeper, more hypnotic echo trail
         f'    n("{cell}").scale("a4:major:pentatonic"){wave}'
-        f".attack(0.005).release(3).delay(0.7).delaytime(0.75).delayfeedback(0.55)"
+        f".attack(0.005).release(6).delay(0.9).delaytime(0.66).delayfeedback(0.74)"
         f".pan(sine.range(0.25,0.75).slow(34)).room(0.9).roomsize(9).gain(0.09)"
     )
 
@@ -154,7 +176,7 @@ def _frame(seed: int, start_hz: float, n: int) -> list[float]:
 
 RULES: tuple[str, ...] = (
     "1. Basic mode: an evolving A-major-color drone + occasional chimes + colored-noise (tide/rain) waves. No melody voice.",
-    "2. A true A PEDAL — the root NEVER moves (a1 sub + a2 lowest voice + A the harmonic root); only the upper color evolves (A / add9 / maj7 / 6 / sus4 / 5), with long crossfades.",
+    "2. An A pedal that, over a slow ~4-min arc, makes a deliberate RESOLUTION to a deep D (octave down, with G/F color), dwells there a while, then returns to A. The root moves only on the resolution — never a walking bass.",
     "3. Entrainment rides a BINAURAL beat off the harmony root A where viable (beat ≤ 30 Hz); for gamma the drone's filter pulses at the band rate. No pulsing tone/melody.",
     "4. The frame drifts slowly downward toward relaxation over ~13–15 min; 16-bar phases.",
     "5. No voice repeats past 16 bars: each phase re-derives its material by a small, consonant step (a new chord voicing, chime, noise).",
@@ -173,7 +195,8 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
     for i in range(n):
         hz = frame[i]
         viable = hz <= _BINAURAL_MAX_HZ
-        layers = [_sub_pedal(), _chord_drone(i, seed, hz, viable), *_binaural(hz)]
+        root, chord = _phase_harmony(i, seed)
+        layers = [_sub_pedal(root), _chord_drone(chord, hz, viable), *_binaural(hz)]
         if _chime_on(seed, i):
             layers.append(_m_chime(i, seed))
         if _noise_on(seed, i):
