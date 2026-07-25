@@ -197,8 +197,8 @@ def test_entrainment_renders_a_journey_over_a_drifting_frame():
     text = prog.text
     assert "Entrainment 0.1" in text and "journey" in text
     assert "setcps" not in text and "fadeIn" not in text  # the traps
-    # a multi-phase arrangement (10+ phases), each a stack, no abrupt top-level cut
-    assert "arrange(" in text and text.count(f"[{36}, stack(") >= 10
+    # a multi-phase arrangement of 16-bar phases (so no voice loops past 16 bars)
+    assert "arrange(" in text and text.count("[16, stack(") >= 20
     # a continuous low drone frame + a pulsing entrainment carrier
     assert 'note("<[a1,e2]>")' in text
     assert re.search(r"\.fast\(\d+\)", text)  # the entrainment pulse rate (amplitude/filter/pan)
