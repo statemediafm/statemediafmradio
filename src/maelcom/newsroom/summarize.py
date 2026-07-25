@@ -185,7 +185,7 @@ def radio_reads(
             for i, h in enumerate(groups[origin]):
                 text = f"From {origin}, {h}." if i == 0 else f"{h}."
                 reads.append(Read("headline", text, origin))
-    reads.append(Read("other", "That's the latest from the newsroom. More as it develops."))
+    reads.append(Read("other", "And that's the latest from the newsroom. More as it develops."))
     return reads
 
 
