@@ -28,6 +28,7 @@ def test_index_serves_strudel_player():
     assert "initStrudel(" in html and "evaluate(" in html  # starts + plays
     assert "/genmusic" in html and "/plan" in html  # polls both endpoints
     assert 'id=\'viz\'' in html  # the visualizer canvas
+    assert "/models" in html and 'id=\'model\'' in html  # the ambient-generator dropdown
 
 
 def test_genmusic_empty_then_published():
@@ -41,10 +42,27 @@ def test_genmusic_empty_then_published():
     )
     state.set_program(program)
     body = client.get("/genmusic").json()
-    assert body["style"] == "tintinnabuli"
+    assert body["style"] == "ScratchPad"
     assert body["brainwave_band"] == program.brainwave_band
     assert "stack(" in body["text"]
     assert body["fade_ms"] == 2000
+
+
+def test_models_list_and_switch():
+    state = _State()
+    client = TestClient(create_app(state))
+    listing = client.get("/models").json()
+    assert listing["models"] == ["ScratchPad", "Entrainment 0.1"]
+    assert listing["current"] == "ScratchPad"  # default
+
+    # Switching with a live signal recomposes immediately with the new model.
+    state.last_signal = ActivitySignal(window_s=0.0, volume=5, volatility=0.3, participant_count=2)
+    resp = client.post("/model", params={"name": "Entrainment 0.1"})
+    assert resp.json() == {"current": "Entrainment 0.1"}
+    assert state.model == "Entrainment 0.1"
+    assert client.get("/genmusic").json()["style"] == "Entrainment 0.1"
+
+    assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
 def test_serve_refresh_makes_genmusic_and_plan_live():
@@ -64,6 +82,6 @@ def test_serve_refresh_makes_genmusic_and_plan_live():
 
     refresh_once(state, [("HN", _FakeSource(), Cadence(900, 0), 5)], ToneWavTTS(), cache={})
     music = client.get("/genmusic").json()
-    assert music["style"] == "tintinnabuli" and "stack(" in music["text"]
+    assert music["style"] == "ScratchPad" and "stack(" in music["text"]
     plan = client.get("/plan").json()
     assert plan["segments"] and plan["segments"][0]["title"] == "HN"

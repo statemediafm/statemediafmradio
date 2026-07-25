@@ -52,8 +52,12 @@ def refresh_once(
     if not all_items:
         return
 
-    # Music every tick — cheap and deterministic from the current activity.
-    state.set_program(compose(activity(all_items)))
+    # Music every tick — cheap and deterministic from the current activity. Use
+    # the currently-selected ambient generator; remember the signal so a live
+    # model switch can recompose immediately.
+    signal = activity(all_items)
+    state.last_signal = signal
+    state.set_program(compose(signal, style=getattr(state, "model", "ScratchPad")))
 
     # News plan only when the item set changed (voicing is the expensive part).
     signature = tuple(sorted(item.id for item in all_items))

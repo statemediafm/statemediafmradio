@@ -1,4 +1,8 @@
-"""The default generative style — dark, low, slow-canon ambient with rare glints.
+"""The **ScratchPad** ambient generator — dark, low, slow-canon ambient with glints.
+
+ScratchPad is the first compositional model (an "ambient generator"): the running
+sketchpad where we grew this rule set. The next model, *Entrainment 0.1*, starts
+fresh from the ground up.
 
 This module is built to an explicit **composition rule base** — see the ``RULES``
 tuple below, the single source of truth we build up from. In short: **Dorian**
@@ -347,7 +351,7 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
     main = "arrange(\n" + ",\n".join(blocks) + "\n)"
 
     header = (
-        f"// maelcom tintinnabuli · dark {keys[0]} {_MODE} · slow canons, rare glints, "
+        f"// maelcom ScratchPad · dark {keys[0]} {_MODE} · slow canons, rare glints, "
         f"modulating ~every 2 min, tintinnabuli ~every 180 bars · band={band} · "
         f"{signal.volume} change{'s' if signal.volume != 1 else ''}"
     )

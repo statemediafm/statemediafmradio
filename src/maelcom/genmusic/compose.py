@@ -15,7 +15,7 @@ from .styles import STYLES
 
 def compose(
     signal: ActivitySignal,
-    style: str = "tintinnabuli",
+    style: str = "ScratchPad",
     *,
     intensity: float | None = None,
     base_intensity: float = THETA_START,

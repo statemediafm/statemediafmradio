@@ -31,6 +31,8 @@ class _State:
         self.plan: BroadcastPlan | None = None
         self.audio: dict[str, AudioRef] = {}
         self.program: StrudelProgram | None = None
+        self.model: str = "ScratchPad"  # the selected ambient generator
+        self.last_signal = None  # last ActivitySignal, for immediate model switches
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -65,6 +67,26 @@ def create_app(state: _State | None = None):
         if store.program is None:
             return {"text": None}
         return program_to_dict(store.program)
+
+    @app.get("/models")
+    def models() -> dict:
+        """The user-selectable ambient generators and the current selection."""
+        from ..genmusic.styles import AMBIENT_MODELS
+
+        return {"models": list(AMBIENT_MODELS), "current": store.model}
+
+    @app.post("/model")
+    def set_model(name: str) -> dict:
+        """Switch the ambient generator; recompose immediately if we have a signal."""
+        from ..genmusic import compose
+        from ..genmusic.styles import STYLES
+
+        if name not in STYLES:
+            raise HTTPException(status_code=400, detail="unknown model")
+        store.model = name
+        if store.last_signal is not None:
+            store.set_program(compose(store.last_signal, style=name))
+        return {"current": store.model}
 
     @app.get("/audio/{clip_id}")
     def audio(clip_id: str) -> Response:
@@ -102,6 +124,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   button{font:inherit;padding:.5rem 1rem;margin:1rem 0;cursor:pointer;
          background:#111;color:#fffff8;border:0;border-radius:2px}
   button[disabled]{opacity:.6;cursor:default}
+  #modelwrap{display:inline-block;margin-left:1rem}
+  select{font:inherit;font-size:.85rem;margin-left:.35rem}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   audio{width:100%;margin:.4rem 0}
@@ -112,6 +136,9 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <h1>Maelcom</h1>
 <p class='muted' id='status'>internal radio · press play to begin</p>
 <button id='play'>▶ Start radio</button>
+<label class='muted' id='modelwrap'>ambient generator
+  <select id='model'></select>
+</label>
 <canvas id='viz'></canvas>
 <section id='news'><p class='muted'>Loading…</p></section>
 
@@ -120,6 +147,26 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 const statusEl=document.getElementById('status');
 const newsEl=document.getElementById('news');
 const btn=document.getElementById('play');
+const modelSel=document.getElementById('model');
+
+// Populate the ambient-generator dropdown and switch models on change.
+async function loadModels(){
+  try{
+    const d=await (await fetch('/models')).json();
+    modelSel.innerHTML='';
+    for(const m of d.models){
+      const o=document.createElement('option'); o.value=m; o.textContent=m;
+      if(m===d.current) o.selected=true; modelSel.appendChild(o);
+    }
+  }catch(e){}
+}
+modelSel.addEventListener('change', async ()=>{
+  try{
+    await fetch('/model?name='+encodeURIComponent(modelSel.value), {method:'POST'});
+    lastProgram='';           // force a re-evaluate of the new model's program
+    await pollMusic();
+  }catch(e){}
+});
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
 const newsPlayer=new Audio(); let lastNewsUrl='';
 
@@ -186,7 +233,7 @@ btn.addEventListener('click', async ()=>{
   await pollMusic();
   pollNews();
 });
-pollMusic(); pollNews();
+loadModels(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 
