@@ -112,7 +112,7 @@ def _bars(degrees: list[int], gate: tuple[bool, ...], sparse: bool = True) -> st
 RULES: tuple[str, ...] = (
     "1. Confined to G Dorian — no minor keys; every voice shares the key (consonant).",
     "2. (Dormant) modulate only to adjacent / consonant circle-of-fifths keys.",
-    "3. Everything low — octave 1 (~49-98 Hz); nothing high.",
+    "3. Everything low — octave 1 (~49-98 Hz); nothing high, except the glints (rule 15).",
     "4. A low-pass on every voice (no cutoff above ~500 Hz) — nothing harsh.",
     "5. 4/4, largo (.slow(2)); it should float, not plod.",
     "6. Mainly canons and call-and-response; voices come and go and trade off.",
@@ -124,7 +124,7 @@ RULES: tuple[str, ...] = (
     "12. No drums / percussion for now.",
     "13. A burst of news swells the tonic triad — a consonant emphasis.",
     "14. Deterministic: the same signal always renders the same music.",
-    "15. Occasional incidental notes from the parallel major (B natural, F#) glint bright over the bed.",
+    "15. Incidental notes from the parallel major (B, F#) glint bright over the bed, rising up to ~440 Hz (A4).",
 )
 
 _SCALE = f"{_KEY}1:{_MODE}"  # rules 1 & 3: G Dorian, low octave
@@ -158,14 +158,15 @@ def _voice(bars_str: str, fast: int, verb: float, gain: float, extra: str = "") 
 
 
 def _incidental(signal: ActivitySignal, salt: int) -> str:
-    """A sparse, mostly-rests phrase favouring the tones the parallel MAJOR adds
-    over Dorian — B natural (deg 2) and F# (deg 6) — for occasional bright color
-    (rule 15). Two bars of eighth-note slots, nearly all rests, varied by salt."""
+    """A bright, fairly frequent phrase favouring the tones the parallel MAJOR
+    adds over Dorian — B (deg 2) and F# (deg 6) — plus D (4) and A (8, = A4/440 Hz
+    at the top). Two bars of eighth-note slots with room to breathe, varied by
+    salt (rule 15)."""
     cells = (
-        "~ ~ 2 ~ ~ ~ ~ ~",
-        "~ ~ ~ ~ ~ 6 ~ ~",
-        "~ 6 ~ ~ ~ ~ 2 ~",
-        "~ ~ ~ ~ 2 ~ ~ 6",
+        "~ 2 ~ 6 ~ ~ 4 ~",
+        "6 ~ ~ 8 ~ 4 ~ 2",
+        "~ 4 ~ 2 ~ 6 ~ ~",
+        "2 ~ 6 ~ 8 ~ 6 ~",
     )
     s = _seed(signal) + salt
     return f"<[{cells[s % len(cells)]}] [{cells[(s + 2) % len(cells)]}]>"
@@ -196,11 +197,12 @@ def _canon_chunk(signal: ActivitySignal, intensity: float, verb: float, tension:
     layers.append(_voice(lead, fast, verb, 0.32))  # leader (call)
     layers.append(_voice(lead, fast, verb, 0.2, extra=f".late({_CANON_LATE})"))  # branch 1: canon
     layers.append(_voice(resp, fast, verb, 0.26))  # branch 2: response
-    # Occasional bright glints from the parallel major (rule 15) — low, low-passed,
-    # long tails, so they colour the Dorian bed rather than sit on top of it.
+    # Bright glints from the parallel major (rule 15) — lifted into a high
+    # register (up to A4/440 Hz), a slightly buzzier sawtooth with a bit more
+    # filter open (still dog-safe), long tails, to sparkle over the low bed.
     layers.append(
-        f'    n("{_incidental(signal, salt)}").scale("{_KEY}1:major").s("sine")'
-        f".attack(0.02).release(2.2).lpf(500).room(0.9).roomsize(8).gain(0.12)"
+        f'    n("{_incidental(signal, salt)}").scale("{_KEY}3:major").s("sawtooth").detune(0.1)'
+        f".lpf(600).attack(0.01).release(2.0).room(0.9).roomsize(8).gain(0.11)"
     )
     if tension > 0.05:  # rule 13
         g = round(0.05 + tension * 0.15, 2)

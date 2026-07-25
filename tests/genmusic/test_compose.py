@@ -77,8 +77,10 @@ def test_tintinnabuli_is_dark_g_dorian_and_low():
     assert "tintinnabuli" in text and text.rstrip().endswith(".slow(2)")  # largo
     assert 'scale("G1:dorian")' in text  # confined to G Dorian
     assert ":minor" not in text  # no minor keys (major/modal is fine)
-    # Everything sits in the low octave — no octave-2+ pitch anywhere.
-    assert not re.search(r"[A-G]#?[2-9]:", text)
+    # Everything is low (octave 1) except the incidental major glints, which may
+    # rise to ~440 Hz (A4) — the only octave-2+ voice allowed.
+    highs = set(re.findall(r"[A-G]#?[2-9]:(?:dorian|major|minor)", text))
+    assert highs <= {"G3:major"}
 
 
 def test_tintinnabuli_low_pass_everywhere_no_harsh_highs():
@@ -116,9 +118,10 @@ def test_tintinnabuli_rhythm_evolves_with_turnaround_pause_drop():
 
 def test_tintinnabuli_has_parallel_major_incidental_glints():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # Bright incidental color borrowed from the parallel major, low and low-passed.
-    assert 'scale("G1:major")' in text
-    assert re.search(r'scale\("G1:major"\)\.s\("sine"\)\.attack\(0\.02\)\.release\(2\.2\)\.lpf\(500\)', text)
+    # Bright incidental color from the parallel major, lifted up to A4 (~440 Hz),
+    # a buzzier sawtooth with the filter a bit more open (still <=700 Hz).
+    assert 'scale("G3:major")' in text
+    assert re.search(r'scale\("G3:major"\)\.s\("sawtooth"\)\.detune\(0\.1\)\.lpf\(600\)', text)
 
 
 def test_tintinnabuli_news_burst_adds_consonant_swell():
