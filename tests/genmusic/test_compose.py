@@ -199,9 +199,8 @@ def test_entrainment_renders_a_journey_over_a_drifting_frame():
     assert "setcps" not in text and "fadeIn" not in text  # the traps
     # a multi-phase arrangement of 16-bar phases (so no voice loops past 16 bars)
     assert "arrange(" in text and text.count("[16, stack(") >= 20
-    # a continuous low drone frame + a pulsing entrainment carrier
-    assert 'note("<[a1,e2]>")' in text
-    assert re.search(r"\.fast\(\d+\)", text)  # the entrainment pulse rate (amplitude/filter/pan)
+    assert 'note("a1").s("sine")' in text  # a stable bass pedal every phase
+    assert 'note("<[a2' in text  # the multivoice major-chord drone
     # deterministic
     assert compose(_signal(8, 3, volatility=0.4), style="Entrainment 0.1").text == text
 
@@ -213,17 +212,32 @@ def test_entrainment_frame_drifts_down_toward_relaxation():
     assert m and float(m.group(2)) <= float(m.group(1))  # never drifts up
 
 
-def test_entrainment_grammar_stays_uncluttered_and_uses_effect_voices():
+def test_entrainment_major_chords_over_a_stable_bass():
     text = compose(_signal(20, 5, volatility=0.6), style="Entrainment 0.1").text
-    # ducking (anti-phase gain LFO), spatial auto-pan, colored-noise, delay echoes
+    # major key throughout; the drone is a major chord (has the major third c#)
+    assert "major:pentatonic" in text and ":minor" not in text
+    assert "c#3" in text
+    # stable low-A pedal: a1 sub + every chord voiced on a2 — the bass never walks
+    assert 'note("a1").s("sine")' in text
+    assert set(re.findall(r'note\("<\[([a-g]#?\d)', text)) == {"a2"}
+    # entrainment rides a binaural beat (an exact freq() pair, hard L/R) where viable
+    assert "freq(220)" in text and ".pan(0)" in text and ".pan(1)" in text
     assert re.search(r"\.pan\(sine\.range\(", text)  # slow spatial movement
-    assert re.search(r"gain\(sine\.range\([0-9.]+,[0-9.]+\)\.slow\(", text)  # slow gain waves / ducking
-    # occasional binaural sessions appear for at least one signal in a sweep
-    seen_binaural = any(
-        ".pan(0)" in compose(_signal(v, 4, volatility=0.5), style="Entrainment 0.1").text
-        for v in range(1, 14)
-    )
-    assert seen_binaural
+
+
+def test_entrainment_gamma_falls_back_to_filter_pulse():
+    text = compose(_signal(50, 8, volatility=0.9), intensity=0.97, style="Entrainment 0.1").text
+    # gamma (40 Hz) exceeds the binaural limit at the start, so a filter pulse carries it
+    assert re.search(r"lpf\(sine\.range\([0-9,]+\)\.fast\(\d+\)\)", text)
+
+
+def test_entrainment_chimes_and_noise_are_occasional():
+    text = compose(_signal(8, 3), style="Entrainment 0.1").text
+    phases = text.count("[16, stack(")
+    assert 0 < text.count("a4:major:pentatonic") < phases  # chimes: present, not every phase
+    # chimes use only sine or square — never triangle/sawtooth
+    for m in re.finditer(r'a4:major:pentatonic"\)\.s\("(\w+)"\)', text):
+        assert m.group(1) in ("sine", "square")
 
 
 def test_synth_beat_is_always_present():

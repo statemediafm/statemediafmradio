@@ -218,10 +218,20 @@ paced-breathing cue. Constrain to one mode/key; cap dynamic range.
 
 ---
 
-## 7. The associative grammar (built in `styles/entrainment.py`)
+## 7. The generative journey (built in `styles/entrainment.py`)
 
-Entrainment now generates deterministic **~13–17 min journeys** as an
-`arrange` of ~11–14 **phases** (~72 s each), built from a small motif grammar.
+**Shipped — "basic mode":** deterministic **~13–15 min journeys** as an `arrange`
+of 24–29 **16-bar phases**. Each phase = a **stable major-key drone baseline** (a
+tonic pedal — the bass never walks; it carries the entrainment via a **filter** or
+**pan** pulse at the band rate, so an effect holds the tempo, no pulsing tone or
+melody) + **middle harmonics** (a mid A-major-pentatonic pad, voicing rotating each
+phase) + **occasional chimes** (sparse, high, long-echoed). The frame drifts slowly
+downward toward relaxation; **no voice repeats past 16 bars** (each phase re-derives
+its material by a small consonant step); heavy reverb/delay tails and long
+attack/release bridge every seam. No melody voice.
+
+**Reserved for a fuller mode** (previously built, see git history / below): a
+larger **associative grammar** of occasional motifs.
 
 **Frame (every phase, continuous):**
 - a low **drone** (root+fifth, slow filter breath, slow spatial pan);
