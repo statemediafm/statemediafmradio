@@ -130,7 +130,7 @@ RULES: tuple[str, ...] = (
     "16. Canon voices fade in and out over ~1-2 minutes (slow, staggered gain LFOs).",
     "17. A delayed chime rings out one beat every 64 bars — many repeats over ~2 bars, a theta-rate LFO on the delay.",
     "18. Sometimes, after ~3 minutes, a 16-bar full silence.",
-    "19. A deep sub-bass G pedal pulse (~5 BPM, long release) underpins everything.",
+    "19. A deep sub-bass G pedal — a single quarter-note hit every 24 bars, long release — underpins everything.",
 )
 
 _CALL = (True, True, False, False, True, True, False, False)  # leader sings…
@@ -320,10 +320,11 @@ def _chime_delay_overlay(signal: ActivitySignal) -> str:
 
 def _sub_bass() -> str:
     """A deep sub-bass pedal on G (a tone shared by every key in the window, so it
-    stays consonant through modulation) — a slow quarter-note pulse at ~5 BPM (one
-    hit every 3 bars) with a long release, so the sub throbs and rings (rule 19)."""
+    stays consonant through modulation) — a single quarter-note hit every 24 bars
+    with a long release, so the sub swells and rings out (rule 19)."""
     return (
-        '  note("<g1 ~ ~>").s("sine").attack(0.2).release(8).lpf(100).gain(0.3)'
+        '  arrange([1, note("g1 ~ ~ ~").s("sine").attack(0.2).release(8).lpf(100).gain(0.3)], '
+        "[23, silence])"
     )
 
 

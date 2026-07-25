@@ -114,8 +114,9 @@ def test_tintinnabuli_canon_voices_fade_in_and_out():
 
 def test_tintinnabuli_has_sub_bass_pedal_pulse():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # a deep, long-release sub-bass G pedal pulse underpins everything (rule 19)
-    assert re.search(r'note\("<g1 ~ ~>"\)\.s\("sine"\)\.attack\([0-9.]+\)\.release\(8\)\.lpf\(100\)', text)
+    # a deep, long-release sub-bass G pedal, one hit every 24 bars (rule 19)
+    assert re.search(r'note\("g1 ~ ~ ~"\)\.s\("sine"\)\.attack\([0-9.]+\)\.release\(8\)\.lpf\(100\)', text)
+    assert "[23, silence]" in text  # ...then silent for 23 more bars
 
 
 def test_tintinnabuli_evolves_tonally_across_movements():
