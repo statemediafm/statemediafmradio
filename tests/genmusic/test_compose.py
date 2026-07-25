@@ -68,12 +68,16 @@ def test_compose_is_deterministic():
     assert a == b
 
 
-def test_lead_and_hats_scale_with_participants():
-    solo = compose(_signal(5, 1)).text
-    duo = compose(_signal(5, 2)).text
-    crowd = compose(_signal(30, 5, volatility=0.6)).text
-    # Lead (pentatonic scale line) appears only once ≥2 people are active.
-    assert "scale(" not in solo
-    assert "scale(" in duo
-    # A crowded, busy room adds hats.
-    assert 'hh*' in crowd
+def test_rhythm_layers_are_always_present():
+    # A plucky pentatonic melody and synth hats sound without any samples, so
+    # there is audible rhythm even for a quiet, single-participant repo.
+    solo = compose(_signal(1, 1, volatility=0.0)).text
+    assert "scale(" in solo  # melody
+    assert "c5*" in solo  # synth hats
+
+
+def test_hats_get_denser_with_intensity():
+    calm = compose(_signal(2, 1), intensity=0.2).text
+    busy = compose(_signal(40, 8, volatility=0.9), intensity=0.9).text
+    assert "c5*4" in calm
+    assert "c5*8" in busy

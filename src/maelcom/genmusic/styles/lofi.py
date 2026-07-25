@@ -73,29 +73,27 @@ def render(
     bass = _BASS_ROOTS[variant]
     drums = _DRUMS[min(3, int(intensity * 4))]
 
-    # Drums use plain dirt-sample names (bd/sd/hh) so they sound with Strudel's
-    # default prebaked sample set — no drum-machine bank to load.
-    layers = [
-        f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({room}).gain(0.5).slow(2)',
-        f'  note("{bass}").s("sawtooth").lpf(300).gain(0.55).slow(2)',
-        f'  s("{drums}").gain(0.85)',
-    ]
+    # Rhythm comes from SYNTHS (always audible — no samples needed): a plucky
+    # pentatonic melody and ticking hats. Sample drums are a bonus layer that
+    # only sounds if the browser has loaded a drum sample set.
+    note_count = 2 + min(3, round(clamp01(signal.volatility) * 3))
+    steps = _LEAD_STEPS[note_count]
+    lead_voice = next(iter(signal.actor_voices.values()), "rhodes")
+    lead_lpf = min(3000, lpf + 600)
+    hats = 8 if intensity >= 0.5 else 4
 
-    # A lead appears once ≥2 people are active; its density tracks volatility,
-    # its timbre the busiest participant's assigned voice.
-    lead_voice = None
-    if signal.participant_count >= 2:
-        note_count = 2 + min(3, round(clamp01(signal.volatility) * 3))
-        steps = _LEAD_STEPS[note_count]
-        lead_voice = next(iter(signal.actor_voices.values()), "rhodes")
-        lead_lpf = min(3000, lpf + 600)
-        layers.insert(
-            1,
-            f'  n("{steps}").scale("C:minor:pentatonic").s("triangle").lpf({lead_lpf}).gain(0.4)',
-        )
-    # A busy room (≥4 people) gets extra hats.
-    if signal.participant_count >= 4:
-        layers.append(f'  s("hh*{4 if intensity < 0.6 else 8}").gain(0.3)')
+    melody = (
+        f'  n("{steps}").scale("C:minor:pentatonic").s("triangle")'
+        f".decay(0.15).sustain(0).lpf({lead_lpf}).gain(0.4)"
+    )
+    layers = [
+        # Pad + bass (sustained), then an always-on plucky melody for movement.
+        f'  chord("{prog}").voicing().s("sawtooth").lpf({lpf}).room({room}).gain(0.4).slow(2)',
+        f'  note("{bass}").s("sawtooth").lpf(300).gain(0.5).slow(2)',
+        melody,
+        f'  note("c5*{hats}").s("square").decay(0.02).sustain(0).gain(0.12)',
+        f'  s("{drums}").gain(0.8)',
+    ]
 
     # Metadata lives only in the header comment — never inline, so it can't eat
     # the comma that separates stacked layers.

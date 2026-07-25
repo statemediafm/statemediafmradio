@@ -142,23 +142,32 @@ async function pollMusic(){
 async function pollNews(){
   try{
     const d=await (await fetch('/plan')).json();
-    const seen=new Set(); let html='';
-    for(const s of (d.segments||[])){
+    const segs=d.segments||[]; const seen=new Set(); let html='';
+    for(const s of segs){
       if(seen.has(s.title)) continue; seen.add(s.title);
       html+='<article><h2>'+(s.title||'News')+'</h2><p>'+(s.script||'')+'</p>'+
             (s.audio_url?'<audio controls src="'+s.audio_url+'"></audio>':'')+'</article>';
     }
     newsEl.innerHTML=html||'<p class="muted">No broadcast yet.</p>';
+    // Once on air, read the latest news aloud automatically (over the music bed).
+    const first=segs.find(s=>s.audio_url);
+    if(started && first && first.audio_url!==lastNewsUrl){
+      lastNewsUrl=first.audio_url; newsPlayer.src=first.audio_url;
+      newsPlayer.play().catch(e=>console.warn('news play:',e));
+    }
   }catch(e){}
 }
+const newsPlayer=new Audio(); let lastNewsUrl='';
 btn.addEventListener('click', async ()=>{
   if(started) return; started=true; btn.disabled=true; btn.textContent='● On air';
-  statusEl.textContent='loading sounds…';
-  try{
-    // Prebake the standard drum/instrument samples so the rhythm layers sound
-    // (without this you only hear the sustained synths — a single drone).
-    initStrudel({ prebake: () => samples('github:tidalcycles/dirt-samples') });
-  }catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
+  statusEl.textContent='starting…';
+  try{ initStrudel(); }
+  catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
+  // Load drum samples (bonus rhythm layer). The synth pad/melody/hats already
+  // carry the beat, so if this fails the music still plays.
+  statusEl.textContent='loading drum samples…';
+  try{ await samples('github:tidalcycles/dirt-samples'); }
+  catch(e){ console.warn('samples failed (synths still play):', e); }
   await pollMusic();
 });
 pollMusic(); pollNews();
