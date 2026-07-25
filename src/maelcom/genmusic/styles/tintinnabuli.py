@@ -130,7 +130,7 @@ RULES: tuple[str, ...] = (
     "16. Canon voices fade in and out over ~1-2 minutes (slow, staggered gain LFOs).",
     "17. A delayed chime rings out one beat every 64 bars — many repeats over ~2 bars, a theta-rate LFO on the delay.",
     "18. Sometimes, after ~3 minutes, a 16-bar full silence.",
-    "19. A deep sub-bass G pedal — a single quarter-note hit every 24 bars, long release — underpins everything.",
+    "19. A deep sub-bass G pedal hit (long release) lands with each drop — synced to the drop, once per movement.",
 )
 
 _CALL = (True, True, False, False, True, True, False, False)  # leader sings…
@@ -251,6 +251,7 @@ def _drop(signal: ActivitySignal, key: str, verb: float) -> str:
     return _stack(
         [
             *_bed(key, verb),
+            _sub_bass(),  # the sub-bass pedal hit lands with the drop (rule 19)
             f'    n("<0 ~ ~ ~>").scale("{_sc(key, 1)}").s("sine").lpf(110).attack(0.002).decay(0.6).sustain(0).gain(0.34)',
             _voice(key, lead, verb, 0.32),
             _voice(key, lead, verb, 0.2, extra=f".late({_CANON_LATE - 1})"),
@@ -320,12 +321,10 @@ def _chime_delay_overlay(signal: ActivitySignal) -> str:
 
 def _sub_bass() -> str:
     """A deep sub-bass pedal on G (a tone shared by every key in the window, so it
-    stays consonant through modulation) — a single quarter-note hit every 24 bars
-    with a long release, so the sub swells and rings out (rule 19)."""
-    return (
-        '  arrange([1, note("g1 ~ ~ ~").s("sine").attack(0.2).release(8).lpf(100).gain(0.3)], '
-        "[23, silence])"
-    )
+    stays consonant through modulation) — a single quarter-note hit with a long
+    release, synced to the drop (rule 19). The ``<g1 ~ ~>`` fires once across the
+    3-bar drop, so it lands with the drop and rings out."""
+    return '    note("<g1 ~ ~>").s("sine").attack(0.2).release(8).lpf(100).gain(0.3)'
 
 
 def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2000) -> str:
@@ -352,9 +351,9 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
         f"modulating ~every 2 min, tintinnabuli ~every 180 bars · band={band} · "
         f"{signal.volume} change{'s' if signal.volume != 1 else ''}"
     )
-    # The main arrangement plus independent long-form overlays: a sub-bass pedal
-    # pulse, the rare glints, and the delayed chime.
+    # The main arrangement (the sub-bass pedal lives inside each drop) plus two
+    # independent long-form overlays: the rare glints and the delayed chime.
     return (
-        f"{header}\nstack(\n{main},\n{_sub_bass()},\n{_glint_overlay(signal)},\n"
+        f"{header}\nstack(\n{main},\n{_glint_overlay(signal)},\n"
         f"  {_chime_delay_overlay(signal)}\n).slow(2)"
     )

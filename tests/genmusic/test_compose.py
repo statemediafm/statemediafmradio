@@ -112,11 +112,14 @@ def test_tintinnabuli_canon_voices_fade_in_and_out():
     assert m and int(m.group(1)) >= 40  # slow fades
 
 
-def test_tintinnabuli_has_sub_bass_pedal_pulse():
+def test_tintinnabuli_sub_bass_hit_is_synced_to_the_drop():
     text = compose(_signal(8, 3), style="tintinnabuli").text
-    # a deep, long-release sub-bass G pedal, one hit every 24 bars (rule 19)
-    assert re.search(r'note\("g1 ~ ~ ~"\)\.s\("sine"\)\.attack\([0-9.]+\)\.release\(8\)\.lpf\(100\)', text)
-    assert "[23, silence]" in text  # ...then silent for 23 more bars
+    # the sub-bass pedal hit lives inside the drop block (rule 19): a deep,
+    # long-release G that fires once across the 3-bar drop.
+    assert re.search(r'note\("<g1 ~ ~>"\)\.s\("sine"\)\.attack\([0-9.]+\)\.release\(8\)\.lpf\(100\)', text)
+    # the drop's own key-tonic sub-root sits right beside it
+    drop_line = next(ln for ln in text.splitlines() if 'note("<g1 ~ ~>")' in ln)
+    assert "sine" in drop_line
 
 
 def test_tintinnabuli_evolves_tonally_across_movements():
