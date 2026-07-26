@@ -66,12 +66,16 @@ def _fast_of(text: str) -> float:
     return float(text.rsplit(".fast(", 1)[1].rstrip(")\n"))
 
 
-def test_space_dub_tempo_tracks_the_entrainment_carrier():
-    # The underlying tempo (.fast) is derived from the band's carrier_hz, so it
-    # rises monotonically from delta (2 Hz) to gamma (40 Hz).
-    sig = _signal(8, 3)
-    fasts = [_fast_of(space_dub.render(sig, 0.5, b)) for b in _BANDS]
-    assert fasts == sorted(fasts) and fasts[0] < fasts[-1]
+def test_space_dub_tempo_is_a_subharmonic_of_the_entrainment_frequency():
+    # The entrainment frequency SETS the tempo: fast is carrier_hz halved into a
+    # musical range, so carrier/fast is an exact power of two — every beat
+    # coincides with an integer number of entrainment pulses.
+    for band, tr in BAND_TRAITS.items():
+        fast = _fast_of(space_dub.render(_signal(8, 3), 0.5, band))
+        ratio = tr["carrier_hz"] / fast
+        assert abs(ratio - round(ratio)) < 1e-6  # integer ratio
+        assert round(ratio) & (round(ratio) - 1) == 0  # power of two
+        assert 0.5 <= fast <= 1.6  # musical range
 
 
 def test_space_dub_uses_curated_riffs_from_the_genre_banks():

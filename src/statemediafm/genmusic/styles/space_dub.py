@@ -19,7 +19,9 @@ Voices, on the verified-primitive IR (:mod:`statemediafm.genmusic.ir`):
 * **riser** — a 16th-note noise roll that builds tension into the drops.
 
 Calm bands lean dub/reggae, busy bands lean DnB; ``synco`` (volatility-led) picks
-busier riffs; tempo tracks the band's entrainment ``carrier_hz``. Everything is in
+busier riffs. The **entrainment frequency sets the tempo** — the pulse is the
+band's ``carrier_hz`` halved into a musical range (a subharmonic), and the bass is
+centered on that grid rather than setting it. Everything is in
 **F# minor — the relative minor of Entrainment 0.1's A-major drone** — so the two
 share a pitch collection and a gradual crossfade between generators stays
 consonant (no clashing third).
@@ -54,24 +56,23 @@ _CHIME_PROG = (
     "<F#m9 C#m7 Bm9 D6 E6 F#m9 Amaj7 Bm11>",
     "<C#m9 E6 A6 F#m9 Bm9 D6 C#m7 F#m11>",
 )
-# Curated bass RIFFS as scale degrees over the F#-minor-pentatonic root (0=root,
-# 3=5th, 4=b7, 5=octave, -5=octave below). Pitch AND rhythm together — recognizable
-# dub/reggae/DnB lines, sparse → busy for `synco`.
+# Curated bass PHRASES (not one-bar loops) as scale degrees over the F#-minor-
+# pentatonic root (0=root, 3=5th, 4=b7, 5=octave, -5=octave below). Each is a
+# 4-bar `<...>` phrase that MOVES bar to bar and RELENTS — the last bar drops out
+# (a bare `~`) or thins right down, so the bass breathes instead of hammering a
+# loop. `synco` picks the sparser (calm) or busier (bursty) phrase.
 _RIFFS = {
     "dub": (
-        "0 ~ ~ ~ ~ ~ 3 ~",
-        "0 ~ ~ 0 ~ ~ 3 ~",
-        "0 ~ ~ 3 ~ 0 ~ 4",
+        "<[0 ~ ~ ~ ~ ~ 3 ~] [0 ~ ~ ~ ~ ~ ~ ~] [~ ~ ~ ~ 3 ~ 0 ~] ~>",
+        "<[0 ~ ~ 0 ~ ~ 3 ~] [0 ~ ~ ~ 3 ~ 0 ~] [0 ~ ~ 0 ~ ~ 3 ~] [~ ~ 3 ~ ~ ~ ~ ~]>",
     ),
     "reggae": (
-        "~ ~ ~ ~ 0 ~ 3 ~",
-        "0 ~ ~ 3 ~ 0 ~ -2",
-        "0 ~ 1 ~ 2 ~ 3 ~",
+        "<[~ ~ ~ ~ 0 ~ ~ ~] [~ ~ ~ ~ ~ ~ 3 ~] [~ ~ ~ ~ 0 ~ ~ ~] ~>",
+        "<[0 ~ ~ 3 ~ 0 ~ 4] [~ ~ 3 ~ ~ 0 ~ ~] [0 ~ ~ 3 ~ 0 ~ ~] ~>",
     ),
     "dnb": (
-        "0 ~ ~ 5 ~ 0 ~ 5",
-        "0 ~ 0 5 0 ~ 3 ~",
-        "0 5 0 3 0 5 0 3",
+        "<[0 ~ ~ 5 ~ 0 ~ ~] [~ ~ ~ ~ 0 ~ 5 ~] [0 ~ ~ 5 ~ 0 ~ ~] ~>",
+        "<[0 ~ 0 5 0 ~ 3 ~] [0 5 0 ~ 0 ~ 5 ~] [0 ~ 0 5 0 ~ 3 ~] [~ 5 ~ ~ 0 ~ ~ ~]>",
     ),
 }
 # Drum machine (one-drop): kick + snare on beat 3, hats + skank on the off-beats.
@@ -107,7 +108,7 @@ def _arrangement(seed: int) -> tuple[tuple[str, int, frozenset[str]], ...]:
         ("bass-in", 8, frozenset({"drums", "bass"})),
         ("build-1", 8, frozenset({"drums", "bass", "riser"})),
         ("drop-1", 16, frozenset({"drums", "bass", "skank", "stab"})),
-        ("breakdown", 16, frozenset({"bass", "pad", "stab"})),
+        ("breakdown", 16, frozenset({"pad", "stab"})),  # bass drops out — the relent
         ("build-2", 8, frozenset({"drums", "bass", "riser"})),
         ("peak", peak, frozenset({"drums", "bass", "skank", "stab", "pad"})),
         ("outro", 8, frozenset({"drums", "bass"})),
@@ -127,8 +128,14 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     density = int(tr["density"])
     lpf = round(tr["lpf"])
     carrier = float(tr["carrier_hz"])
-    # Tempo aligned to the entrainment frequency (sqrt-compressed to stay musical).
-    fast = round(0.5 + (carrier**0.5) * 0.143, 2)
+    # The ENTRAINMENT FREQUENCY sets the tempo. The pulse is that carrier halved
+    # into a musical range, so carrier/fast is an exact power of two and every beat
+    # coincides with an integer number of entrainment pulses. The bass does NOT set
+    # the tempo — it is centered on this frequency-derived grid.
+    pulse = carrier
+    while pulse > 1.6:
+        pulse /= 2.0
+    fast = round(pulse, 3)
 
     seed = _seed(signal)
     variant = seed % len(_PROGRESSIONS)
