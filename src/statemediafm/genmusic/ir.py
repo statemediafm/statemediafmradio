@@ -139,7 +139,7 @@ def _core(v: Voice, body: str) -> str:
     mod_params = {m.param for m in v.mods}
     if v.lpf is not None and "lpf" not in mod_params:
         s += f".lpf({_num(v.lpf)})"
-    if v.hpf is not None:
+    if v.hpf is not None and "hpf" not in mod_params:
         s += f".hpf({_num(v.hpf)})"
     for name, val in v.fx:
         s += f".{name}({_num(val)})"

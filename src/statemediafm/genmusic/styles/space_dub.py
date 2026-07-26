@@ -212,11 +212,14 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     # A distant dub snare "splash": HIGH-PASSED to strip the body (just the airy
     # crack rings out), quiet, drenched in reverb + a long echo so it sits far back,
     # and PANNED on a slow LFO so each hit drifts to a different spot in the field.
+    # A VERY slow LFO on the high-pass (period 26 cycles) drifts its cutoff, so each
+    # snare hit lands at a different point in the sweep — every beat is a bit
+    # different (more body when the cutoff dips, thinner splash when it rises).
     snare = Voice(
-        name="snare", kind="perc", sound="sd", gain=0.22, hpf=700, lpf=4000, late=la, slow=2.0,
+        name="snare", kind="perc", sound="sd", gain=0.22, lpf=4000, late=la, slow=2.0,
         fx=(("delay", 0.32), ("delaytime", 0.5), ("delayfeedback", 0.34),
             ("room", 0.88), ("roomsize", 12)),
-        mods=(Mod("pan", 0.12, 0.88, 5),),  # spatial: the snare moves across the field
+        mods=(Mod("hpf", 400, 1100, 26), Mod("pan", 0.12, 0.88, 5)),
         segments=_segs("drums", _ONEDROP, arr),
     )
     hats = Voice(
