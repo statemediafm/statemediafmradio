@@ -10,13 +10,13 @@ from statemediafm.roster import genmusic_settings
 def test_genmusic_settings_defaults_and_parsing():
     assert genmusic_settings({}) == {
         "generator": "Entrainment 0.1",
-        "selector": False,
+        "selector": True,  # the generator picker is shown by default now
         "generators_dir": None,
     }
-    cfg = {"genmusic": {"generator": "ScratchPad", "selector": True, "generators": "gens"}}
+    cfg = {"genmusic": {"generator": "ScratchPad", "selector": False, "generators": "gens"}}
     assert genmusic_settings(cfg) == {
         "generator": "ScratchPad",
-        "selector": True,
+        "selector": False,  # ...but can be turned off
         "generators_dir": "gens",
     }
 

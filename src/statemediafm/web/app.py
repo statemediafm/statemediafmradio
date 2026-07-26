@@ -50,7 +50,7 @@ class _State:
         self.audio: dict[str, AudioRef] = {}
         self.program: StrudelProgram | None = None
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
-        self.show_selector: bool = False  # show the generator dropdown in the UI? (config)
+        self.show_selector: bool = True  # show the ambient-generator dropdown? (config, on by default)
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
@@ -634,7 +634,7 @@ stopBtn.addEventListener('click', async ()=>{
 async function loadModels(){
   try{
     const d=await (await fetch('/models')).json();
-    // The generator selector is hidden unless enabled by config (default off).
+    // The ambient-generator picker (shown by default; hide via [genmusic] selector=false).
     document.getElementById('modelwrap').style.display = d.selector ? 'inline-block' : 'none';
     modelSel.innerHTML='';
     for(const m of d.models){

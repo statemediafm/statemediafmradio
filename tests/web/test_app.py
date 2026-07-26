@@ -317,12 +317,12 @@ def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
     assert client.post("/auth", json={"source": "nope", "token": "x"}).status_code == 400
 
 
-def test_models_selector_hidden_by_default():
+def test_models_selector_shown_by_default_and_toggleable():
     state = _State()
     client = TestClient(create_app(state))
-    assert client.get("/models").json()["selector"] is False  # config item, off by default
-    state.show_selector = True
-    assert client.get("/models").json()["selector"] is True
+    assert client.get("/models").json()["selector"] is True  # config item, on by default
+    state.show_selector = False
+    assert client.get("/models").json()["selector"] is False
 
 
 def test_tuning_list_and_switch():
