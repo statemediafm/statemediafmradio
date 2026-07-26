@@ -329,13 +329,13 @@ def test_tuning_list_and_switch():
     state = _State()
     client = TestClient(create_app(state))
     listing = client.get("/tuning").json()
-    assert listing["tunings"] == [440.0, 435.0, 432.0]
+    assert listing["tunings"] == [440.0, 435.0, 433.0]
     assert listing["current"] == 440.0  # standard by default
 
     state.last_signal = ActivitySignal(window_s=0.0, volume=5, volatility=0.3, participant_count=2)
-    resp = client.post("/tuning", params={"a": 432.0})
-    assert resp.json() == {"current": 432.0}
-    assert state.tuning == 432.0
+    resp = client.post("/tuning", params={"a": 433.0})
+    assert resp.json() == {"current": 433.0}
+    assert state.tuning == 433.0
     assert ".detune(" in client.get("/genmusic").json()["text"]  # retuned
 
     assert client.post("/tuning", params={"a": 441.0}).status_code == 400  # unsupported

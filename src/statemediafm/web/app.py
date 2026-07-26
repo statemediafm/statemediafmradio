@@ -544,6 +544,15 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
   .authrow button{margin-top:.2rem}
   .authrow select{margin-left:0}
+  /* Collapsible Settings sections. */
+  details.section{border-top:1px solid #ddd;margin:.2rem 0}
+  details.section>summary{cursor:pointer;font-weight:bold;font-variant:small-caps;
+    letter-spacing:.04em;padding:.6rem .1rem;list-style:none;user-select:none}
+  details.section>summary::-webkit-details-marker{display:none}
+  details.section>summary::before{content:'\25B8\00a0';color:#999}
+  details.section[open]>summary::before{content:'\25BE\00a0'}
+  details.section>*:not(summary){margin-left:.3rem}
+  @media(prefers-color-scheme:dark){details.section{border-color:#333}}
   /* Toggle switch (Demo Mode). */
   .switch{display:inline-flex;align-items:center;gap:.6rem;cursor:pointer;font-style:normal}
   .switch input{position:absolute;opacity:0;width:0;height:0}
@@ -562,12 +571,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   .srcrow button{margin:0;padding:.25rem .6rem;font-size:.8rem;background:transparent;
                  color:inherit;border:1px solid #bbb;border-radius:2px}
   #newsbadge{margin-left:1rem}
-  #runorder{list-style:none;padding:0;margin:.6rem 0;font-size:.85rem;columns:2;color:#555}
-  #runorder li{padding:.05rem 0}
-  #runorder li.now{color:#111;font-weight:bold}
-  #runorder li.done{opacity:.45}
-  #runorder .t{display:inline-block;width:3.2rem;color:#999}
-  @media(prefers-color-scheme:dark){#runorder{color:#aaa} #runorder li.now{color:#eee}}
   @media(prefers-color-scheme:dark){
     #tabs{border-color:#333} #tabs a.active{color:#eee;border-bottom-color:#eee}
     .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
@@ -590,12 +593,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <p class='muted' id='status'>internal radio · press play to begin</p>
 <button id='play'>▶ Start radio</button>
 <button id='stopbtn'>■ Stop broadcast</button>
-<label class='muted' id='modelwrap'>ambient generator
-  <select id='model'></select>
-</label>
-<label class='muted' id='tuningwrap'>tuning A=
-  <select id='tuning'></select>
-</label>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <label class='muted' id='intensitywrap'>energy
   <input type='range' id='intensity' min='0' max='1' step='0.05'>
@@ -603,88 +600,106 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 </label>
 <span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
-<ol id='runorder' hidden></ol>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
-  <h2>Demo Mode</h2>
-  <p class='muted'>The earlier-milestone feel: reads the Hacker News front page and a
-  repo's git issues every 5 minutes, generating music in between. Turning it on adds
-  those two sources; turning it off removes them.</p>
-  <div class='authrow'>
+  <!-- Demo Mode: always at the very top -->
+  <div class='authrow' id='demo-row'>
     <label class='switch'><input type='checkbox' id='demo'><span class='track'></span>
       <strong>Demo Mode</strong></label>
     <span class='muted' id='demo-status'></span>
   </div>
+  <p class='muted'>Reads the Hacker News front page and a repo's git issues every 5
+  minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
-  <h2>Sources</h2>
-  <p class='muted'>Which activity State Media FM airs. Changes apply to the running
-  session (not written to the config file).</p>
-  <div id='sourcelist'></div>
-  <div class='authrow'>
-    <select id='src-kind'></select>
-    <input id='src-topic' placeholder='topic (optional)'>
-    <input id='src-param' placeholder='—'>
-    <input id='src-maxage' placeholder='max age (default 12h — recent updates only)' hidden>
-    <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
-    <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
-    <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
-    <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
-    <button id='src-add'>Add source</button>
-    <span class='muted' id='src-status'></span>
-  </div>
-
-  <h2>Narration</h2>
-  <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
-  station-phrasing bundle), or <em>Custom</em> to set the style and voice yourself.
-  Applies to the next news cycle.</p>
-  <div class='authrow'>
-    <label class='muted'>persona <select id='persona-sel'></select></label>
-    <span class='muted' id='persona-lock'></span>
-  </div>
-  <div class='authrow' id='license-row' hidden>
-    <p class='muted'>Themed personas are a commercial module. Paste a license key to
-    unlock, or continue with <em>Custom</em>.</p>
-    <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
-    <button id='license-save'>Unlock</button>
-    <span class='muted' id='license-status'></span>
-  </div>
-  <div class='authrow'>
-    <label class='muted'>style
-      <input id='style-input' list='style-list' placeholder='e.g. bbc-world'>
-      <datalist id='style-list'></datalist>
-    </label>
-    <label class='muted'>voice <select id='voice-sel'></select></label>
-    <button id='narration-save'>Apply</button>
-    <span class='muted' id='narration-status'></span>
-  </div>
-
-  <div id='newsmodel-wrap' hidden>
-    <h2>News-parsing model</h2>
-    <p class='muted'>Which model on the <code>llm-gateway</code> writes the news.
-    Pick one the gateway serves, or type a model string. Applies to the next news
-    cycle.</p>
+  <details class='section' open>
+    <summary>Sources</summary>
+    <p class='muted'>Which activity State Media FM airs. Changes apply to the running
+    session (not written to the config file).</p>
+    <div id='sourcelist'></div>
     <div class='authrow'>
-      <select id='newsmodel'></select>
-      <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
-      <input id='newsmodel-temp' type='number' step='0.1' min='0' max='2' placeholder='temperature'>
-      <input id='newsmodel-maxtokens' type='number' min='1' placeholder='max_tokens'>
-      <button id='newsmodel-save'>Set model</button>
-      <button id='newsmodel-discover'>↻ Discover from gateway</button>
-      <span class='muted' id='newsmodel-status'></span>
+      <select id='src-kind'></select>
+      <input id='src-topic' placeholder='topic (optional)'>
+      <input id='src-param' placeholder='—'>
+      <input id='src-maxage' placeholder='max age (default 12h — recent updates only)' hidden>
+      <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
+      <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
+      <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
+      <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
+      <button id='src-add'>Add source</button>
+      <span class='muted' id='src-status'></span>
     </div>
-  </div>
-  <h2>Sources &amp; auth</h2>
-  <p class='muted'>Personal endpoints and tokens for the sources State Media FM polls,
-  plus <code>llm-gateway</code> (the LLM/model gateway used for news parsing —
-  endpoint = its base URL, token = its API key; works with LiteLLM, OpenRouter,
-  Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.). Stored locally in a
-  gitignored file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked
-  here and never committed or sent anywhere but your own server.</p>
-  <p class='muted'>Gateway presets (fill the <code>llm-gateway</code> endpoint below
-  and suggest a news model — the API key still goes in its token field):</p>
-  <div id='presets'></div>
-  <div id='authform'></div>
+  </details>
+
+  <details class='section'>
+    <summary>Auth</summary>
+    <p class='muted'>Personal endpoints and tokens for the sources State Media FM polls,
+    plus <code>llm-gateway</code> (the LLM/model gateway used for news parsing —
+    endpoint = its base URL, token = its API key; works with LiteLLM, OpenRouter,
+    Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.). Stored locally in a
+    gitignored file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked
+    here and never committed or sent anywhere but your own server.</p>
+    <p class='muted'>Gateway presets (fill the <code>llm-gateway</code> endpoint below
+    and suggest a news model — the API key still goes in its token field):</p>
+    <div id='presets'></div>
+    <div id='authform'></div>
+  </details>
+
+  <details class='section'>
+    <summary>Narration</summary>
+    <div class='authrow'>
+      <label class='muted' id='modelwrap'>ambient generator
+        <select id='model'></select>
+      </label>
+      <label class='muted' id='tuningwrap'>tuning A=
+        <select id='tuning'></select>
+      </label>
+    </div>
+    <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
+    station-phrasing bundle), or <em>Custom</em> to set the style and voice yourself.
+    Applies to the next news cycle.</p>
+    <div class='authrow'>
+      <label class='muted'>persona <select id='persona-sel'></select></label>
+      <span class='muted' id='persona-lock'></span>
+    </div>
+    <div class='authrow'>
+      <label class='muted'>style
+        <input id='style-input' list='style-list' placeholder='e.g. bbc-world'>
+        <datalist id='style-list'></datalist>
+      </label>
+      <label class='muted'>voice <select id='voice-sel'></select></label>
+      <button id='narration-save'>Apply</button>
+      <span class='muted' id='narration-status'></span>
+    </div>
+    <div id='newsmodel-wrap' hidden>
+      <h3>News-parsing model</h3>
+      <p class='muted'>Which model on the <code>llm-gateway</code> writes the news.
+      Pick one the gateway serves, or type a model string. Applies to the next news
+      cycle.</p>
+      <div class='authrow'>
+        <select id='newsmodel'></select>
+        <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
+        <input id='newsmodel-temp' type='number' step='0.1' min='0' max='2' placeholder='temperature'>
+        <input id='newsmodel-maxtokens' type='number' min='1' placeholder='max_tokens'>
+        <button id='newsmodel-save'>Set model</button>
+        <button id='newsmodel-discover'>↻ Discover from gateway</button>
+        <span class='muted' id='newsmodel-status'></span>
+      </div>
+    </div>
+  </details>
+
+  <details class='section'>
+    <summary>Commercial Features</summary>
+    <p class='muted'>Commercial modules (e.g. themed voice personas) unlock with a
+    license key — stored locally in a gitignored file, owner-only, never sent
+    anywhere but your own server.</p>
+    <div class='authrow' id='license-row'>
+      <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
+      <button id='license-save'>Unlock</button>
+      <span class='muted' id='license-status'></span>
+    </div>
+    <div id='license-modules'></div>
+  </details>
 </div>
 
 <script src='https://unpkg.com/@strudel/web@1.0.3'></script>
@@ -729,7 +744,7 @@ modelSel.addEventListener('change', async ()=>{
   }catch(e){}
 });
 
-// Concert-A tuning selector (440 / 435 / 432 Hz) — retunes all notes.
+// Concert-A tuning selector (440 / 435 / 433 Hz) — retunes all notes.
 const tuningSel=document.getElementById('tuning');
 async function loadTunings(){
   try{
@@ -913,7 +928,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); }
+  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); loadLicense(); }
 }));
 
 // ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
@@ -929,8 +944,8 @@ async function loadNarration(){
       if(x!=='Custom' && !licensed){ o.disabled=true; o.textContent=x+' 🔒'; }
       if(x===p.current) o.selected=true; personaSel.appendChild(o);
     }
-    document.getElementById('persona-lock').textContent = licensed ? '' : '· commercial module';
-    document.getElementById('license-row').hidden = licensed;
+    document.getElementById('persona-lock').textContent =
+      licensed ? '' : '· commercial module — unlock under Commercial Features';
     const custom = (p.current||'Custom')==='Custom';
     // Custom → the style/voice fields are yours to set; a persona drives them.
     document.getElementById('style-input').disabled = !custom;
@@ -966,9 +981,20 @@ document.getElementById('license-save').addEventListener('click', async ()=>{
     const ok=(d.modules||[]).some(m=>m.entitled);
     st.textContent = ok ? 'unlocked' : 'key saved, but no modules unlocked';
     document.getElementById('license-key').value='';
-    await loadNarration();
+    await loadNarration(); await loadLicense();
   }catch(e){ st.textContent='error'; }
 });
+// Commercial Features — the registered modules and whether each is unlocked.
+async function loadLicense(){
+  try{
+    const d=await (await fetch('/license')).json();
+    const wrap=document.getElementById('license-modules');
+    wrap.innerHTML=(d.modules||[]).map(m=>
+      '<div class="srcrow"><span class="grow">'+esc(m.name)+' — '+esc(m.description||'')+
+      '</span><span class="kind">'+(m.entitled?'✓ unlocked':'🔒 locked')+'</span></div>').join('')
+      || '<p class="muted">No commercial modules registered.</p>';
+  }catch(e){}
+}
 document.getElementById('narration-save').addEventListener('click', async ()=>{
   const st=document.getElementById('narration-status'); st.textContent='saving…';
   const style=document.getElementById('style-input').value.trim();
@@ -1163,34 +1189,10 @@ async function loadNewsBadge(){
   }catch(e){}
 }
 
-// Running order (rhythm of the day): the hour's news / song / ident cues, with
-// the current position highlighted and past cues dimmed.
-const CUE_LABEL={news:'News bulletin', song:'Song slot', ident:'Station ident'};
-function fmtClock(s){ const m=Math.floor(s/60); return (m<60?m+'m':(Math.floor(m/60)+'h'+(m%60?(m%60+'m'):''))); }
-async function pollSchedule(){
-  const el=document.getElementById('runorder');
-  try{
-    const d=await (await fetch('/schedule')).json();
-    if(!d.live){ el.hidden=true; return; }
-    el.hidden=false; el.innerHTML='';
-    const now=d.elapsed_s%d.window_s;  // position within the repeating hour
-    let curIdx=-1;
-    d.order.forEach((c,i)=>{ if(c.at_s<=now) curIdx=i; });
-    d.order.forEach((c,i)=>{
-      const li=document.createElement('li');
-      li.className = i===curIdx?'now':(i<curIdx?'done':'');
-      const label = c.kind==='news' && c.topic ? ('News · '+c.topic) : CUE_LABEL[c.kind]||c.kind;
-      li.innerHTML='<span class="t">'+esc(fmtClock(c.at_s))+'</span>'+esc(label);
-      el.appendChild(li);
-    });
-  }catch(e){ el.hidden=true; }
-}
-
-loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollSchedule(); pollMusic(); pollNews();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(loadNewsBadge, 30000);
-setInterval(pollSchedule, 20000);
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
 const cv=document.getElementById('viz'), ctx=cv.getContext('2d');

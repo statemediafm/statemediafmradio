@@ -12,9 +12,9 @@ from ..core.models import ActivitySignal, StrudelProgram
 from .brainwave import THETA_START, band_for_intensity, intensity_from_signal
 from .styles import STYLES
 
-# Selectable concert-A tuning references (Hz). 440 is standard; 432 and 435 are
+# Selectable concert-A tuning references (Hz). 440 is standard; 435 and 433 are
 # the alternative "relative" tunings.
-TUNINGS = (440.0, 435.0, 432.0)
+TUNINGS = (440.0, 435.0, 433.0)
 
 
 def tuning_detune_cents(tuning_a: float) -> float:

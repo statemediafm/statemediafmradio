@@ -189,11 +189,11 @@ def test_tuning_retunes_all_notes_via_global_detune():
     base = compose(_signal(8, 3), style="Entrainment 0.1", tuning_a=440.0).text
     assert ".detune(" not in base  # 440 is standard — no retune appended
 
-    for a in (432.0, 435.0):
+    for a in (433.0, 435.0):
         text = compose(_signal(8, 3), style="Entrainment 0.1", tuning_a=a).text
         cents = round(1200 * math.log2(a / 440.0), 3)
         assert text.rstrip().endswith(f".detune({cents})")  # one global retune of all notes
-        assert cents < 0  # 432/435 are flatter than 440
+        assert cents < 0  # 433/435 are flatter than 440
 
 
 def test_ambient_models_are_registered():
