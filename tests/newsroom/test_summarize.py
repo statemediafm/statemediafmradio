@@ -208,7 +208,7 @@ def test_radio_reads_uses_persona_ident_and_signoff():
 def test_radio_reads_defaults_to_firmwide_phrasing():
     texts = [r.text for r in radio_reads(_items(), "bbc-world")]
     assert "This is the firmwide radio service." in texts
-    assert texts[-1] == "And that's the current state. More as it develops."
+    assert texts[-1] == "And that's the current state. More as things develop."
 
 
 def test_is_bot_detects_automation_but_not_people():
