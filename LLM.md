@@ -52,6 +52,15 @@ there.
 
 ## Per-provider scaffold
 
+**LiteLLM proxy** — the reference OpenAI-compatible gateway (run `litellm --config
+…`). Point `api_base` at your proxy; `model` is the alias you gave it in the proxy
+config. Endpoint + key from the `llm-gateway` slot (or set here).
+```toml
+[llm]
+model    = "openai/<litellm-model-name>"
+api_base = "http://localhost:4000"        # or the llm-gateway slot
+```
+
 **Azure OpenAI** — model = your deployment; `api_version` in `extra`. Endpoint +
 key from the `llm-gateway` slot (or set here / `AZURE_API_KEY`).
 ```toml

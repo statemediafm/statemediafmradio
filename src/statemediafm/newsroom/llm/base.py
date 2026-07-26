@@ -46,6 +46,8 @@ class LLMConfig:
 # where it's install-specific) and ``model`` an example model string. Not
 # credentials — the key still goes in the auth slot. See LLM.md.
 GATEWAY_PRESETS: list[dict[str, str]] = [
+    {"name": "LiteLLM", "api_base": "http://localhost:4000",
+     "model": "openai/<litellm-model-name>"},
     {"name": "Azure OpenAI", "api_base": "https://<resource>.openai.azure.com",
      "model": "azure/<deployment-name>"},
     {"name": "OpenRouter", "api_base": "https://openrouter.ai/api/v1",

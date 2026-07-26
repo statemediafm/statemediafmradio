@@ -295,7 +295,7 @@ def test_schedule_endpoint():
 def test_llm_presets_listed():
     client = TestClient(create_app(_State()))
     names = [p["name"] for p in client.get("/llm-presets").json()["presets"]]
-    assert "OpenRouter" in names and "Ollama" in names
+    assert "LiteLLM" in names and "OpenRouter" in names and "Ollama" in names
 
 
 def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):

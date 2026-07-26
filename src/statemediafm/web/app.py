@@ -599,10 +599,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <button id='play'>▶ Start radio</button>
 <button id='stopbtn'>■ Stop broadcast</button>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
-<label class='muted' id='intensitywrap'>energy
-  <input type='range' id='intensity' min='0' max='1' step='0.05'>
-  <span id='intensity-band'></span>
-</label>
 <span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
 <section id='news'><p class='muted'>Loading…</p></section>
@@ -666,6 +662,10 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       </label>
       <label class='muted' id='tuningwrap'>tuning A=
         <select id='tuning'></select>
+      </label>
+      <label class='muted' id='intensitywrap'>energy
+        <input type='range' id='intensity' min='0' max='1' step='0.05'>
+        <span id='intensity-band'></span>
       </label>
     </div>
     <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
