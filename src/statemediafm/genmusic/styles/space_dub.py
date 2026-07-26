@@ -209,10 +209,14 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
         name="kick", kind="perc", sound="bd", gain=0.8, lpf=2000, late=la, slow=2.0,
         segments=_segs("drums", _ONEDROP, arr),
     )
+    # A distant dub snare "splash": HIGH-PASSED to strip the body (just the airy
+    # crack rings out), quiet, drenched in reverb + a long echo so it sits far back,
+    # and PANNED on a slow LFO so each hit drifts to a different spot in the field.
     snare = Voice(
-        name="snare", kind="perc", sound="sd", gain=0.3, lpf=1400, late=la, slow=2.0,
-        fx=(("delay", 0.25), ("delaytime", 0.375), ("delayfeedback", 0.26),
-            ("room", 0.6), ("roomsize", 7)),
+        name="snare", kind="perc", sound="sd", gain=0.22, hpf=700, lpf=4000, late=la, slow=2.0,
+        fx=(("delay", 0.32), ("delaytime", 0.5), ("delayfeedback", 0.34),
+            ("room", 0.88), ("roomsize", 12)),
+        mods=(Mod("pan", 0.12, 0.88, 5),),  # spatial: the snare moves across the field
         segments=_segs("drums", _ONEDROP, arr),
     )
     hats = Voice(
