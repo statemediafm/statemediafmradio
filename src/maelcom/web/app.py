@@ -38,6 +38,8 @@ class _State:
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
+        self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
+        self.news_models: list[str] = []  # gateway models the Settings tab offers
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -143,6 +145,32 @@ def create_app(state: _State | None = None):
             store.set_program(compose(store.last_signal, style=store.model, tuning_a=a))
         return {"current": store.tuning}
 
+    @app.get("/news-model")
+    def news_model() -> dict:
+        """The gateway model used for news parsing: the current pick, the offered
+        options, and whether news parsing is live at all (``live`` is False when
+        the server was started without ``--live`` — the news is the deterministic
+        offline copy and the selector is hidden)."""
+        return {
+            "current": store.news_model,
+            "models": list(store.news_models),
+            "live": store.news_model is not None,
+        }
+
+    @app.post("/news-model")
+    def set_news_model(name: str) -> dict:
+        """Switch the news-parsing model (any model the gateway serves). Applies to
+        the next news cycle; only meaningful when the server is running live."""
+        if store.news_model is None:
+            raise HTTPException(status_code=409, detail="news parsing is not live")
+        name = name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="empty model")
+        store.news_model = name
+        if name not in store.news_models:
+            store.news_models.append(name)  # remember a custom entry
+        return {"current": store.news_model, "models": list(store.news_models)}
+
     @app.get("/auth")
     def auth() -> dict:
         """Per-source endpoints + whether a token is set (tokens are masked)."""
@@ -240,6 +268,18 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
+  <div id='newsmodel-wrap' hidden>
+    <h2>News-parsing model</h2>
+    <p class='muted'>Which model on the <code>llm-gateway</code> writes the news.
+    Pick one the gateway serves, or type a model string. Applies to the next news
+    cycle.</p>
+    <div class='authrow'>
+      <select id='newsmodel'></select>
+      <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
+      <button id='newsmodel-save'>Set model</button>
+      <span class='muted' id='newsmodel-status'></span>
+    </div>
+  </div>
   <h2>Sources &amp; auth</h2>
   <p class='muted'>Personal endpoints and tokens for the sources Maelcom polls,
   plus <code>llm-gateway</code> (the LLM/model gateway used for news parsing —
@@ -404,8 +444,35 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings') loadAuth();
+  if(tab==='settings'){ loadNewsModel(); loadAuth(); }
 }));
+
+// News-parsing model selector (Settings) — only shown when the server runs live.
+const newsModelSel=document.getElementById('newsmodel');
+const newsModelCustom=document.getElementById('newsmodel-custom');
+async function loadNewsModel(){
+  try{
+    const d=await (await fetch('/news-model')).json();
+    document.getElementById('newsmodel-wrap').hidden = !d.live;
+    if(!d.live) return;
+    newsModelSel.innerHTML='';
+    for(const m of (d.models||[])){
+      const o=document.createElement('option'); o.value=m; o.textContent=m;
+      if(m===d.current) o.selected=true; newsModelSel.appendChild(o);
+    }
+    document.getElementById('newsmodel-status').textContent='current: '+esc(d.current||'');
+  }catch(e){}
+}
+document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
+  const name=(newsModelCustom.value.trim())||newsModelSel.value;
+  if(!name) return;
+  const st=document.getElementById('newsmodel-status'); st.textContent='saving…';
+  try{
+    const r=await fetch('/news-model?name='+encodeURIComponent(name), {method:'POST'});
+    if(!r.ok){ st.textContent='error: '+r.status; return; }
+    newsModelCustom.value=''; await loadNewsModel();
+  }catch(e){ st.textContent='error'; }
+});
 async function loadAuth(){
   const wrap=document.getElementById('authform');
   try{

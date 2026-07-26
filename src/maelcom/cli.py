@@ -305,9 +305,16 @@ def _serve(args: argparse.Namespace) -> int:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
     tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
+    config = load_config(args.config) if args.config else {}
     # The ambient generator is a config item ([genmusic] in the --config file);
     # by default the UI selector is hidden and Entrainment 0.1 is used.
-    gm = genmusic_settings(load_config(args.config) if args.config else {})
+    gm = genmusic_settings(config)
+    # --live: the LLM writes the news (via the llm-gateway). The [llm] `models`
+    # list becomes the Settings tab's selectable news-parsing models.
+    llm = news_models = None
+    if getattr(args, "live", False):
+        llm = (LiteLLMClient(), _llm_config(args))
+        news_models = llm_settings(config).get("models") or []
     return serve_mod.run(
         roster,
         tts,
@@ -319,6 +326,8 @@ def _serve(args: argparse.Namespace) -> int:
         generator=gm["generator"],
         show_selector=gm["selector"],
         generators_dir=gm["generators_dir"],
+        llm=llm,
+        news_models=news_models,
     )
 
 

@@ -48,6 +48,40 @@ def test_refresh_once_skips_revoicing_when_unchanged():
     assert state.program is not None
 
 
+def test_refresh_once_uses_llm_when_wired():
+    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+
+    state = _State()
+    state.news_model = "openai/gpt-4o-mini"  # UI selection overrides the base model
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    seen = {}
+
+    class _Rec(FakeLLMClient):
+        def complete(self, prompt, cfg):
+            seen["model"] = cfg.model
+            return "The team shipped a big story today."
+
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=(_Rec(), LLMConfig(model="base/model")))
+    # The live model wrote the segment, using the UI-selected model, not the base.
+    assert seen["model"] == "openai/gpt-4o-mini"
+    assert "The team shipped a big story today." in state.plan.segments[0].script.text
+
+
+def test_refresh_once_falls_back_when_llm_errors():
+    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+
+    class _Boom(FakeLLMClient):
+        def complete(self, prompt, cfg):
+            raise RuntimeError("gateway down")
+
+    state = _State()
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=(_Boom(), LLMConfig(model="m")))
+    # A live-model failure degrades to the deterministic copy — still on air.
+    assert state.plan is not None and state.plan.segments
+    assert "firmwide radio service" in state.plan.segments[0].script.text
+
+
 def test_refresh_once_skips_failing_sources():
     class _Bad:
         def poll(self, since=None):

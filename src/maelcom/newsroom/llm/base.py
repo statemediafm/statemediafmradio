@@ -98,12 +98,15 @@ def llm_config(
     The table may name a ``profile`` (a ``model_config.yaml`` profile to base on)
     and/or inline fields (``model``, ``api_base``, ``api_key_env``, ``temperature``
     …) which override the profile. When it names a ``model``, no profile is needed.
+    A ``models`` list (the UI's selectable options) is ignored here — it is not a
+    LiteLLM parameter.
     Falls back to the default profile when the table is empty. The gateway base URL
     and key can be left out entirely — they fall back to the ``llm-gateway`` auth
     slot at call time (see ``LiteLLMClient``).
     """
     settings = dict(settings or {})
     prof = settings.pop("profile", None) or profile
+    settings.pop("models", None)  # UI-only: the selectable model list, not a litellm param
     if "model" in settings:
         return _config_from_dict(settings)
     base = load_model_config(prof, path)

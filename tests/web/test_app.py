@@ -68,6 +68,34 @@ def test_models_list_and_switch():
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
+def test_news_model_not_live_by_default():
+    client = TestClient(create_app(_State()))
+    d = client.get("/news-model").json()
+    assert d["live"] is False and d["current"] is None
+    # Selecting a model is rejected when news parsing isn't live.
+    assert client.post("/news-model", params={"name": "openai/x"}).status_code == 409
+
+
+def test_news_model_select_when_live():
+    state = _State()
+    state.news_model = "anthropic/claude-opus-4-8"  # seeded live by serve.run
+    state.news_models = ["anthropic/claude-opus-4-8", "openai/gpt-4o-mini"]
+    client = TestClient(create_app(state))
+
+    d = client.get("/news-model").json()
+    assert d["live"] is True and d["current"] == "anthropic/claude-opus-4-8"
+
+    resp = client.post("/news-model", params={"name": "openai/gpt-4o-mini"})
+    assert resp.json()["current"] == "openai/gpt-4o-mini"
+    assert state.news_model == "openai/gpt-4o-mini"
+
+    # A custom model is accepted and remembered in the options list.
+    resp = client.post("/news-model", params={"name": "ollama/llama3.1"})
+    assert state.news_model == "ollama/llama3.1"
+    assert "ollama/llama3.1" in resp.json()["models"]
+    assert client.post("/news-model", params={"name": "  "}).status_code == 400
+
+
 def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
     import json as _json
 

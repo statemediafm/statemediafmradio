@@ -26,7 +26,20 @@ model   = "openai/gpt-4o-mini"
 # api_key_env = "MY_KEY"
 temperature = 1
 max_tokens  = 1024
+# models the Settings tab offers for live news-model selection (UI-only, not a
+# LiteLLM parameter). The current `model` is always offered too.
+models = ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "ollama/llama3.1"]
 ```
+
+## Live news-model selection
+
+`maelcom serve --live` runs the LLM as the news writer (the gateway *parses* the
+activity into prose). The **Settings tab** then shows a **News-parsing model**
+picker: choose one of the `[llm] models` above, or type any model string the
+gateway serves. The change applies to the next news cycle — no restart. Without
+`--live`, news is the deterministic offline copy and the picker is hidden. A
+gateway error during a cycle degrades gracefully to the offline copy so the
+station stays on air.
 
 ## Per-provider scaffold
 
