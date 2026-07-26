@@ -67,6 +67,34 @@ def test_refresh_once_uses_llm_when_wired():
     assert "The team shipped a big story today." in state.plan.segments[0].script.text
 
 
+def test_refresh_once_applies_live_llm_overrides():
+    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+
+    state = _State()
+    state.news_model = "openai/o1"
+    state.news_temperature = 0.2
+    state.news_max_tokens = 256
+    seen = {}
+
+    class _Rec(FakeLLMClient):
+        def complete(self, prompt, cfg):
+            seen.update(model=cfg.model, temp=cfg.temperature, mx=cfg.max_tokens)
+            return "Body."
+
+    base = LLMConfig(model="base/model", temperature=1.0, max_tokens=1024)
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=(_Rec(), base))
+    assert seen == {"model": "openai/o1", "temp": 0.2, "mx": 256}
+
+
+def test_refresh_once_uses_live_style():
+    state = _State()
+    state.style = "sports-desk"
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    refresh_once(state, roster, ToneWavTTS(), cache={})
+    assert state.plan.segments[0].script.style == "sports-desk"
+
+
 def test_refresh_once_falls_back_when_llm_errors():
     from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
 

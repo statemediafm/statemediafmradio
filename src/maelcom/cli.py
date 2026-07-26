@@ -375,6 +375,7 @@ def _serve(args: argparse.Namespace) -> int:
         llm=llm,
         news_models=news_models,
         segments=segments,
+        voice=args.voice,
     )
 
 

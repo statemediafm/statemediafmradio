@@ -160,6 +160,46 @@ def test_sources_never_leak_tokens():
     assert "ghp_secret" not in _json.dumps(client.get("/sources").json())
 
 
+def test_sources_add_honours_headlines_and_max_count():
+    state = _State()
+    state.segments, state.roster = [], []
+    client = TestClient(create_app(state))
+    resp = client.post("/sources", json={"source": "hackernews", "topic": "HN",
+                                         "headlines": 3, "max_count": 7, "offset": "5m"})
+    assert resp.status_code == 200
+    assert state.roster[0][3] == 3  # headlines cap flows into the roster entry
+    listed = client.get("/sources").json()["sources"][0]["config"]
+    assert listed["headlines"] == 3 and listed["max_count"] == 7
+
+
+def test_style_and_voice_endpoints():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert "bbc-world" in client.get("/style").json()["suggestions"]
+    assert client.post("/style", params={"name": "noir"}).json()["current"] == "noir"
+    assert state.style == "noir"
+    assert client.post("/style", params={"name": "  "}).status_code == 400
+
+    voices = client.get("/voice").json()["voices"]
+    assert "alan" in voices and "alba" in voices
+    assert client.post("/voice", params={"name": "alba"}).json()["current"] == "alba"
+    assert state.voice == "alba"
+    assert client.post("/voice", params={"name": "nope"}).status_code == 400
+
+
+def test_news_model_temperature_and_max_tokens():
+    state = _State()
+    state.news_model = "openai/gpt-4o-mini"
+    client = TestClient(create_app(state))
+    resp = client.post("/news-model", params={"name": "openai/o1", "temperature": 0.3,
+                                              "max_tokens": 512})
+    assert resp.json()["temperature"] == 0.3 and resp.json()["max_tokens"] == 512
+    assert state.news_temperature == 0.3 and state.news_max_tokens == 512
+    # Out-of-range values are rejected.
+    assert client.post("/news-model", params={"name": "m", "temperature": 5}).status_code == 400
+    assert client.post("/news-model", params={"name": "m", "max_tokens": 0}).status_code == 400
+
+
 def test_llm_presets_listed():
     client = TestClient(create_app(_State()))
     names = [p["name"] for p in client.get("/llm-presets").json()["presets"]]

@@ -41,6 +41,10 @@ class _State:
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
         self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
+        self.news_temperature: float | None = None  # live [llm] sampling override
+        self.news_max_tokens: int | None = None  # live [llm] length override
+        self.style: str = "bbc-world"  # live-selectable writing style for the news
+        self.voice: str = "alan"  # live-selectable narration voice (Piper)
         # Live roster: the refresh loop reads these; the Settings tab edits them.
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
@@ -149,6 +153,40 @@ def create_app(state: _State | None = None):
             store.set_program(compose(store.last_signal, style=store.model, tuning_a=a))
         return {"current": store.tuning}
 
+    # A few writing-style suggestions for the UI; the field accepts any string.
+    _STYLE_SUGGESTIONS = ["bbc-world", "npr", "sports-desk", "tech-brief", "noir"]
+
+    @app.get("/style")
+    def style() -> dict:
+        """The current news writing style and a few suggestions (free-form)."""
+        return {"current": store.style, "suggestions": _STYLE_SUGGESTIONS}
+
+    @app.post("/style")
+    def set_style(name: str) -> dict:
+        """Set the news writing style (a free-form prompt hint). Next cycle."""
+        name = name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="empty style")
+        store.style = name
+        return {"current": store.style}
+
+    @app.get("/voice")
+    def voice() -> dict:
+        """The current narration voice and the offered Piper voices."""
+        from ..newsroom.tts import voice_names
+
+        return {"current": store.voice, "voices": voice_names()}
+
+    @app.post("/voice")
+    def set_voice(name: str) -> dict:
+        """Set the narration voice (a curated Piper voice). Next cycle."""
+        from ..newsroom.tts import voice_names
+
+        if name not in voice_names():
+            raise HTTPException(status_code=400, detail="unknown voice")
+        store.voice = name
+        return {"current": store.voice}
+
     @app.get("/news-model")
     def news_model() -> dict:
         """The gateway model used for news parsing: the current pick, the offered
@@ -159,21 +197,37 @@ def create_app(state: _State | None = None):
             "current": store.news_model,
             "models": list(store.news_models),
             "live": store.news_model is not None,
+            "temperature": store.news_temperature,
+            "max_tokens": store.news_max_tokens,
         }
 
     @app.post("/news-model")
-    def set_news_model(name: str) -> dict:
-        """Switch the news-parsing model (any model the gateway serves). Applies to
+    def set_news_model(
+        name: str, temperature: float | None = None, max_tokens: int | None = None
+    ) -> dict:
+        """Switch the news-parsing model and (optionally) its sampling knobs — any
+        model the gateway serves, plus ``temperature`` / ``max_tokens``. Applies to
         the next news cycle; only meaningful when the server is running live."""
         if store.news_model is None:
             raise HTTPException(status_code=409, detail="news parsing is not live")
+        if temperature is not None and not 0.0 <= temperature <= 2.0:
+            raise HTTPException(status_code=400, detail="temperature must be 0..2")
+        if max_tokens is not None and max_tokens <= 0:
+            raise HTTPException(status_code=400, detail="max_tokens must be positive")
+        store.news_temperature = temperature
+        store.news_max_tokens = max_tokens
         name = name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="empty model")
         store.news_model = name
         if name not in store.news_models:
             store.news_models.append(name)  # remember a custom entry
-        return {"current": store.news_model, "models": list(store.news_models)}
+        return {
+            "current": store.news_model,
+            "models": list(store.news_models),
+            "temperature": store.news_temperature,
+            "max_tokens": store.news_max_tokens,
+        }
 
     @app.post("/news-model/discover")
     def discover_news_models() -> dict:
@@ -360,8 +414,24 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     <input id='src-topic' placeholder='topic (optional)'>
     <input id='src-param' placeholder='—'>
     <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
+    <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
+    <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
+    <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
     <button id='src-add'>Add source</button>
     <span class='muted' id='src-status'></span>
+  </div>
+
+  <h2>Narration</h2>
+  <p class='muted'>The news writing style (a free-form prompt hint) and the
+  speaking voice. Applies to the next news cycle.</p>
+  <div class='authrow'>
+    <label class='muted'>style
+      <input id='style-input' list='style-list' placeholder='e.g. bbc-world'>
+      <datalist id='style-list'></datalist>
+    </label>
+    <label class='muted'>voice <select id='voice-sel'></select></label>
+    <button id='narration-save'>Apply</button>
+    <span class='muted' id='narration-status'></span>
   </div>
 
   <div id='newsmodel-wrap' hidden>
@@ -372,6 +442,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     <div class='authrow'>
       <select id='newsmodel'></select>
       <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
+      <input id='newsmodel-temp' type='number' step='0.1' min='0' max='2' placeholder='temperature'>
+      <input id='newsmodel-maxtokens' type='number' min='1' placeholder='max_tokens'>
       <button id='newsmodel-save'>Set model</button>
       <button id='newsmodel-discover'>↻ Discover from gateway</button>
       <span class='muted' id='newsmodel-status'></span>
@@ -544,8 +616,34 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadSources(); loadNewsModel(); loadPresets(); loadAuth(); }
+  if(tab==='settings'){ loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); }
 }));
+
+// ── Narration: writing style + speaking voice ────────────────────────────────
+async function loadNarration(){
+  try{
+    const s=await (await fetch('/style')).json();
+    const inp=document.getElementById('style-input'); inp.value=s.current||'';
+    const dl=document.getElementById('style-list'); dl.innerHTML='';
+    for(const x of (s.suggestions||[])){ const o=document.createElement('option'); o.value=x; dl.appendChild(o); }
+    const v=await (await fetch('/voice')).json();
+    const sel=document.getElementById('voice-sel'); sel.innerHTML='';
+    for(const x of (v.voices||[])){ const o=document.createElement('option'); o.value=x; o.textContent=x;
+      if(x===v.current) o.selected=true; sel.appendChild(o); }
+  }catch(e){}
+}
+document.getElementById('narration-save').addEventListener('click', async ()=>{
+  const st=document.getElementById('narration-status'); st.textContent='saving…';
+  const style=document.getElementById('style-input').value.trim();
+  const voice=document.getElementById('voice-sel').value;
+  try{
+    if(style){ const r=await fetch('/style?name='+encodeURIComponent(style),{method:'POST'});
+      if(!r.ok){ st.textContent='style error'; return; } }
+    if(voice){ const r=await fetch('/voice?name='+encodeURIComponent(voice),{method:'POST'});
+      if(!r.ok){ st.textContent='voice error'; return; } }
+    st.textContent='applied (next cycle)';
+  }catch(e){ st.textContent='error'; }
+});
 
 // ── Live source management ───────────────────────────────────────────────────
 // The `source` kind determines the one extra parameter each needs.
@@ -564,8 +662,12 @@ async function loadSources(){
     list.innerHTML='';
     for(const s of (d.sources||[])){
       const row=document.createElement('div'); row.className='srcrow';
+      const cfg=s.config||{};
+      const extra=[cfg.headlines!=null?('headlines '+cfg.headlines):'',
+                   cfg.max_count!=null?('max '+cfg.max_count):''].filter(Boolean).join(' · ');
       row.innerHTML='<span class="kind">'+esc(s.kind||'?')+'</span>'+
-        '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+'</span></span>'+
+        '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
+        (extra?(' · '+esc(extra)):'')+'</span></span>'+
         '<button>Remove</button>';
       row.querySelector('button').addEventListener('click', async ()=>{
         try{ await fetch('/sources/'+s.index,{method:'DELETE'}); await loadSources(); }catch(e){}
@@ -587,13 +689,19 @@ document.getElementById('src-add').addEventListener('click', async ()=>{
     const v=srcParam.value.trim(); if(!v){ st.textContent='needs '+SRC_PARAM[kind]; return; }
     seg[key] = kind==='pagerduty' ? v.split(',').map(x=>x.trim()).filter(Boolean) : v;
   }
-  if(document.getElementById('src-topic').value.trim()) seg.topic=document.getElementById('src-topic').value.trim();
-  if(document.getElementById('src-every').value.trim()) seg.every=document.getElementById('src-every').value.trim();
+  const val=id=>document.getElementById(id).value.trim();
+  if(val('src-topic')) seg.topic=val('src-topic');
+  if(val('src-every')) seg.every=val('src-every');
+  if(val('src-headlines')) seg.headlines=parseInt(val('src-headlines'),10);
+  if(val('src-maxcount')) seg.max_count=parseInt(val('src-maxcount'),10);
+  if(val('src-offset')) seg.offset=val('src-offset');
   st.textContent='adding…';
   try{
     const r=await fetch('/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(seg)});
     if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
-    srcParam.value=''; document.getElementById('src-topic').value=''; st.textContent=''; await loadSources();
+    for(const id of ['src-param','src-topic','src-headlines','src-maxcount','src-offset'])
+      document.getElementById(id).value='';
+    st.textContent=''; await loadSources();
   }catch(e){ st.textContent='error'; }
 });
 
@@ -630,6 +738,8 @@ async function loadNewsModel(){
       const o=document.createElement('option'); o.value=m; o.textContent=m;
       if(m===d.current) o.selected=true; newsModelSel.appendChild(o);
     }
+    document.getElementById('newsmodel-temp').value = d.temperature!=null ? d.temperature : '';
+    document.getElementById('newsmodel-maxtokens').value = d.max_tokens!=null ? d.max_tokens : '';
     document.getElementById('newsmodel-status').textContent='current: '+esc(d.current||'');
   }catch(e){}
 }
@@ -637,9 +747,14 @@ document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
   const name=(newsModelCustom.value.trim())||newsModelSel.value;
   if(!name) return;
   const st=document.getElementById('newsmodel-status'); st.textContent='saving…';
+  let q='/news-model?name='+encodeURIComponent(name);
+  const t=document.getElementById('newsmodel-temp').value.trim();
+  const mt=document.getElementById('newsmodel-maxtokens').value.trim();
+  if(t!=='') q+='&temperature='+encodeURIComponent(t);
+  if(mt!=='') q+='&max_tokens='+encodeURIComponent(mt);
   try{
-    const r=await fetch('/news-model?name='+encodeURIComponent(name), {method:'POST'});
-    if(!r.ok){ st.textContent='error: '+r.status; return; }
+    const r=await fetch(q, {method:'POST'});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
     newsModelCustom.value=''; await loadNewsModel(); loadNewsBadge();
   }catch(e){ st.textContent='error'; }
 });

@@ -48,30 +48,39 @@ def _segment_reads(items, style, headlines, llm) -> list[Read]:
 
 
 def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None) -> None:
+    voice = getattr(state, "voice", None)  # live-selectable narration voice
     programmes: list[Programme] = []
     content: dict = {}
     for topic, items, _cadence, headlines in per_topic:
         reads = _segment_reads(items, style, headlines, llm)
         script = Script(text=" ".join(r.text for r in reads), style=style)
-        audio = render_reads(reads, tts, style=style, headline_pause_ms=headline_pause_ms)
+        audio = render_reads(
+            reads, tts, style=style, voice=voice, headline_pause_ms=headline_pause_ms
+        )
         content[topic] = (script, audio)
         programmes.append(Programme(topic, _cadence))
     state.set_plan(assemble_broadcast(programmes, content, window_s=3600))
 
 
 def _effective_llm(state, llm):
-    """Apply the UI's news-model selection to the base LLM config.
+    """Apply the UI's live news-parsing overrides to the base LLM config.
 
     ``llm`` is the ``(client, base_cfg)`` wired at boot, or ``None`` when the
-    server isn't running live. When the Settings tab has selected a gateway model
-    (``state.news_model``) it overrides ``base_cfg.model`` for this tick, so the
-    news-parsing model can be switched live without a restart.
+    server isn't running live. The Settings tab can override the gateway model
+    (``state.news_model``) and the sampling knobs (``state.news_temperature``,
+    ``state.news_max_tokens``) for this tick, so news parsing can be tuned live
+    without a restart. Unset (``None``) overrides leave the base config's value.
     """
     if llm is None:
         return None
     client, base_cfg = llm
-    model = getattr(state, "news_model", None)
-    return (client, replace(base_cfg, model=model)) if model else llm
+    overrides = {
+        "model": getattr(state, "news_model", None),
+        "temperature": getattr(state, "news_temperature", None),
+        "max_tokens": getattr(state, "news_max_tokens", None),
+    }
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+    return (client, replace(base_cfg, **overrides)) if overrides else llm
 
 
 def _quiet_lead(signature: tuple) -> float:
@@ -106,6 +115,7 @@ def refresh_once(
     # Broadcast off: do no work — no polling, no TTS, no LLM (stop consuming).
     if not getattr(state, "broadcasting", True):
         return
+    style = getattr(state, "style", None) or style  # live-selectable writing style
     per_topic: list[tuple] = []
     all_items: list = []
     # Snapshot: the Settings tab can add/remove sources on another thread mid-tick.
@@ -182,6 +192,7 @@ def run(
     llm=None,
     news_models: list[str] | None = None,
     segments: list[dict] | None = None,
+    voice: str | None = None,
 ) -> int:
     """Boot the FastAPI app and drive ``refresh_once`` on an interval.
 
@@ -215,6 +226,10 @@ def run(
     else:
         print(f"unknown generator {generator!r}; using {state.model!r}", file=sys.stderr)
     state.show_selector = show_selector
+    # Narration: the writing style and voice are live-selectable from Settings.
+    state.style = style
+    if voice:
+        state.voice = voice
     # The live roster is owned by the app state so the Settings tab can edit it.
     state.roster = list(roster)
     state.segments = list(segments or [])
@@ -224,6 +239,8 @@ def run(
         _client, base_cfg = llm
         state.news_model = base_cfg.model
         state.news_cfg = base_cfg  # lets the Settings tab auto-discover gateway models
+        state.news_temperature = base_cfg.temperature
+        state.news_max_tokens = base_cfg.max_tokens
         options = list(news_models or [])
         if base_cfg.model not in options:
             options.insert(0, base_cfg.model)

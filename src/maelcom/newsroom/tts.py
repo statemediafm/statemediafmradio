@@ -48,6 +48,11 @@ _VOICE_ALIASES = {
 _DEFAULT_VOICE = "alan"
 
 
+def voice_names() -> list[str]:
+    """The friendly voice names the UI offers (``--voice`` also accepts these)."""
+    return list(_VOICE_ALIASES)
+
+
 def _assemble_wavs(clips: list[AudioRef], gaps_ms: list[int]) -> AudioRef:
     """Join WAV clips with a per-clip *leading* silence (``gaps_ms[i]`` before
     clip ``i``; the first clip's gap is ignored). All clips must share format."""
@@ -251,22 +256,31 @@ class PiperTTS(TTSProvider):
     """
 
     def __init__(self, voice: str = _DEFAULT_VOICE, voices_dir: Path | None = None) -> None:
+        self.voice_name = voice
+        self._voices_dir = voices_dir
+        self._loaded: dict[str, object] = {}
+        self._load(voice)  # preload the default so a bad voice fails fast
+
+    def _load(self, voice: str) -> object:
+        """Load (and cache) a Piper voice model, so ``render(voice=…)`` can switch
+        the narration voice at runtime without reconstructing the provider."""
         from piper import PiperVoice  # lazy: only needed when Piper is used
 
-        model, config = resolve_piper_voice(voice, voices_dir)
-        self.voice_name = voice
-        self._voice = PiperVoice.load(str(model), str(config))
+        if voice not in self._loaded:
+            model, config = resolve_piper_voice(voice, self._voices_dir)
+            self._loaded[voice] = PiperVoice.load(str(model), str(config))
+        return self._loaded[voice]
 
     def render(self, script: Script, voice: str | None = None) -> AudioRef:
+        name = voice or self.voice_name
+        loaded = self._load(name)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
-            self._voice.synthesize_wav(script.text, w)
+            loaded.synthesize_wav(script.text, w)
         data = buf.getvalue()
         with wave.open(io.BytesIO(data)) as r:
             duration_ms = round(r.getnframes() / r.getframerate() * 1000)
-        clip_id = hashlib.sha256(
-            f"{self.voice_name}:{voice or ''}:{script.text}".encode()
-        ).hexdigest()[:16]
+        clip_id = hashlib.sha256(f"{name}:{script.text}".encode()).hexdigest()[:16]
         return AudioRef(
             id=clip_id,
             media_type="audio/wav",
