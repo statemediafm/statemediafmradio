@@ -48,6 +48,8 @@ class _State:
         # Live roster: the refresh loop reads these; the Settings tab edits them.
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
+        self.director = None  # rhythm-of-the-day clock (Director), set by serve.run
+        self.session_start: float | None = None  # monotonic session start, for /schedule
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -76,6 +78,31 @@ def create_app(state: _State | None = None):
         if store.plan is None:
             return {"segments": []}
         return plan_to_dict(store.plan)
+
+    @app.get("/schedule")
+    def schedule() -> dict:
+        """The rhythm-of-the-day running order: the hour's news bulletins, song
+        slots and station idents (relative offsets), plus where 'now' sits and
+        the next foreground cue. ``live`` is False until ``serve`` sets a director."""
+        director = store.director
+        if director is None:
+            return {"live": False, "order": [], "elapsed_s": 0.0}
+        import time
+
+        elapsed = (time.monotonic() - store.session_start) if store.session_start else 0.0
+        order = [
+            {"kind": c.kind, "at_s": c.at_s, "topic": c.topic,
+             "song": (c.cue.title if c.cue else None)}
+            for c in director.running_order(3600.0)
+        ]
+        nxt = director.next_cue(elapsed)
+        return {
+            "live": True,
+            "elapsed_s": elapsed,
+            "window_s": 3600.0,
+            "order": order,
+            "next": ({"kind": nxt.kind, "at_s": nxt.at_s} if nxt else None),
+        }
 
     @app.get("/genmusic")
     def genmusic() -> dict:

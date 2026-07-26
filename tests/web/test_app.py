@@ -200,6 +200,21 @@ def test_news_model_temperature_and_max_tokens():
     assert client.post("/news-model", params={"name": "m", "max_tokens": 0}).status_code == 400
 
 
+def test_schedule_endpoint():
+    from maelcom.core.director import Director
+
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/schedule").json()["live"] is False  # no director until serve runs
+
+    state.director = Director()
+    d = client.get("/schedule").json()
+    assert d["live"] is True
+    kinds = {c["kind"] for c in d["order"]}
+    assert {"news", "song", "ident"} <= kinds
+    assert d["order"][0]["kind"] == "news" and d["order"][0]["at_s"] == 0.0
+
+
 def test_llm_presets_listed():
     client = TestClient(create_app(_State()))
     names = [p["name"] for p in client.get("/llm-presets").json()["presets"]]

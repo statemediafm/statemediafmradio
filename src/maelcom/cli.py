@@ -376,6 +376,7 @@ def _serve(args: argparse.Namespace) -> int:
         news_models=news_models,
         segments=segments,
         voice=args.voice,
+        news_every_s=parse_duration(args.news_every),
     )
 
 
@@ -503,6 +504,11 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--port", type=int, default=8000, help="Bind port (default 8000).")
     sv.add_argument(
         "--refresh", type=float, default=60.0, help="Seconds between source refreshes (default 60)."
+    )
+    sv.add_argument(
+        "--news-every",
+        default="17m",
+        help="Rhythm-of-the-day news cadence — how often a bulletin airs (default 17m).",
     )
     sv.set_defaults(func=_serve)
 

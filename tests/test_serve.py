@@ -110,6 +110,31 @@ def test_refresh_once_falls_back_when_llm_errors():
     assert "firmwide radio service" in state.plan.segments[0].script.text
 
 
+def test_refresh_once_gates_news_to_director_windows():
+    from maelcom.core.director import Director
+
+    state = _State()
+    director = Director()  # 17-min news cadence
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    cache: dict = {}
+
+    # First tick (elapsed 0): the opening bulletin airs.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0)
+    assert state.plan is not None
+    first = state.plan
+
+    # A minute later, fresh activity but no news slot due → the plan is held.
+    roster[0] = ("HN", _FakeSource([
+        NewsItem(id="9", source="hackernews", kind="story", title="New drop",
+                 origin="Hacker News", actors=["z"])]), Cadence(900, 0), 5)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1060.0)
+    assert state.plan is first  # not re-aired between windows
+
+    # Past the 17-min slot → the held fresh news airs.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0 + 17 * 60 + 1)
+    assert state.plan is not first
+
+
 def test_refresh_once_reads_a_live_edited_roster():
     # The Settings tab appends to state.roster mid-session; the loop reads it live.
     state = _State()

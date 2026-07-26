@@ -101,6 +101,23 @@ class StrudelProgram:
 
 
 @dataclass(frozen=True, slots=True)
+class SongCue:
+    """A song slot in the rhythm of the day (plan §6).
+
+    A stub through M4 — the streaming pillar (M5) fills in real tracks. Until
+    then a cue is a placeholder the director schedules and the player shows as
+    "song slot", so the felt cadence and running order are correct now and the
+    contract is stable for when audio arrives.
+    """
+
+    title: str = "—"
+    artist: str = "—"
+    source: str | None = None  # e.g. "spotify" once M5 lands
+    uri: str | None = None  # provider track URI, when available
+    duration_s: float = 180.0
+
+
+@dataclass(frozen=True, slots=True)
 class Segment:
     """One timed entry in a broadcast plan.
 

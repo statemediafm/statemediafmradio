@@ -98,6 +98,7 @@ def refresh_once(
     style: str = "bbc-world",
     headline_pause_ms: int = 1000,
     llm=None,
+    director=None,
     now: float | None = None,
 ) -> None:
     """One refresh: recompute the music program, and the news plan if changed.
@@ -107,6 +108,11 @@ def refresh_once(
     holds the last item-set signature so the news plan is only re-voiced when the
     activity actually changed.
 
+    ``director`` (the rhythm-of-the-day clock) gates *when* a bulletin airs: news
+    is published only when a news slot has fallen due since the last tick (the
+    17-minute cadence) **and** there is fresh activity — hybrid cadence+recency.
+    Without a director, news airs on every change (the older behaviour).
+
     In **quiet mode** the news is held back so the music can lead in 1–3 minutes
     *before* it airs, stays ~1 minute after, then goes silent (``state.music_on``)
     until the next news cycle. ``now`` (a monotonic clock) is injectable for tests.
@@ -115,6 +121,13 @@ def refresh_once(
     # Broadcast off: do no work — no polling, no TTS, no LLM (stop consuming).
     if not getattr(state, "broadcasting", True):
         return
+    # Session-relative clock for the rhythm: is a news bulletin due this tick?
+    if "t0" not in cache:
+        cache["t0"] = now
+        cache["last_elapsed"] = -1.0  # so the opening bulletin airs on the first tick
+    elapsed = now - cache["t0"]
+    news_due = director.news_due(cache["last_elapsed"], elapsed) if director is not None else True
+    cache["last_elapsed"] = elapsed
     style = getattr(state, "style", None) or style  # live-selectable writing style
     per_topic: list[tuple] = []
     all_items: list = []
@@ -152,15 +165,18 @@ def refresh_once(
     # Apply the UI's live news-model selection to the wired LLM config.
     eff_llm = _effective_llm(state, llm)
 
+    # Air a bulletin only when there's fresh activity AND a news slot is due.
+    air_news = changed and news_due
+
     if not getattr(state, "quiet_mode", False):
         state.music_on = True
-        if changed:
+        if air_news:
             cache["news_sig"] = signature
             _publish_plan(state, per_topic, tts, style, headline_pause_ms, eff_llm)
         return
 
     # ── Quiet mode: gate the music around the news broadcast ─────────────────
-    if changed and not cache.get("q_pending"):
+    if air_news and not cache.get("q_pending"):
         # New news → start a cycle: the music leads in now; hold the news to air
         # after the lead-in.
         cache["news_sig"] = signature
@@ -193,6 +209,7 @@ def run(
     news_models: list[str] | None = None,
     segments: list[dict] | None = None,
     voice: str | None = None,
+    news_every_s: float | None = None,
 ) -> int:
     """Boot the FastAPI app and drive ``refresh_once`` on an interval.
 
@@ -205,6 +222,10 @@ def run(
     ``None`` for the deterministic offline copy. ``news_models`` lists the
     gateway models the Settings tab offers for news parsing; the current pick
     lives in ``state.news_model`` and can be changed live.
+
+    ``news_every_s`` sets the **rhythm-of-the-day** news cadence (default 17 min):
+    the :class:`~maelcom.core.director.Director` decides when bulletins air; the
+    music plays under song slots and station idents between them.
     """
     try:
         import asyncio
@@ -245,8 +266,17 @@ def run(
         if base_cfg.model not in options:
             options.insert(0, base_cfg.model)
         state.news_models = options
+    # The rhythm-of-the-day director: news bulletins on a 17-min cadence, song
+    # slots + idents between, over a session clock the /schedule endpoint reads.
+    from .core.director import Director
+    from .core.schedule import Cadence
+
+    director = Director(news=Cadence(news_every_s)) if news_every_s else Director()
+    state.director = director
+    start = time.monotonic()
+    state.session_start = start
     app = create_app(state)
-    cache: dict = {}
+    cache: dict = {"t0": start, "last_elapsed": -1.0}
 
     async def _loop() -> None:
         while True:
@@ -260,6 +290,7 @@ def run(
                     style=style,
                     headline_pause_ms=headline_pause_ms,
                     llm=llm,
+                    director=director,
                 )
             except Exception as exc:  # noqa: BLE001 — one bad tick must not kill the loop
                 print(f"refresh error: {exc}", file=sys.stderr)
