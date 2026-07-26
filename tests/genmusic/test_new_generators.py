@@ -120,6 +120,18 @@ def test_space_dub_syncopation_variable_tracks_volatility():
     assert _synco_of(bursty) > _synco_of(calm)
 
 
+@pytest.mark.parametrize("band", _BANDS)
+def test_space_dub_emits_only_verified_primitives(band):
+    # The reliability guarantee: built on the IR, Space Dub can only emit methods
+    # confirmed to sound in @strudel/web 1.0.3 — never an unverified one.
+    from statemediafm.genmusic.ir import VERIFIED_METHODS, used_methods
+
+    text = space_dub.render(_signal(12, 3), 0.5, band)
+    assert used_methods(text) <= VERIFIED_METHODS
+    for bad in ("swingBy", "lpenv", "lpq("):
+        assert bad not in text
+
+
 def test_space_dub_chime_evolves_over_long_timescales():
     # The chime must not sit still for hours: long mutually-prime LFOs (sampled
     # from the global clock) + a wandering 8-chord cycle + bar-to-bar A/B stabs.
