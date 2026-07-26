@@ -90,8 +90,20 @@ def test_space_dub_wires_the_dub_building_blocks():
     # with delay — the classic dub kit, all present.
     text = space_dub.render(_signal(10, 3), 0.4, "theta")
     assert 's("bd")' in text and 's("sd")' in text and 's("hh")' in text  # drum machine
-    assert '.scale("c1:minor:pentatonic").s("triangle")' in text  # deep bass synth
+    assert '.scale("f#1:minor:pentatonic").s("triangle")' in text  # deep bass synth
     assert '"~ x ~ x ~ x ~ x"' in text and ".delay(" in text  # off-beat skank + delay
+
+
+def test_space_dub_harmonizes_with_entrainment_key():
+    # Space Dub is in F# minor — the relative minor of Entrainment 0.1's A-major
+    # drone — so a crossfade between the two generators stays consonant. The bass
+    # is F#-minor-pentatonic and every chord is diatonic to A major / F# minor.
+    text = space_dub.render(_signal(10, 3), 0.4, "theta")
+    assert '.scale("f#1:minor:pentatonic")' in text
+    # No minor third (C natural) that would clash with A major's C# — the chords
+    # stay within the shared collection {F# G# A B C# D E}.
+    for clashing in ("Cm9", "Cmaj7", "Abmaj7", "Ebm9", "Gm7"):
+        assert clashing not in text
 
 
 def _synco_of(text: str) -> float:
@@ -123,4 +135,4 @@ def test_space_dub_pad_evolves_over_long_timescales():
     pad = next(ln for ln in text.splitlines() if ".slow(31)" in ln)
     assert ".slow(31)" in pad and ".slow(23)" in pad and ".slow(29)" in pad
     # eight-chord wandering cycle (longer than the 4-chord skank progression)
-    assert any(chord in pad for chord in ("Bbmaj7", "Gmaj7", "Cm11", "Dm11", "Fm11"))
+    assert any(chord in pad for chord in ("Amaj7", "Bm11", "F#m11", "C#m7", "E6"))

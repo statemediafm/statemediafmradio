@@ -1,26 +1,31 @@
-"""The ``space-dub`` generator — recognizable dub from the classic building blocks.
+"""The ``space-dub`` generator — dub sound, techno DJ-grid arrangement.
 
-Dub is a drum machine + a bass synth + a lead synth + delay + a filter, and all
-of that is in Strudel's reach. This generator wires exactly those, on the
-verified-primitive IR (:mod:`statemediafm.genmusic.ir`):
+Dub's building blocks (drum machine + bass synth + lead synth + delay + filter),
+arranged with **techno best practices**: everything is on a 4/4 grid, and the
+piece is a **long-form arrangement** — elements enter and exit on 8/16-bar phrase
+boundaries (intro → bass in → build → drop → breakdown → build → peak → outro),
+with a **riser into each drop** and a stripped **breakdown** for tension/release.
+That turns a loop into a ~7-minute journey that then repeats, like a techno track.
 
-* **drum machine** — real ``dirt-samples`` (``bd``/``sd``/``hh``) in a one-drop
-  kit (kick + snare on beat 3, hats on the off-beats);
-* **bass synth** — a deep, round triangle playing a *curated* dub/reggae/DnB riff
-  (written as scale degrees, so it's recognizable and transposes by key);
-* **lead synth** — an off-beat **skank** (short chord stabs on the up-beats) with
-  a dub delay throw, plus a slow evolving pad for atmosphere;
-* **delay + filter** — spring-delay on the skank/snare, a dark filter breath on
-  the bass.
+Voices, on the verified-primitive IR (:mod:`statemediafm.genmusic.ir`):
 
-A phrase has a **shape** (loop → turnaround → pause → drop): everything cuts for
-the drop so a clean sub boom lands in the space. Calm bands lean dub/reggae, busy
-bands lean DnB; ``synco`` (volatility-led) picks busier riffs; tempo tracks the
-band's entrainment ``carrier_hz``; the pad evolves for hours via long,
-mutually-prime LFOs.
+* **drum machine** — real ``dirt-samples`` one-drop kit (``bd``/``sd`` on beat 3,
+  ``hh`` on the off-beats, swung);
+* **bass synth** — a deep round triangle playing a *curated* dub/reggae/DnB riff
+  (scale degrees, so it's recognizable and transposes by key);
+* **lead** — an off-beat **skank** (chord stabs + delay) and an **evolving stab**
+  (a techno chord stab whose rhythm alternates and whose filter/pan drift on long
+  LFOs), plus a sustained **pad** for the breakdown;
+* **riser** — a 16th-note noise roll that builds tension into the drops.
 
-Deterministic and golden-testable. The drum machine needs ``dirt-samples`` loaded
-(the browser player loads them on Start); until then the synth voices carry it.
+Calm bands lean dub/reggae, busy bands lean DnB; ``synco`` (volatility-led) picks
+busier riffs; tempo tracks the band's entrainment ``carrier_hz``. Everything is in
+**F# minor — the relative minor of Entrainment 0.1's A-major drone** — so the two
+share a pitch collection and a gradual crossfade between generators stays
+consonant (no clashing third).
+
+Deterministic and golden-testable. The drum machine needs ``dirt-samples`` (the
+browser player loads them on Start; the synth voices carry it until then).
 """
 
 from __future__ import annotations
@@ -29,22 +34,29 @@ from ...core.models import ActivitySignal
 from ..brainwave import band_traits, clamp01
 from ..ir import Mod, Piece, Seg, Voice, emit
 
-# Minor dub chord loops (skank/pad harmony), one chosen per signal.
+# Everything is in F# minor — the RELATIVE MINOR of A major, which is the key of
+# the Entrainment 0.1 drone (a stable low-A / A-major pedal). Relative minor/major
+# share all seven notes, so Space Dub stays dark and dub while a gradual crossfade
+# to/from Entrainment 0.1 never hits a clashing third — the F# bass reads as the
+# 6th under Entrainment's A. All chords below are diatonic to A major / F# minor.
+_BASS_SCALE = "f#1:minor:pentatonic"  # F# A B C# E — a subset of A major
+
+# Dub chord loops (skank harmony), one chosen per signal; F#-minor diatonic.
 _PROGRESSIONS = (
-    "<Cm9 Abmaj7 Fm9 Gm7>",
-    "<Am9 Fmaj7 Dm9 Em7>",
-    "<Ebm9 Bmaj7 Abm9 Bbm7>",
+    "<F#m9 Bm9 D6 C#m7>",
+    "<F#m9 D6 E A6>",
+    "<C#m9 Bm9 F#m9 E6>",
 )
-# Longer wandering chord cycles for the PAD (8 chords, coprime with the phrase) so
-# the atmosphere keeps moving over minutes rather than repeating each bar.
+# Longer wandering chord cycles for the STAB/PAD (8 chords, coprime with phrasing)
+# so the harmony keeps moving over minutes; all F#-minor diatonic.
 _CHIME_PROG = (
-    "<Cm9 Ebmaj7 Abmaj7 Fm9 Gm7 Cm9 Bbmaj7 Fm11>",
-    "<Am9 Cmaj7 Fmaj7 Dm9 Em7 Am9 Gmaj7 Dm11>",
-    "<Ebm9 Gbmaj7 Bmaj7 Abm9 Bbm7 Ebm9 Dbmaj7 Abm11>",
+    "<F#m9 A6 D6 Bm9 C#m7 F#m9 E6 Amaj7>",
+    "<F#m9 C#m7 Bm9 D6 E6 F#m9 Amaj7 Bm11>",
+    "<C#m9 E6 A6 F#m9 Bm9 D6 C#m7 F#m11>",
 )
-# Curated bass RIFFS as scale degrees over a minor-pentatonic root (0=root, 3=5th,
-# 4=b7, 5=octave, -5=octave below). Pitch AND rhythm together — sparse, root-heavy,
-# recognizable dub/reggae/DnB lines. Each genre lists sparse → busy for `synco`.
+# Curated bass RIFFS as scale degrees over the F#-minor-pentatonic root (0=root,
+# 3=5th, 4=b7, 5=octave, -5=octave below). Pitch AND rhythm together — recognizable
+# dub/reggae/DnB lines, sparse → busy for `synco`.
 _RIFFS = {
     "dub": (
         "0 ~ ~ ~ ~ ~ 3 ~",
@@ -62,12 +74,12 @@ _RIFFS = {
         "0 5 0 3 0 5 0 3",
     ),
 }
-_TURN = "0 1 2 3 4 3 2 1"  # a walking fill (scale degrees) up into the drop
-_DROP = "0 ~ -5 ~ ~ ~ ~ ~"  # root then an octave-below sub boom
-_ROOTS = ("c1", "a0", "c1")  # minor-pentatonic root per progression
-# The drum machine (one-drop): kick + snare on beat 3, hats on the off-beats.
+# Drum machine (one-drop): kick + snare on beat 3, hats + skank on the off-beats.
 _ONEDROP = "~ ~ ~ ~ x ~ ~ ~"
 _OFFBEATS = "~ x ~ x ~ x ~ x"
+# The evolving techno stab: a tresillo (3-3-2) alternating with an off-beat accent
+# each bar, so the rhythm keeps shifting.
+_STAB = "<[x ~ ~ x ~ ~ x ~] [~ x ~ x ~ ~ x ~]>"
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -84,6 +96,30 @@ def _genre(density: int, seed: int) -> str:
     return ("dub", "reggae", "dnb")[seed % 3]
 
 
+def _arrangement(seed: int) -> tuple[tuple[str, int, frozenset[str]], ...]:
+    """A techno long-form arrangement: (name, bars, active groups). Elements enter
+    and exit on 8/16-bar phrase boundaries — intro, bass in, build (riser), drop,
+    breakdown (strip to bass + atmosphere), build, peak, outro. Peak length varies
+    a touch with the seed, staying on the 8-bar grid."""
+    peak = 16 + 8 * (seed % 2)
+    return (
+        ("intro", 8, frozenset({"drums"})),
+        ("bass-in", 8, frozenset({"drums", "bass"})),
+        ("build-1", 8, frozenset({"drums", "bass", "riser"})),
+        ("drop-1", 16, frozenset({"drums", "bass", "skank", "stab"})),
+        ("breakdown", 16, frozenset({"bass", "pad", "stab"})),
+        ("build-2", 8, frozenset({"drums", "bass", "riser"})),
+        ("peak", peak, frozenset({"drums", "bass", "skank", "stab", "pad"})),
+        ("outro", 8, frozenset({"drums", "bass"})),
+    )
+
+
+def _segs(group: str, pattern: str, arr) -> tuple[Seg, ...]:
+    """Build a voice's arrange across the sections: play ``pattern`` where the
+    group is active, rest otherwise — the DJ-grid entrance/exit of elements."""
+    return tuple(Seg(bars, pattern if group in active else None) for _, bars, active in arr)
+
+
 def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     """Assemble the Space Dub :class:`Piece` — pure data for the IR emitter."""
     intensity = clamp01(intensity)
@@ -98,67 +134,75 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     variant = seed % len(_PROGRESSIONS)
     prog = _PROGRESSIONS[variant]
     pad_prog = _CHIME_PROG[variant]
-    scale = f"{_ROOTS[variant]}:minor:pentatonic"
-    loops = max(3, 7 - density)  # calm bands loop longer before turning around
-    cut = round(320 + density * 35)  # bass filter base — a little brighter when busy
+    scale = _BASS_SCALE  # F# minor — relative minor of Entrainment 0.1's A major
+    cut = round(320 + density * 35)  # bass filter base
 
-    # Syncopation: volatility-led. Picks a busier riff from the genre's sparse→busy
-    # list, so bursty activity plays a more syncopated line.
     synco = round(clamp01(0.2 + signal.volatility * 0.6 + (density - 1) * 0.04), 2)
     genre = _genre(density, seed)
     riffs = _RIFFS[genre]
     riff = riffs[min(len(riffs) - 1, round(synco * (len(riffs) - 1)))]
 
     la = round(0.02 + (6 - density) * 0.004, 3)  # laid-back rubato
-    sw = round(0.16 - (density - 1) * 0.02, 2)  # off-beat shuffle for the hats
+    sw = round(0.16 - (density - 1) * 0.02, 2)  # off-beat shuffle
+    arr = _arrangement(seed)
 
-    # BASS SYNTH: deep round triangle, a curated riff, long sustain so notes ring,
-    # a dark filter breath. Prominent — dub bass is up front. Loops → turnaround →
-    # then silent under the pause + drop.
+    # BASS SYNTH: deep round triangle riff, dark filter breath. Present from
+    # "bass-in" through the whole track (including the breakdown — dub keeps the
+    # bass under the atmosphere).
     bass = Voice(
         name="bass", kind="note", sound="triangle", scale=scale, gain=0.7,
-        decay=0.3, sustain=0.6, slow=2.0, late=la, mods=(Mod("lpf", 150, cut, 10),),
-        segments=(Seg(loops, riff), Seg(1, _TURN), Seg(2, None)),
+        decay=0.3, sustain=0.6, late=la, slow=2.0, mods=(Mod("lpf", 150, cut, 10),),
+        segments=_segs("bass", riff, arr),
     )
-    # The clean sub drop, everything else silent around it.
-    drop = Voice(
-        name="drop", kind="note", sound="sine", scale=scale, gain=0.6,
-        attack=0.005, decay=1.5, sustain=0.0, lpf=100, slow=2.0,
-        segments=(Seg(loops + 2, None), Seg(1, _DROP)),
-    )
-    # LEAD SYNTH — the off-beat skank: short chord stabs on the up-beats, bright,
-    # with a dub delay throw. The signature reggae/dub sound.
+    # LEAD — off-beat skank: short chord stabs on the up-beats with a delay throw.
     skank = Voice(
         name="skank", kind="chord", sound="sawtooth", chord=prog, gain=0.18,
-        decay=0.12, sustain=0.0, lpf=1600, slow=2.0, late=la,
+        decay=0.12, sustain=0.0, lpf=1600, late=la, slow=2.0,
         fx=(("delay", 0.45), ("delaytime", 0.5), ("delayfeedback", 0.5),
             ("room", 0.5), ("roomsize", 4)),
-        segments=(Seg(loops + 1, _OFFBEATS), Seg(2, None)),
+        segments=_segs("skank", _OFFBEATS, arr),
     )
-    # Slow evolving pad for atmosphere — wandering chords + long mutually-prime
-    # LFOs (31/23/29) from the global clock, so it evolves for hours.
+    # EVOLVING STAB — a techno chord stab whose rhythm alternates each bar (tresillo
+    # ↔ off-beat) and whose filter + pan drift on long mutually-prime LFOs, over a
+    # wandering 8-chord cycle. This is the "chime", now alive.
+    stab = Voice(
+        name="stab", kind="chord", sound="sawtooth", chord=pad_prog, gain=0.16,
+        decay=0.16, sustain=0.0, late=la, slow=2.0,
+        fx=(("delay", 0.4), ("delaytime", 0.375), ("delayfeedback", 0.5),
+            ("room", 0.4), ("roomsize", 4)),
+        mods=(Mod("lpf", 500, lpf, 17), Mod("pan", 0.35, 0.65, 23)),
+        segments=_segs("stab", _STAB, arr),
+    )
+    # PAD — sustained atmosphere for the breakdown; filter/gain drift on long LFOs
+    # (31/23/29) so it evolves for hours.
     pad = Voice(
         name="pad", kind="chord", sound="sawtooth", chord=pad_prog, attack=1.5,
         sustain=1.0, slow=2.0,
         fx=(("room", 0.9), ("roomsize", 8), ("delay", 0.5), ("delaytime", 0.375),
             ("delayfeedback", 0.4)),
         mods=(Mod("lpf", 300, lpf, 31), Mod("pan", 0.3, 0.7, 23), Mod("gain", 0.05, 0.1, 29)),
-        segments=(Seg(loops + 2, "x ~ ~ ~"), Seg(1, None)),
+        segments=_segs("pad", "x ~ ~ ~", arr),
     )
-    # DRUM MACHINE — real dirt-samples in a one-drop kit. Kick + snare land on
-    # beat 3; hats ride the off-beats (swung). All cut for the pause + drop.
+    # RISER — a 16th-note noise roll that builds tension into each drop.
+    riser = Voice(
+        name="riser", kind="perc", sound="white", gain=0.1, decay=0.04, sustain=0.0,
+        hpf=3000, slow=2.0, fx=(("room", 0.3), ("roomsize", 3)),
+        segments=_segs("riser", "x*16", arr),
+    )
+    # DRUM MACHINE — real dirt-samples, one-drop: kick + snare on beat 3, hats on
+    # the off-beats (swung).
     kick = Voice(
-        name="kick", kind="perc", sound="bd", gain=0.85, slow=2.0, late=la,
-        segments=(Seg(loops + 1, _ONEDROP), Seg(2, None)),
+        name="kick", kind="perc", sound="bd", gain=0.85, late=la, slow=2.0,
+        segments=_segs("drums", _ONEDROP, arr),
     )
     snare = Voice(
-        name="snare", kind="perc", sound="sd", gain=0.5, slow=2.0, late=la,
+        name="snare", kind="perc", sound="sd", gain=0.5, late=la, slow=2.0,
         fx=(("delay", 0.3), ("delaytime", 0.375), ("delayfeedback", 0.35), ("room", 0.4)),
-        segments=(Seg(loops + 1, _ONEDROP), Seg(2, None)),
+        segments=_segs("drums", _ONEDROP, arr),
     )
     hats = Voice(
-        name="hats", kind="perc", sound="hh", gain=0.3, slow=2.0, swing=sw, late=la,
-        segments=(Seg(loops + 1, _OFFBEATS), Seg(2, None)),
+        name="hats", kind="perc", sound="hh", gain=0.3, swing=sw, late=la, slow=2.0,
+        segments=_segs("drums", _OFFBEATS, arr),
     )
 
     header = (
@@ -169,7 +213,7 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     )
     return Piece(
         header=header, fast=fast,
-        voices=(bass, drop, skank, pad, kick, snare, hats),
+        voices=(bass, skank, stab, pad, riser, kick, snare, hats),
     )
 
 
