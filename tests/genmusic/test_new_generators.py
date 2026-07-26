@@ -60,3 +60,39 @@ def test_base_intensity_lifts_the_band():
     low = compose(quiet, style="Space Dub", base_intensity=0.1)
     high = compose(quiet, style="Space Dub", base_intensity=0.9)
     assert low.brainwave_band == "delta" and high.brainwave_band == "gamma"
+
+
+def _fast_of(text: str) -> float:
+    return float(text.rsplit(".fast(", 1)[1].rstrip(")\n"))
+
+
+def test_space_dub_tempo_tracks_the_entrainment_carrier():
+    # The underlying tempo (.fast) is derived from the band's carrier_hz, so it
+    # rises monotonically from delta (2 Hz) to gamma (40 Hz).
+    sig = _signal(8, 3)
+    fasts = [_fast_of(space_dub.render(sig, 0.5, b)) for b in _BANDS]
+    assert fasts == sorted(fasts) and fasts[0] < fasts[-1]
+
+
+def test_space_dub_uses_the_curated_rhythm_bank():
+    # Every render names the genre groove it drew from the 12-pattern bank.
+    names = {name for name, _ in space_dub._RHYTHMS}
+    used = {space_dub.render(_signal(v, v % 5), 0.5, "alpha").split("groove=")[1].split(" ")[0]
+            for v in range(30)}
+    assert used <= names and len(used) >= 3  # variety, all from the bank
+
+
+def test_space_dub_places_notes_only_on_rhythm_onsets():
+    # The generator puts pitches on a rhythm's onsets and leaves its rests as rests.
+    _, pattern = space_dub._RHYTHMS[8]  # dnb-roll
+    seq = space_dub._place(pattern, ("c1", "eb1", "g0"), seed=5)
+    tokens = seq.split(" ")
+    assert len(tokens) == len(pattern)  # same 16-step grid
+    assert sum(t != "~" for t in tokens) == pattern.count("x")  # notes == onsets
+    assert tokens[0] == "c1"  # first onset anchored to the root
+
+
+def test_space_dub_reaches_dnb_for_texture_on_calm_bands():
+    # Calm bands lean dub/reggae but the seed sometimes reaches into DnB.
+    picks = {space_dub._pick_rhythm(1, seed) for seed in range(40)}
+    assert picks & set(space_dub._DNB) and picks & set(space_dub._DUB_REGGAE)
