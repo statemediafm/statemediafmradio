@@ -143,6 +143,10 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
     pad_prog = _CHIME_PROG[variant]
     scale = _BASS_SCALE  # F# minor — relative minor of Entrainment 0.1's A major
     cut = round(320 + density * 35)  # bass filter base
+    # A dark brightness CEILING well below the band's own lpf: Space Dub is meant to
+    # pass the time, not command attention, so the stabs/skank/pad stay muted and
+    # never open up to the bright top end.
+    ceil = min(lpf, 620 + density * 30)  # ~650 (delta) → ~800 (gamma), capped dark
 
     synco = round(clamp01(0.2 + signal.volatility * 0.6 + (density - 1) * 0.04), 2)
     genre = _genre(density, seed)
@@ -161,55 +165,59 @@ def build(signal: ActivitySignal, intensity: float, band: str) -> Piece:
         decay=0.3, sustain=0.6, late=la, slow=2.0, mods=(Mod("lpf", 150, cut, 10),),
         segments=_segs("bass", riff, arr),
     )
-    # LEAD — off-beat skank: short chord stabs on the up-beats with a delay throw.
+    # LEAD — off-beat skank: short chord stabs, kept dark and quiet so they sit in
+    # the wash rather than cutting through (muted lpf, low gain, gentle throw).
     skank = Voice(
-        name="skank", kind="chord", sound="sawtooth", chord=prog, gain=0.18,
-        decay=0.12, sustain=0.0, lpf=1600, late=la, slow=2.0,
-        fx=(("delay", 0.45), ("delaytime", 0.5), ("delayfeedback", 0.5),
-            ("room", 0.5), ("roomsize", 4)),
+        name="skank", kind="chord", sound="sawtooth", chord=prog, gain=0.12,
+        decay=0.12, sustain=0.0, lpf=ceil, late=la, slow=2.0,
+        fx=(("delay", 0.4), ("delaytime", 0.5), ("delayfeedback", 0.38),
+            ("room", 0.6), ("roomsize", 6)),
         segments=_segs("skank", _OFFBEATS, arr),
     )
-    # EVOLVING STAB — a techno chord stab whose rhythm alternates each bar (tresillo
-    # ↔ off-beat) and whose filter + pan drift on long mutually-prime LFOs, over a
-    # wandering 8-chord cycle. This is the "chime", now alive.
+    # EVOLVING STAB — a chord stab whose rhythm alternates each bar and whose filter
+    # + pan drift on long LFOs, over a wandering chord cycle. Capped dark (never
+    # opens to the bright top) and quiet — it drifts, it doesn't announce itself.
     stab = Voice(
-        name="stab", kind="chord", sound="sawtooth", chord=pad_prog, gain=0.16,
+        name="stab", kind="chord", sound="sawtooth", chord=pad_prog, gain=0.1,
         decay=0.16, sustain=0.0, late=la, slow=2.0,
-        fx=(("delay", 0.4), ("delaytime", 0.375), ("delayfeedback", 0.5),
-            ("room", 0.4), ("roomsize", 4)),
-        mods=(Mod("lpf", 500, lpf, 17), Mod("pan", 0.35, 0.65, 23)),
+        fx=(("delay", 0.4), ("delaytime", 0.375), ("delayfeedback", 0.4),
+            ("room", 0.5), ("roomsize", 5)),
+        mods=(Mod("lpf", 400, ceil, 17), Mod("pan", 0.35, 0.65, 23)),
         segments=_segs("stab", _STAB, arr),
     )
     # PAD — sustained atmosphere for the breakdown; filter/gain drift on long LFOs
-    # (31/23/29) so it evolves for hours.
+    # (31/23/29) so it evolves for hours. Kept under the dark ceiling too.
     pad = Voice(
         name="pad", kind="chord", sound="sawtooth", chord=pad_prog, attack=1.5,
         sustain=1.0, slow=2.0,
         fx=(("room", 0.9), ("roomsize", 8), ("delay", 0.5), ("delaytime", 0.375),
             ("delayfeedback", 0.4)),
-        mods=(Mod("lpf", 300, lpf, 31), Mod("pan", 0.3, 0.7, 23), Mod("gain", 0.05, 0.1, 29)),
+        mods=(Mod("lpf", 260, ceil, 31), Mod("pan", 0.3, 0.7, 23), Mod("gain", 0.05, 0.1, 29)),
         segments=_segs("pad", "x ~ ~ ~", arr),
     )
-    # RISER — a 16th-note noise roll that builds tension into each drop.
+    # RISER — a soft noise swell into the drops; low-passed and quiet so it lifts
+    # gently rather than hissing for attention.
     riser = Voice(
-        name="riser", kind="perc", sound="white", gain=0.1, decay=0.04, sustain=0.0,
-        hpf=3000, slow=2.0, fx=(("room", 0.3), ("roomsize", 3)),
+        name="riser", kind="perc", sound="white", gain=0.05, decay=0.04, sustain=0.0,
+        hpf=1500, lpf=5000, slow=2.0, fx=(("room", 0.5), ("roomsize", 5)),
         segments=_segs("riser", "x*16", arr),
     )
     # DRUM MACHINE — real dirt-samples, one-drop: kick + snare on beat 3, hats on
-    # the off-beats (swung).
+    # the off-beats. Snare + hats are low-passed and pulled back so the kit keeps
+    # time without the snare crack or hat sizzle grabbing the ear.
     kick = Voice(
-        name="kick", kind="perc", sound="bd", gain=0.85, late=la, slow=2.0,
+        name="kick", kind="perc", sound="bd", gain=0.8, lpf=2000, late=la, slow=2.0,
         segments=_segs("drums", _ONEDROP, arr),
     )
     snare = Voice(
-        name="snare", kind="perc", sound="sd", gain=0.5, late=la, slow=2.0,
-        fx=(("delay", 0.3), ("delaytime", 0.375), ("delayfeedback", 0.35), ("room", 0.4)),
+        name="snare", kind="perc", sound="sd", gain=0.3, lpf=1400, late=la, slow=2.0,
+        fx=(("delay", 0.25), ("delaytime", 0.375), ("delayfeedback", 0.26),
+            ("room", 0.6), ("roomsize", 7)),
         segments=_segs("drums", _ONEDROP, arr),
     )
     hats = Voice(
-        name="hats", kind="perc", sound="hh", gain=0.3, swing=sw, late=la, slow=2.0,
-        segments=_segs("drums", _OFFBEATS, arr),
+        name="hats", kind="perc", sound="hh", gain=0.15, lpf=5500, swing=sw, late=la,
+        slow=2.0, segments=_segs("drums", _OFFBEATS, arr),
     )
 
     header = (
