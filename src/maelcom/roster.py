@@ -35,7 +35,7 @@ from pathlib import Path
 
 from .auth import source_token
 from .core.schedule import Cadence, parse_duration
-from .sources import HackerNewsSource, Source, detect_forge, open_source
+from .sources import HackerNewsSource, SlackSource, Source, detect_forge, open_source
 
 
 def load_config(path: str | Path) -> dict:
@@ -93,9 +93,17 @@ def _build_repo(topic: str, seg: dict) -> Source:
     return open_source(repo, max_count=int(seg.get("max_count", 25)), token=token)
 
 
+def _build_slack(topic: str, seg: dict) -> Source:
+    channel = seg.get("channel")
+    if not channel:
+        raise ValueError(f"segment {topic!r}: source='slack' needs a 'channel'")
+    return SlackSource(channel, max_count=int(seg.get("max_count", 25)))
+
+
 register_source_kind("hackernews", _build_hackernews)
 register_source_kind("hn", _build_hackernews)
 register_source_kind("repo", _build_repo)
+register_source_kind("slack", _build_slack)
 
 
 def load_source_plugins(config: dict) -> list[str]:

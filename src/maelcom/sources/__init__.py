@@ -6,6 +6,7 @@ from .base import Source, get_source, register_source
 from .forge import ForgeSource, detect_forge
 from .git_source import GitSource, is_remote
 from .hackernews import HackerNewsSource
+from .slack import SlackSource
 
 
 def open_source(repo: str, max_count: int = 20, token: str | None = None) -> Source:
@@ -25,6 +26,7 @@ __all__ = [
     "ForgeSource",
     "GitSource",
     "HackerNewsSource",
+    "SlackSource",
     "Source",
     "detect_forge",
     "get_source",

@@ -1,9 +1,25 @@
 # News sources — add your own
 
 Maelcom polls **sources** (each returns `NewsItem`s), summarizes them, and voices
-a broadcast. Built-in kinds: `hackernews` and `repo` (GitHub/GitLab issues + PRs,
-or a local git repo's commits). You can add more — Jira, Slack, PagerDuty, an
-internal API — without editing core.
+a broadcast. Built-in kinds: `hackernews`, `repo` (GitHub/GitLab issues + PRs, or
+a local git repo's commits), and `slack` (a channel's recent messages). You can
+add more — Jira, PagerDuty, an internal API — without editing core.
+
+## Slack
+
+```toml
+[[segments]]
+topic   = "Engineering chat"
+source  = "slack"
+channel = "eng"          # channel name (no #) or a channel ID (C…)
+max_count = 25
+every   = "10m"
+```
+
+Add the bot token in the **Settings** tab (source `slack`). The bot needs
+`channels:history` / `groups:history`, `channels:read`, `users:read`, and to be
+a member of the channel. Bot/system messages are skipped and Slack markup is
+cleaned to plain text.
 
 ## The roster picks sources by *kind*
 
