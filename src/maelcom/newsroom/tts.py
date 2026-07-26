@@ -115,31 +115,37 @@ def render_reads(
     ``voice_for(origin)`` — so headlines from different sources speak in
     different voices (all must share audio format to concatenate). A
     ``headline_pause_ms`` silence brackets the headline block — before the first
-    headline, between headlines, and after the last (before the sign-off).
+    headline, between headlines, and after the last (before the sign-off). A
+    ``"pause"`` read (text empty, ``origin`` = a multiplier string) inserts that
+    many extra ``headline_pause_ms`` beats of silence at that point.
     Raises ``ValueError`` if nothing is voiceable.
     """
     clips: list[AudioRef] = []
     gaps: list[int] = []
     prev_role: str | None = None
+    extra = 0  # pending extra silence contributed by "pause" reads
     for read in reads:
         role, text = read[0], read[1]
         origin = read[2] if len(read) > 2 else None
+        if role == "pause":  # not voiced; adds silence before the next read
+            extra += int(origin or 1) * headline_pause_ms
+            continue
         text = text.strip()
         if not text:
             continue
         provider = tts
         if role == "headline" and voice_for is not None and origin is not None:
             provider = voice_for(origin) or tts
-        # Pause whenever we cross into, within, or out of the headline block: a
-        # beat before the first headline, between headlines, and after the last
-        # (before the "…more as it develops" sign-off).
-        gap = headline_pause_ms if "headline" in (role, prev_role) else 0
+        # Bracket the headline block (before first, between, after last), plus any
+        # pending extra pause.
+        gap = (headline_pause_ms if "headline" in (role, prev_role) else 0) + extra
+        extra = 0
         clips.append(provider.render(Script(text=text, style=style), voice=voice))
         gaps.append(gap)
         prev_role = role
     if not clips:
         raise ValueError("render_reads: no non-empty reads")
-    gaps[0] = 0
+    gaps[0] = 0  # no leading silence
     return _assemble_wavs(clips, gaps)
 
 

@@ -81,6 +81,16 @@ def test_render_reads_brackets_the_headline_block_with_pauses():
     assert spaced.duration_ms - tight.duration_ms >= 2700
 
 
+def test_render_reads_pause_reads_add_extra_silence():
+    tts = ToneWavTTS()
+    base = [("other", "Ident."), ("other", "Body.")]
+    withpause = [("other", "Ident."), ("pause", "", "2"), ("other", "Body.")]
+    plain = render_reads(base, tts, headline_pause_ms=1000)
+    paused = render_reads(withpause, tts, headline_pause_ms=1000)
+    # a "pause" read with multiplier 2 inserts ~2s of extra silence
+    assert paused.duration_ms - plain.duration_ms >= 1900
+
+
 def test_render_reads_requires_content():
     with pytest.raises(ValueError):
         render_reads([], ToneWavTTS())

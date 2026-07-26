@@ -179,7 +179,8 @@ def test_time_greeting_states_hour_and_minute():
 def test_radio_reads_join_equals_script():
     items = _items()
     reads = radio_reads(items, "bbc-world")
-    assert " ".join(r.text for r in reads) == naive_radio_script(items, "bbc-world")
+    voiced = " ".join(r.text for r in reads if r.role != "pause")  # pauses carry no text
+    assert voiced == naive_radio_script(items, "bbc-world")
 
 
 def test_radio_reads_marks_headlines_and_greeting():

@@ -163,6 +163,7 @@ def radio_reads(
     if greeting:
         reads.append(Read("other", greeting))
     reads.append(Read("other", "This is the firmwide radio service."))
+    reads.append(Read("pause", "", "2"))  # a double pause after the station ident
     volume_line = (
         f"In the latest update there {'were' if plural else 'was'} "
         f"{len(items)} item{plural}{across}."
@@ -185,6 +186,10 @@ def radio_reads(
             for i, h in enumerate(groups[origin]):
                 text = f"From {origin}, {h}." if i == 0 else f"{h}."
                 reads.append(Read("headline", text, origin))
+    # Double the pause after the last headline: the block already gets one beat
+    # before the sign-off (headline→other); add one more.
+    if order:
+        reads.append(Read("pause", "", "1"))
     reads.append(Read("other", "And that's the latest from the newsroom. More as it develops."))
     return reads
 
@@ -200,7 +205,7 @@ def naive_radio_script(
     the voicer uses to pause between headlines.
     """
     reads = radio_reads(items, style, greeting=greeting, max_headlines=max_headlines)
-    return " ".join(read.text for read in reads)
+    return " ".join(read.text for read in reads if read.role != "pause")
 
 
 def summarize(
