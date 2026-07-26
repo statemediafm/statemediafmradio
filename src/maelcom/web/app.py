@@ -34,6 +34,7 @@ class _State:
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
         self.show_selector: bool = False  # show the generator dropdown in the UI? (config)
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
+        self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
@@ -72,6 +73,18 @@ def create_app(state: _State | None = None):
             return {"text": None, "play": store.music_on}
         # `play` is the quiet-mode gate: the client silences the music when False.
         return {**program_to_dict(store.program), "play": store.music_on}
+
+    @app.get("/broadcast")
+    def broadcast() -> dict:
+        return {"broadcasting": store.broadcasting}
+
+    @app.post("/broadcast")
+    def set_broadcast(on: bool) -> dict:
+        """Stop/resume the broadcast. Stopping pauses the server refresh loop
+        (no more polling/TTS/LLM) and silences the music; resuming restores both."""
+        store.broadcasting = on
+        store.music_on = on  # silence the audio when stopped; restore on resume
+        return {"broadcasting": store.broadcasting}
 
     @app.get("/quiet")
     def quiet() -> dict:
@@ -215,6 +228,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <div id='player-view'>
 <p class='muted' id='status'>internal radio · press play to begin</p>
 <button id='play'>▶ Start radio</button>
+<button id='stopbtn'>■ Stop broadcast</button>
 <label class='muted' id='modelwrap'>ambient generator
   <select id='model'></select>
 </label>
@@ -239,6 +253,20 @@ const statusEl=document.getElementById('status');
 const newsEl=document.getElementById('news');
 const btn=document.getElementById('play');
 const modelSel=document.getElementById('model');
+const stopBtn=document.getElementById('stopbtn');
+
+// Stop/resume the whole broadcast — pauses the server refresh loop (no polling/
+// TTS/LLM) and silences the audio; resuming restores both.
+let broadcasting=true;
+function updateStopBtn(){ stopBtn.textContent = broadcasting ? '■ Stop broadcast' : '▶ Resume broadcast'; }
+async function loadBroadcast(){
+  try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; updateStopBtn(); }catch(e){}
+}
+stopBtn.addEventListener('click', async ()=>{
+  broadcasting=!broadcasting; updateStopBtn();
+  try{ await fetch('/broadcast?on='+(broadcasting?'true':'false'), {method:'POST'}); }catch(e){}
+  await pollMusic();
+});
 
 // Populate the ambient-generator dropdown and switch models on change.
 async function loadModels(){
@@ -310,10 +338,12 @@ let musicSilenced=false;
 async function pollMusic(){
   try{
     const d=await (await fetch('/genmusic')).json();
-    // Quiet-mode gate: silence the music when the server says not to play.
+    // Gate: silence when the server says not to play (broadcast stopped, or quiet).
     if(started && d.play===false){
       if(!musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
-      viz.on=false; statusEl.textContent='● quiet · silent (music returns before the news)';
+      viz.on=false;
+      statusEl.textContent = broadcasting ? '● quiet · silent (music returns before the news)'
+                                          : '■ broadcast stopped';
       return;
     }
     if(!d.text){ statusEl.textContent='waiting for activity…'; return; }
@@ -400,7 +430,7 @@ async function loadAuth(){
   }catch(e){ wrap.textContent='Could not load settings.'; }
 }
 
-loadModels(); loadTunings(); loadQuiet(); pollMusic(); pollNews();
+loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 

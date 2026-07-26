@@ -66,6 +66,9 @@ def refresh_once(
     until the next news cycle. ``now`` (a monotonic clock) is injectable for tests.
     """
     now = time.monotonic() if now is None else now
+    # Broadcast off: do no work — no polling, no TTS, no LLM (stop consuming).
+    if not getattr(state, "broadcasting", True):
+        return
     per_topic: list[tuple] = []
     all_items: list = []
     for topic, source, cadence, headlines in roster:

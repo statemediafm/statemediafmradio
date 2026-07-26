@@ -31,6 +31,7 @@ def test_index_serves_strudel_player():
     assert "/models" in html and 'id=\'model\'' in html  # the ambient-generator dropdown
     assert "/tuning" in html and 'id=\'tuning\'' in html  # the concert-A tuning dropdown
     assert "/auth" in html and "data-tab='settings'" in html  # the Settings tab
+    assert "/broadcast" in html and 'id=\'stopbtn\'' in html  # the stop-broadcast control
 
 
 def test_genmusic_empty_then_published():
@@ -159,6 +160,38 @@ def test_serve_holds_the_journey_across_news_updates():
     refresh_once(state, roster, ToneWavTTS(), cache=cache)
     refresh_once(state, roster, ToneWavTTS(), cache=cache)
     assert state.program.text == first  # held, not republished
+
+
+def test_stop_broadcast_pauses_the_loop_and_silences():
+    from maelcom.core.models import NewsItem
+    from maelcom.core.schedule import Cadence
+    from maelcom.newsroom.tts import ToneWavTTS
+    from maelcom.serve import refresh_once
+
+    polled = {"n": 0}
+
+    class _Src:
+        def poll(self, since=None):
+            polled["n"] += 1
+            return [NewsItem(id="1", source="hackernews", kind="story",
+                             title="S", origin="HN", actors=["a"])]
+
+    state = _State()
+    client = TestClient(create_app(state))
+    roster = [("HN", _Src(), Cadence(900, 0), 5)]
+
+    # Stop → the endpoint flips state and silences; a refresh does NO work.
+    assert client.post("/broadcast", params={"on": False}).json() == {"broadcasting": False}
+    assert state.broadcasting is False and state.music_on is False
+    assert client.get("/genmusic").json()["play"] is False
+    refresh_once(state, roster, ToneWavTTS(), cache={})
+    assert polled["n"] == 0  # no polling / TTS while stopped
+
+    # Resume → work happens again and audio is restored.
+    assert client.post("/broadcast", params={"on": True}).json() == {"broadcasting": True}
+    assert state.music_on is True
+    refresh_once(state, roster, ToneWavTTS(), cache={})
+    assert polled["n"] == 1
 
 
 def test_quiet_endpoint_toggle():
