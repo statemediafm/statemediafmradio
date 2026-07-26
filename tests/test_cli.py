@@ -70,3 +70,16 @@ def test_serve_defaults_to_hacker_news_with_no_source():
     args2 = argparse.Namespace(config=None, hn=False, repo="https://github.com/o/r",
                               token=None, max_count=25, every="15m")
     assert [s["source"] for s in cli._resolve_segments(args2)] == ["repo"]
+
+
+def test_serve_generator_flag_overrides_the_default(monkeypatch):
+    # `serve --generator "Space Dub"` must reach serve.run so the news bed and
+    # opening bulletin use it instead of defaulting to Entrainment 0.1.
+    captured = {}
+    monkeypatch.setattr(cli.serve_mod, "run", lambda *a, **k: captured.update(k) or 0)
+    cli.main(["serve", "--hn", "--tone", "--generator", "Space Dub"])
+    assert captured["generator"] == "Space Dub"
+    # Without the flag it falls back to the config default (Entrainment 0.1).
+    captured.clear()
+    cli.main(["serve", "--hn", "--tone"])
+    assert captured["generator"] == "Entrainment 0.1"

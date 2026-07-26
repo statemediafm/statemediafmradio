@@ -435,6 +435,17 @@ def test_quiet_endpoint_toggle():
     assert state.music_on is True
 
 
+def test_index_is_not_cached():
+    # no-store so a running session always gets the latest UI (Demo Mode etc.).
+    resp = TestClient(create_app()).get("/")
+    assert "no-store" in resp.headers.get("cache-control", "")
+
+
+def test_index_has_demo_mode_toggle():
+    html = TestClient(create_app()).get("/").text
+    assert "Demo Mode" in html and "id='demo'" in html  # the Settings toggle
+
+
 def test_demo_mode_adds_and_removes_sources():
     state = _State()
     client = TestClient(create_app(state))

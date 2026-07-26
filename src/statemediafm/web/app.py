@@ -499,8 +499,13 @@ def create_app(state: _State | None = None):
         return Response(content=clip.data, media_type=clip.media_type)
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
-        return _render_page(store)
+    def index() -> HTMLResponse:
+        # no-store so a running session always gets the latest UI (new controls
+        # like Demo Mode) on refresh, never a cached older page.
+        return HTMLResponse(
+            _render_page(store),
+            headers={"Cache-Control": "no-store, must-revalidate"},
+        )
 
     return app
 

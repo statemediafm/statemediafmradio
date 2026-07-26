@@ -370,7 +370,9 @@ def _serve(args: argparse.Namespace) -> int:
         refresh=args.refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
         style=args.style,
-        generator=gm["generator"],
+        # --generator overrides the config so restarts (and the opening bulletin's
+        # music bed) honour the chosen ambient generator rather than the default.
+        generator=args.generator or gm["generator"],
         show_selector=gm["selector"],
         generators_dir=gm["generators_dir"],
         llm=llm,
@@ -538,6 +540,14 @@ def main(argv: list[str] | None = None) -> int:
         "--every",
         default="15m",
         help="Ad-hoc cadence interval for --hn/--repo (e.g. 15m, 90s, 1h). Sources auto-stagger.",
+    )
+    sv.add_argument(
+        "--generator",
+        "--ambient",
+        default=None,
+        metavar="NAME",
+        help="Ambient generator to start with (e.g. 'Space Dub', 'Entrainment 0.1'). "
+        "Overrides the [genmusic] config; the news bed and opening bulletin use it.",
     )
     sv.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1).")
     sv.add_argument("--port", type=int, default=8000, help="Bind port (default 8000).")
