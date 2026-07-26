@@ -389,7 +389,10 @@ adding breadth.
   free Custom style/voice controls remain open-core.
 - More music styles (space-dub, modular bleep) + full brainwave-band mapping +
   user base-intensity setting.
-- **Demo:** a full "hour of radio" with news/music/song-slot pacing.
+- **Demo:** ✅ `statemediafm rundown` prints a full "hour of radio" — news
+  bulletins on the 17-min cadence, song slots and station idents between, music
+  under, with the 2–5 min felt cadence proven. The live player renders the same
+  running order from `/schedule`.
 
 ### M5 — Music streaming integration (optional pillar)
 - Spotify OAuth + playlist read; private cross-user similarity mixer; song cues.

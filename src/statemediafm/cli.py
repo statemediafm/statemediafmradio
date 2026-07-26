@@ -432,6 +432,44 @@ def _add_voice_args(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _rundown(args: argparse.Namespace) -> int:
+    """Print the 'hour of radio' running order — the rhythm of the day (M4).
+
+    The Director lays out news bulletins on their cadence with song slots between
+    and station idents bridging any gap, so nothing in the foreground falls quiet
+    for more than a few minutes; the generative music plays continuously beneath.
+    """
+    from .core.director import FELT_MAX_GAP_S, Director
+
+    director = Director(news=Cadence(parse_duration(args.news_every)))
+    window_s = args.window * 60.0
+    start = datetime.now().astimezone()
+    order = director.running_order(window_s)
+
+    label = {
+        "news": "● News bulletin",
+        "song": "♪ Song slot   [reserved · M5]",
+        "ident": "· Station ident (time check)",
+    }
+    end = start + timedelta(seconds=window_s)
+    print(f"State Media FM — hour of radio  ({start:%H:%M}–{end:%H:%M})")
+    print(
+        f"news every {args.news_every} · music under · idents keep a foreground "
+        f"beat at least every {int(FELT_MAX_GAP_S // 60)}m\n"
+    )
+    for cue in order:
+        at = start + timedelta(seconds=cue.at_s)
+        print(f"  {at:%H:%M}  {label.get(cue.kind, cue.kind)}")
+
+    # Prove the felt cadence: no gap between foreground beats exceeds the cap.
+    times = [0.0] + [c.at_s for c in order] + [window_s]
+    max_gap = max(times[i + 1] - times[i] for i in range(len(times) - 1))
+    ok = "OK" if max_gap <= FELT_MAX_GAP_S + 1e-6 else "TOO LONG"
+    print("\n  Generative music plays continuously beneath, ducking under each read.")
+    print(f"  Felt cadence: longest quiet gap {max_gap / 60:.1f}m [{ok}]")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="statemediafm")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -511,6 +549,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Rhythm-of-the-day news cadence — how often a bulletin airs (default 17m).",
     )
     sv.set_defaults(func=_serve)
+
+    rd = sub.add_parser(
+        "rundown", help="Print the 'hour of radio' running order (news / music / song pacing)."
+    )
+    rd.add_argument(
+        "--news-every", default="17m", help="News bulletin cadence (default 17m)."
+    )
+    rd.add_argument("--window", type=int, default=60, help="Hour length in minutes (default 60).")
+    rd.set_defaults(func=_rundown)
 
     args = parser.parse_args(argv)
     try:

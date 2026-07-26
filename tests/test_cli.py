@@ -44,3 +44,16 @@ def test_main_reports_source_error_without_traceback(capsys, monkeypatch):
     err = capsys.readouterr().err
     assert err.startswith("error:")
     assert "403" in err
+
+
+def test_rundown_prints_the_hour_of_radio(capsys):
+    # The M4 "hour of radio" demo: news on the 17-min cadence, songs, idents, and
+    # a felt-cadence guarantee — deterministic in structure regardless of the clock.
+    rc = cli.main(["rundown", "--news-every", "17m", "--window", "60"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "hour of radio" in out
+    assert out.count("● News bulletin") == 4  # 0, 17, 34, 51 min
+    assert "♪ Song slot" in out and "Station ident" in out
+    assert "[OK]" in out  # felt cadence within the cap
+    assert "[TOO LONG]" not in out

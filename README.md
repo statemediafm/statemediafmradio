@@ -161,6 +161,11 @@ Each tick recomputes the Strudel program from current activity and re-voices the
 news plan only when the item set changes (so TTS isn't run every tick). Needs
 the `[web]` extra; add `[tts]` for spoken news.
 
+To preview the **rhythm of the day** without serving, `statemediafm rundown`
+(alias `smfm rundown`) prints a full "hour of radio" — news bulletins on the
+17-minute cadence, song slots and station idents between, music underneath —
+with the 2–5 minute felt cadence proven. `--news-every` and `--window` tune it.
+
 Open **`http://127.0.0.1:8000`** in a browser: the page loads
 [Strudel](https://strudel.cc), and after you press **▶ Start radio** it plays the
 generative music live — polling `/genmusic` and crossfading (each program's
