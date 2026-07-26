@@ -28,7 +28,7 @@ register_module(
 # The default (Custom) phrasing — the firmwide-radio wording used when no persona
 # is selected. Personas override these; radio_reads falls back to them.
 DEFAULT_IDENT = "This is the firmwide radio service."
-DEFAULT_SIGNOFF = "And that's the latest from the newsroom. More as it develops."
+DEFAULT_SIGNOFF = "And that's the current state. More as it develops."
 
 
 @dataclass(frozen=True, slots=True)
