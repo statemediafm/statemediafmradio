@@ -150,6 +150,31 @@ def test_refresh_once_gates_news_to_director_windows():
     assert state.plan is not first
 
 
+def test_mix_mode_rotates_the_ambient_generator():
+    state = _State()
+    state.mix_generators = True
+    state.mix_models = ["Entrainment 0.1", "Space Dub"]
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    cache: dict = {}
+    from statemediafm.serve import MIX_EVERY_S
+
+    # First tick → first generator in the pool.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0)
+    assert state.program.style == "Entrainment 0.1"
+    # One MIX window later → the next generator (the bed changes).
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + MIX_EVERY_S + 1)
+    assert state.program.style == "Space Dub"
+    # Off (single generator) holds the chosen model.
+    state.mix_generators = False
+    state.model = "Entrainment 0.1"
+    s2, cache2 = _State(), {}
+    s2.model = "Space Dub"
+    refresh_once(s2, roster, ToneWavTTS(), cache=cache2, now=1.0)
+    first = s2.program
+    refresh_once(s2, roster, ToneWavTTS(), cache=cache2, now=999.0)
+    assert s2.program is first  # not mixing → held, no rotation
+
+
 def test_refresh_once_reads_a_live_edited_roster():
     # The Settings tab appends to state.roster mid-session; the loop reads it live.
     state = _State()

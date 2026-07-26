@@ -292,6 +292,20 @@ def test_schedule_endpoint():
     assert d["order"][0]["kind"] == "news" and d["order"][0]["at_s"] == 0.0
 
 
+def test_mix_settings_roundtrip():
+    state = _State()
+    client = TestClient(create_app(state))
+    d = client.get("/mix").json()
+    assert d["mix_generators"] is False and "Space Dub" in d["models"]
+    assert d["selected"] == d["models"]  # empty selection → all generators
+
+    got = client.post("/mix", json={"mix_generators": True, "mix_spotify": True,
+                                    "selected": ["Space Dub", "Entrainment 0.1", "bogus"]}).json()
+    assert got["mix_generators"] is True and got["mix_spotify"] is True
+    assert got["selected"] == ["Space Dub", "Entrainment 0.1"]  # unknown dropped
+    assert state.mix_generators is True and state.mix_models == ["Space Dub", "Entrainment 0.1"]
+
+
 def test_spotify_credentials_saved_and_masked(tmp_path, monkeypatch):
     import json as _json
 

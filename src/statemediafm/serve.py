@@ -34,6 +34,28 @@ DEMO_REPO = "https://github.com/meltano/meltano"
 _DEMO_DIRECTOR = None
 
 
+MIX_EVERY_S = 360.0  # rotate the ambient generator every ~6 minutes in mix mode
+
+
+def _mix_generator(state, elapsed: float, cache: dict) -> str | None:
+    """In mix mode, the generator for this tick: rotate the selected generators on
+    the MIX cadence. Returns the generator only when it just CHANGED (so the caller
+    recomposes then, not every tick); ``None`` when mix is off or unchanged."""
+    if not getattr(state, "mix_generators", False):
+        return None
+    from .genmusic.styles import AMBIENT_MODELS
+
+    pool = list(getattr(state, "mix_models", None) or AMBIENT_MODELS)
+    if not pool:
+        return None
+    gen = pool[int(elapsed // MIX_EVERY_S) % len(pool)]
+    if gen == cache.get("mix_gen"):
+        return None
+    cache["mix_gen"] = gen
+    state.model = gen  # reflect the live generator in the UI/state
+    return gen
+
+
 def _demo_director():
     """A cached 5-minute-cadence director used while Demo Mode is on."""
     global _DEMO_DIRECTOR
@@ -193,11 +215,16 @@ def refresh_once(
     # HOLD the journey once it is playing: a news/activity update must not
     # republish the program and restart the piece mid-stream (regenerated only
     # when there isn't one yet, or explicitly on a model/tuning switch).
-    if state.program is None:
+    #
+    # MIX MODE: when the user opts to mix ambient generators, rotate through the
+    # selected generators on a slow cadence (a DJ-style change of bed), recomposing
+    # at each turn. Otherwise a single generator holds.
+    gen = _mix_generator(state, elapsed, cache)
+    if gen is not None or state.program is None:
         state.set_program(
             compose(
                 signal,
-                style=getattr(state, "model", "Entrainment 0.1"),
+                style=gen or getattr(state, "model", "Entrainment 0.1"),
                 tuning_a=getattr(state, "tuning", 440.0),
                 base_intensity=getattr(state, "base_intensity", THETA_START),
             )

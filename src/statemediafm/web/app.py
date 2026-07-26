@@ -51,6 +51,9 @@ class _State:
         self.program: StrudelProgram | None = None
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
         self.show_selector: bool = True  # show the ambient-generator dropdown? (config, on by default)
+        self.mix_generators: bool = False  # rotate through several ambient generators over time
+        self.mix_models: list[str] = []  # which generators are in the mix (empty → all)
+        self.mix_spotify: bool = False  # mix Spotify songs into the song slots (needs Spotify + M5)
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
@@ -227,6 +230,38 @@ def create_app(state: _State | None = None):
         store.model = name
         _recompose(store)
         return {"current": store.model}
+
+    def _mix_status() -> dict:
+        from ..auth import source_endpoint, source_token
+        from ..genmusic.styles import AMBIENT_MODELS
+
+        return {
+            "mix_generators": store.mix_generators,
+            "models": list(AMBIENT_MODELS),
+            "selected": store.mix_models or list(AMBIENT_MODELS),
+            "mix_spotify": store.mix_spotify,
+            "spotify_configured": bool(source_endpoint("spotify") and source_token("spotify")),
+        }
+
+    @app.get("/mix")
+    def mix() -> dict:
+        """Mix settings: whether to rotate ambient generators, which ones, and
+        whether to mix Spotify songs into the song slots."""
+        return _mix_status()
+
+    @app.post("/mix")
+    def set_mix(payload: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
+        """Update the mix settings."""
+        from ..genmusic.styles import AMBIENT_MODELS
+
+        if "mix_generators" in payload:
+            store.mix_generators = bool(payload["mix_generators"])
+        if "mix_spotify" in payload:
+            store.mix_spotify = bool(payload["mix_spotify"])
+        if isinstance(payload.get("selected"), list):
+            valid = [m for m in payload["selected"] if m in AMBIENT_MODELS]
+            store.mix_models = valid
+        return _mix_status()
 
     @app.get("/tuning")
     def tuning() -> dict:
@@ -711,6 +746,18 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
         <span id='intensity-band'></span>
       </label>
     </div>
+    <h3>Mix</h3>
+    <p class='muted'>Mix ambient generator <em>types</em> instead of a single one — the
+    station rotates through the selected generators (~6&nbsp;min each). Optionally mix
+    Spotify songs into the song slots.</p>
+    <div class='authrow'>
+      <label class='muted'><input type='checkbox' id='mix-gen'> Mix ambient generators</label>
+      <span class='muted' id='mix-models'></span>
+    </div>
+    <div class='authrow'>
+      <label class='muted'><input type='checkbox' id='mix-spotify'> Mix in Spotify songs</label>
+      <span class='muted' id='mix-spotify-hint'></span>
+    </div>
     <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
     station-phrasing bundle), or <em>Custom</em> to set the style and voice yourself.
     Applies to the next news cycle.</p>
@@ -996,7 +1043,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
 // ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
@@ -1052,6 +1099,35 @@ document.getElementById('license-save').addEventListener('click', async ()=>{
     await loadNarration(); await loadLicense();
   }catch(e){ st.textContent='error'; }
 });
+// Mix (under Narration) — rotate ambient generators, and/or mix in Spotify songs.
+async function loadMix(){
+  try{
+    const d=await (await fetch('/mix')).json();
+    document.getElementById('mix-gen').checked=!!d.mix_generators;
+    document.getElementById('mix-spotify').checked=!!d.mix_spotify;
+    document.getElementById('mix-spotify-hint').textContent =
+      d.spotify_configured ? '' : '· connect Spotify (below) first';
+    const wrap=document.getElementById('mix-models'); wrap.innerHTML='';
+    const sel=new Set(d.selected||[]);
+    for(const m of (d.models||[])){
+      const lab=document.createElement('label'); lab.className='muted'; lab.style.marginLeft='.7rem';
+      lab.innerHTML='<input type="checkbox" '+(sel.has(m)?'checked':'')+' value="'+esc(m)+'"> '+esc(m);
+      wrap.appendChild(lab);
+    }
+    wrap.style.display = d.mix_generators ? 'inline' : 'none';
+  }catch(e){}
+}
+async function saveMix(){
+  const selected=[...document.querySelectorAll('#mix-models input:checked')].map(c=>c.value);
+  const body={mix_generators:document.getElementById('mix-gen').checked,
+              mix_spotify:document.getElementById('mix-spotify').checked, selected};
+  try{ await fetch('/mix',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)}); await loadMix(); }catch(e){}
+}
+document.getElementById('mix-gen').addEventListener('change', saveMix);
+document.getElementById('mix-spotify').addEventListener('change', saveMix);
+document.getElementById('mix-models').addEventListener('change', saveMix);
+
 // Spotify connector (under Narration) — Client ID + Secret, saved gitignored.
 async function loadSpotify(){
   try{
