@@ -29,7 +29,7 @@ from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, load_model_config
 from .newsroom.summarize import radio_reads, summarize, time_greeting
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs, render_reads
-from .roster import build_roster, genmusic_settings, load_config
+from .roster import build_roster, genmusic_settings, load_config, load_source_plugins
 from .sources import HackerNewsSource, Source, open_source
 
 # Voices rotated across broadcast segments so each topic/source sounds distinct.
@@ -218,7 +218,9 @@ def _resolve_roster(args: argparse.Namespace) -> list:
     bad config; returns [] when no source was given."""
     if args.config:
         try:
-            return build_roster(load_config(args.config))
+            config = load_config(args.config)
+            load_source_plugins(config)  # register custom source kinds first
+            return build_roster(config)
         except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
             raise _CliError(f"roster config error: {exc}") from exc
     return _ad_hoc_roster(args)

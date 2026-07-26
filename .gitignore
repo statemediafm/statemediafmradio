@@ -17,3 +17,7 @@ voices/
 # Local scratch / experiments
 cmd
 voxs
+
+# Personal auth tokens / endpoints (secrets — never commit; written by the UI)
+maelcom.auth.toml
+*.auth.toml

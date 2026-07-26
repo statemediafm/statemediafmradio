@@ -49,7 +49,7 @@ class _State:
 def create_app(state: _State | None = None):
     """Build the FastAPI application. Call ``app.state.store.set_plan(...)`` to
     publish a plan for the page and API to serve."""
-    from fastapi import FastAPI, HTTPException, Response
+    from fastapi import Body, FastAPI, HTTPException, Response
     from fastapi.responses import HTMLResponse
 
     store = state or _State()
@@ -130,6 +130,30 @@ def create_app(state: _State | None = None):
             store.set_program(compose(store.last_signal, style=store.model, tuning_a=a))
         return {"current": store.tuning}
 
+    @app.get("/auth")
+    def auth() -> dict:
+        """Per-source endpoints + whether a token is set (tokens are masked)."""
+        from ..auth import AUTH_SOURCES, masked_auth
+
+        return {"sources": list(AUTH_SOURCES), "config": masked_auth()}
+
+    @app.post("/auth")
+    def set_auth(payload: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
+        """Save a source's endpoint/token to the gitignored local auth file. The
+        token is taken from the request body (never the URL) and only overwritten
+        when a non-empty value is supplied."""
+        from ..auth import AUTH_SOURCES, masked_auth, save_auth_entry
+
+        source = payload.get("source")
+        if source not in AUTH_SOURCES:
+            raise HTTPException(status_code=400, detail="unknown source")
+        save_auth_entry(
+            source,
+            endpoint=(payload.get("endpoint") or None),
+            token=(payload.get("token") or None),
+        )
+        return {"config": masked_auth()}
+
     @app.get("/audio/{clip_id}")
     def audio(clip_id: str) -> Response:
         clip = store.audio.get(clip_id)
@@ -168,6 +192,17 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   button[disabled]{opacity:.6;cursor:default}
   #modelwrap,#tuningwrap,#quietwrap{display:inline-block;margin-left:1rem}
   select{font:inherit;font-size:.85rem;margin-left:.35rem}
+  #tabs{margin:.3rem 0 1rem;border-bottom:1px solid #ccc}
+  #tabs a{cursor:pointer;display:inline-block;padding:.3rem .7rem;margin-right:.2rem;
+          color:#666;border-bottom:2px solid transparent}
+  #tabs a.active{color:#111;border-bottom-color:#111}
+  .authrow{margin:.4rem 0;padding:.6rem 0;border-top:1px solid #eee}
+  .authrow input{font:inherit;font-size:.9rem;display:block;width:100%;max-width:26rem;margin:.2rem 0;
+                 padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
+  .authrow button{margin-top:.2rem}
+  @media(prefers-color-scheme:dark){
+    #tabs{border-color:#333} #tabs a.active{color:#eee;border-bottom-color:#eee}
+    .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   audio{width:100%;margin:.4rem 0}
@@ -176,6 +211,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     button{background:#eee;color:#111}article{border-color:#333}}
 </style>
 <h1>Maelcom</h1>
+<nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
+<div id='player-view'>
 <p class='muted' id='status'>internal radio · press play to begin</p>
 <button id='play'>▶ Start radio</button>
 <label class='muted' id='modelwrap'>ambient generator
@@ -187,6 +224,14 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <canvas id='viz'></canvas>
 <section id='news'><p class='muted'>Loading…</p></section>
+</div>
+<div id='settings-view' hidden>
+  <h2>Sources &amp; auth</h2>
+  <p class='muted'>Personal endpoints and tokens for the sources Maelcom polls.
+  Stored locally in a gitignored file (<code>maelcom.auth.toml</code>, owner-only);
+  tokens are masked here and never committed or sent anywhere but your own server.</p>
+  <div id='authform'></div>
+</div>
 
 <script src='https://unpkg.com/@strudel/web@1.0.3'></script>
 <script>
@@ -319,6 +364,42 @@ btn.addEventListener('click', async ()=>{
   await pollMusic();
   pollNews();
 });
+// Tabs: Player / Settings.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>{
+  document.querySelectorAll('#tabs a').forEach(x=>x.classList.toggle('active', x===a));
+  const tab=a.dataset.tab;
+  document.getElementById('player-view').hidden = tab!=='player';
+  document.getElementById('settings-view').hidden = tab!=='settings';
+  if(tab==='settings') loadAuth();
+}));
+async function loadAuth(){
+  const wrap=document.getElementById('authform');
+  try{
+    const d=await (await fetch('/auth')).json();
+    wrap.innerHTML='';
+    for(const src of d.sources){
+      const c=(d.config&&d.config[src])||{};
+      const row=document.createElement('div'); row.className='authrow';
+      row.innerHTML='<strong>'+esc(src)+'</strong> <span class="muted">'+
+        (c.token_set?('· token set '+esc(c.token_hint||'')):'· no token')+'</span>'+
+        '<input class="ep" placeholder="endpoint (optional)" value="'+esc(c.endpoint||'')+'">'+
+        '<input class="tok" type="password" autocomplete="off" placeholder="'+
+          (c.token_set?'new token (blank keeps current)':'token')+'">'+
+        '<button>Save</button>';
+      const btn=row.querySelector('button');
+      btn.addEventListener('click', async ()=>{
+        btn.disabled=true; btn.textContent='Saving…';
+        const body={source:src, endpoint:row.querySelector('.ep').value, token:row.querySelector('.tok').value};
+        try{ await fetch('/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+          await loadAuth();
+        }catch(e){ btn.disabled=false; btn.textContent='Save'; }
+      });
+      wrap.appendChild(row);
+    }
+  }catch(e){ wrap.textContent='Could not load settings.'; }
+}
+
 loadModels(); loadTunings(); loadQuiet(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);

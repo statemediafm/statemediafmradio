@@ -30,6 +30,7 @@ def test_index_serves_strudel_player():
     assert 'id=\'viz\'' in html  # the visualizer canvas
     assert "/models" in html and 'id=\'model\'' in html  # the ambient-generator dropdown
     assert "/tuning" in html and 'id=\'tuning\'' in html  # the concert-A tuning dropdown
+    assert "/auth" in html and "data-tab='settings'" in html  # the Settings tab
 
 
 def test_genmusic_empty_then_published():
@@ -64,6 +65,25 @@ def test_models_list_and_switch():
     assert client.get("/genmusic").json()["style"] == "ScratchPad"
 
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
+
+
+def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
+    import json as _json
+
+    monkeypatch.setenv("MAELCOM_AUTH", str(tmp_path / "auth.toml"))
+    client = TestClient(create_app())
+
+    got = client.get("/auth").json()
+    assert "github" in got["sources"] and got["config"]["github"]["token_set"] is False
+
+    # The token is sent in the body (never the URL) and stored gitignored.
+    resp = client.post("/auth", json={"source": "github", "token": "ghp_supersecret9999"})
+    cfg = resp.json()["config"]
+    assert cfg["github"]["token_set"] is True and cfg["github"]["token_hint"].endswith("9999")
+
+    # The raw token is never returned by the API.
+    assert "ghp_supersecret9999" not in _json.dumps(client.get("/auth").json())
+    assert client.post("/auth", json={"source": "nope", "token": "x"}).status_code == 400
 
 
 def test_models_selector_hidden_by_default():

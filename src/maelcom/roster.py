@@ -25,13 +25,17 @@ Example TOML::
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
+import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
+from .auth import source_token
 from .core.schedule import Cadence, parse_duration
-from .sources import HackerNewsSource, Source, open_source
+from .sources import HackerNewsSource, Source, detect_forge, open_source
 
 
 def load_config(path: str | Path) -> dict:
@@ -59,20 +63,67 @@ def genmusic_settings(config: dict) -> dict:
     }
 
 
+# ── Source-kind harness ─────────────────────────────────────────────────────
+# A registry of source *kinds* (the `source = "…"` in a segment) → a builder
+# `build(topic, seg) -> Source`. Built-ins are registered below; installs add
+# more in code via register_source_kind(), or from config via [[source_plugins]]
+# (kind + a "module:function" builder). See SOURCES.md.
+_SOURCE_KINDS: dict[str, Callable[[str, dict], Source]] = {}
+
+
+def register_source_kind(kind: str, build: Callable[[str, dict], Source]) -> None:
+    _SOURCE_KINDS[kind] = build
+
+
+def _build_hackernews(topic: str, seg: dict) -> Source:
+    return HackerNewsSource(max_count=int(seg.get("max_count", 25)))
+
+
+def _build_repo(topic: str, seg: dict) -> Source:
+    repo = seg.get("repo")
+    if not repo:
+        raise ValueError(f"segment {topic!r}: source='repo' needs a 'repo' URL or path")
+    # Token precedence: an explicit token_env, else the gitignored auth config for
+    # the detected forge (github/gitlab), else none.
+    token = os.environ.get(seg["token_env"]) if seg.get("token_env") else None
+    if token is None:
+        forge = detect_forge(repo)  # (platform, slug) | None
+        if forge is not None and forge[0] in ("github", "gitlab"):
+            token = source_token(forge[0])
+    return open_source(repo, max_count=int(seg.get("max_count", 25)), token=token)
+
+
+register_source_kind("hackernews", _build_hackernews)
+register_source_kind("hn", _build_hackernews)
+register_source_kind("repo", _build_repo)
+
+
+def load_source_plugins(config: dict) -> list[str]:
+    """Register custom source kinds declared in ``[[source_plugins]]`` — each a
+    ``{kind, builder="module:function"}``. Returns the kinds registered; a bad
+    builder is skipped with a note, not fatal."""
+    registered: list[str] = []
+    for plugin in config.get("source_plugins", []) or []:
+        kind, path = plugin.get("kind"), plugin.get("builder")
+        if not kind or not path:
+            continue
+        try:
+            module_path, _, func = path.partition(":")
+            register_source_kind(kind, getattr(importlib.import_module(module_path), func))
+            registered.append(kind)
+        except (ImportError, AttributeError) as exc:
+            print(f"skipping source plugin {kind!r}: {exc}", file=sys.stderr)
+    return registered
+
+
 def _build_source(topic: str, seg: dict) -> Source:
     kind = seg.get("source")
-    max_count = int(seg.get("max_count", 25))
-    if kind in ("hackernews", "hn"):
-        return HackerNewsSource(max_count=max_count)
-    if kind == "repo":
-        repo = seg.get("repo")
-        if not repo:
-            raise ValueError(f"segment {topic!r}: source='repo' needs a 'repo' URL or path")
-        token = os.environ.get(seg["token_env"]) if seg.get("token_env") else None
-        return open_source(repo, max_count=max_count, token=token)
-    raise ValueError(
-        f"segment {topic!r}: unknown source {kind!r} (use 'hackernews' or 'repo')"
-    )
+    build = _SOURCE_KINDS.get(kind)
+    if build is None:
+        raise ValueError(
+            f"segment {topic!r}: unknown source {kind!r} (have: {sorted(_SOURCE_KINDS)})"
+        )
+    return build(topic, seg)
 
 
 def build_roster(config: dict) -> list[tuple[str, Source, Cadence, int | None]]:

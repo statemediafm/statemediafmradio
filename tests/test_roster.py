@@ -63,3 +63,50 @@ def test_load_config_toml_and_json(tmp_path):
 
     # And the parsed config builds a roster end to end.
     assert build_roster(load_config(toml_file))[0][0] == "HN"
+
+
+def test_register_and_build_custom_source_kind():
+    from maelcom.roster import build_roster, register_source_kind
+
+    class _FakeSrc:
+        name = "fake"
+
+        def poll(self, since=None):
+            return []
+
+    register_source_kind("fake_src", lambda topic, seg: _FakeSrc())
+    roster = build_roster({"segments": [{"topic": "T", "source": "fake_src", "every": "5m"}]})
+    assert roster[0][0] == "T" and isinstance(roster[0][1], _FakeSrc)
+
+
+def test_load_source_plugins_registers_from_config_and_skips_bad():
+    from maelcom.roster import _SOURCE_KINDS, load_source_plugins
+
+    good = load_source_plugins(
+        {"source_plugins": [{"kind": "hn2", "builder": "maelcom.roster:_build_hackernews"}]}
+    )
+    assert good == ["hn2"] and "hn2" in _SOURCE_KINDS
+    assert load_source_plugins({"source_plugins": [{"kind": "bad", "builder": "no.mod:fn"}]}) == []
+    assert "bad" not in _SOURCE_KINDS
+
+
+def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
+    from maelcom import roster
+
+    captured = {}
+
+    def _fake_open_source(repo, max_count=20, token=None):
+        captured["token"] = token
+
+        class _S:
+            name = "s"
+
+            def poll(self, since=None):
+                return []
+
+        return _S()
+
+    monkeypatch.setattr(roster, "open_source", _fake_open_source)
+    monkeypatch.setattr(roster, "source_token", lambda src, path=None: "AUTHTOK" if src == "github" else None)
+    roster._build_repo("T", {"repo": "https://github.com/o/r"})
+    assert captured["token"] == "AUTHTOK"  # pulled from the gitignored auth config
