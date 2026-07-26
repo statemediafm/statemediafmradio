@@ -647,15 +647,15 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 
   <details class='section'>
     <summary>Gateways</summary>
-    <p class='muted'>Model/LLM gateways used for news parsing — configure each
-    gateway's <strong>URL</strong> (base endpoint) and <strong>auth token</strong>
-    (API key). Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted
-    vLLM/Ollama/NIM, etc. Stored in the same gitignored auth file; tokens masked,
-    never sent anywhere but your own server.</p>
-    <p class='muted'>Presets (fill a gateway's URL below and suggest a news model —
-    the API key still goes in its token field):</p>
-    <div id='presets'></div>
+    <p class='muted'>Model/LLM gateways used for news parsing — each has a slot for its
+    <strong>URL</strong> (base endpoint) and <strong>auth token</strong> (API key).
+    Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted vLLM/Ollama/
+    NIM, etc. Stored in the same gitignored auth file; tokens masked, never sent
+    anywhere but your own server.</p>
     <div id='gatewayform'></div>
+    <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and
+    suggests a news model — you still enter the API key in the token slot):</p>
+    <div id='presets'></div>
   </details>
 
   <details class='section'>
@@ -1114,7 +1114,7 @@ async function loadPresets(){
         const ep=document.querySelector('.authrow[data-source="llm-gateway"] .ep');
         if(ep) ep.value=p.api_base;
         newsModelCustom.value=p.model;
-        document.getElementById('newsmodel-status').textContent='preset: '+p.name+' — set the API key below, then Save.';
+        document.getElementById('newsmodel-status').textContent='preset: '+p.name+' — enter the API key in the token slot above, then Save.';
       });
       wrap.appendChild(b);
     }
