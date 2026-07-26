@@ -11,16 +11,18 @@ from .pagerduty import PagerDutySource
 from .slack import SlackSource
 
 
-def open_source(repo: str, max_count: int = 20, token: str | None = None) -> Source:
+def open_source(
+    repo: str, max_count: int = 20, token: str | None = None, max_age: float | None = None
+) -> Source:
     """Pick the right source for ``repo``.
 
     A GitHub/GitLab URL → ``ForgeSource`` (issues + merge/pull requests with
     their latest comments). Anything else (a local path, a bare remote) →
     ``GitSource`` (recent commits), which is all that is available without a
-    forge API.
+    forge API. ``max_age`` (seconds) limits a forge to items updated recently.
     """
     if detect_forge(repo) is not None:
-        return ForgeSource(repo, max_count=max_count, token=token)
+        return ForgeSource(repo, max_count=max_count, token=token, max_age=max_age)
     return GitSource(repo, max_count=max_count)
 
 

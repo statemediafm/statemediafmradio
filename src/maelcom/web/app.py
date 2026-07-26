@@ -413,6 +413,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     <select id='src-kind'></select>
     <input id='src-topic' placeholder='topic (optional)'>
     <input id='src-param' placeholder='—'>
+    <input id='src-maxage' placeholder='max age (e.g. 7d — recent updates only)' hidden>
     <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
     <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
     <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
@@ -680,7 +681,8 @@ async function loadSources(){
       const row=document.createElement('div'); row.className='srcrow';
       const cfg=s.config||{};
       const extra=[cfg.headlines!=null?('headlines '+cfg.headlines):'',
-                   cfg.max_count!=null?('max '+cfg.max_count):''].filter(Boolean).join(' · ');
+                   cfg.max_count!=null?('max '+cfg.max_count):'',
+                   cfg.max_age!=null?('≤'+cfg.max_age):''].filter(Boolean).join(' · ');
       row.innerHTML='<span class="kind">'+esc(s.kind||'?')+'</span>'+
         '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
         (extra?(' · '+esc(extra)):'')+'</span></span>'+
@@ -696,6 +698,8 @@ async function loadSources(){
 function updateSrcPlaceholder(){
   const opt=currentAddOption();
   srcParam.placeholder = opt.ph || '—'; srcParam.style.display = opt.key ? '' : 'none';
+  // max_age only applies to the GitHub/GitLab work-item (forge) sources.
+  document.getElementById('src-maxage').hidden = opt.kind!=='repo';
 }
 srcKind.addEventListener('change', updateSrcPlaceholder);
 document.getElementById('src-add').addEventListener('click', async ()=>{
@@ -711,11 +715,12 @@ document.getElementById('src-add').addEventListener('click', async ()=>{
   if(val('src-headlines')) seg.headlines=parseInt(val('src-headlines'),10);
   if(val('src-maxcount')) seg.max_count=parseInt(val('src-maxcount'),10);
   if(val('src-offset')) seg.offset=val('src-offset');
+  if(opt.kind==='repo' && val('src-maxage')) seg.max_age=val('src-maxage');
   st.textContent='adding…';
   try{
     const r=await fetch('/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(seg)});
     if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
-    for(const id of ['src-param','src-topic','src-headlines','src-maxcount','src-offset'])
+    for(const id of ['src-param','src-maxage','src-topic','src-headlines','src-maxcount','src-offset'])
       document.getElementById(id).value='';
     st.textContent=''; await loadSources();
   }catch(e){ st.textContent='error'; }

@@ -110,7 +110,11 @@ def _build_repo(topic: str, seg: dict) -> Source:
         forge = detect_forge(repo)  # (platform, slug) | None
         if forge is not None and forge[0] in ("github", "gitlab"):
             token = source_token(forge[0])
-    return open_source(repo, max_count=int(seg.get("max_count", 25)), token=token)
+    # Optional max_age (e.g. "7d", "48h"): only air work items updated that recently.
+    max_age = parse_duration(seg["max_age"]) if seg.get("max_age") else None
+    return open_source(
+        repo, max_count=int(seg.get("max_count", 25)), token=token, max_age=max_age
+    )
 
 
 def _build_slack(topic: str, seg: dict) -> Source:

@@ -122,8 +122,8 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
 
     captured = {}
 
-    def _fake_open_source(repo, max_count=20, token=None):
-        captured["token"] = token
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None):
+        captured.update(token=token, max_age=max_age)
 
         class _S:
             name = "s"
@@ -137,3 +137,8 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
     monkeypatch.setattr(roster, "source_token", lambda src, path=None: "AUTHTOK" if src == "github" else None)
     roster._build_repo("T", {"repo": "https://github.com/o/r"})
     assert captured["token"] == "AUTHTOK"  # pulled from the gitignored auth config
+    assert captured["max_age"] is None  # omitted → no age limit
+
+    # A max_age duration string is parsed to seconds and passed through.
+    roster._build_repo("T", {"repo": "https://github.com/o/r", "max_age": "7d"})
+    assert captured["max_age"] == 7 * 86400

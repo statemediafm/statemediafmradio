@@ -6,6 +6,8 @@ source is exercised deterministically with no network.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from maelcom.sources import detect_forge, open_source
@@ -31,6 +33,27 @@ def test_detect_forge_normalizes_work_item_urls():
     # GitLab nested groups keep their full project path.
     assert detect_forge("https://gitlab.com/group/sub/project/-/issues/1") == (
         "gitlab", "group/sub/project")
+
+
+def test_forge_max_age_keeps_only_recent_updates():
+    now = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+
+    def iso(days):
+        return (now - timedelta(days=days)).isoformat()
+
+    issues = [
+        {"number": 1, "title": "fresh", "user": {"login": "a"}, "comments": 0,
+         "updated_at": iso(1), "state": "open", "html_url": "u1"},
+        {"number": 2, "title": "stale", "user": {"login": "b"}, "comments": 0,
+         "updated_at": iso(30), "state": "open", "html_url": "u2"},
+    ]
+    src = ForgeSource("https://github.com/o/r", get=lambda url: issues,
+                      max_age=7 * 86400, now=lambda: now)
+    assert [n.title for n in src.poll()] == ["fresh"]  # 30-day-old item filtered out
+
+    # No max_age → nothing is filtered.
+    src2 = ForgeSource("https://github.com/o/r", get=lambda url: issues, now=lambda: now)
+    assert {n.title for n in src2.poll()} == {"fresh", "stale"}
 
 
 def test_open_source_routes_forge_vs_git():

@@ -22,7 +22,7 @@ import os
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from ..core.models import NewsItem
@@ -78,6 +78,8 @@ class ForgeSource(Source):
         max_count: int = 20,
         token: str | None = None,
         get: Callable[[str], Any] | None = None,
+        max_age: float | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         detected = detect_forge(repo)
         if detected is None:
@@ -86,6 +88,9 @@ class ForgeSource(Source):
         self.platform, self.slug = detected
         self.project = self.slug.split("/")[-1]  # repo name, for on-air attribution
         self.max_count = max_count
+        # Only air items updated within this many seconds; None = no age limit.
+        self.max_age = max_age
+        self._now = now or (lambda: datetime.now(UTC))
         self.token = token or os.environ.get(
             "GITHUB_TOKEN" if self.platform == "github" else "GITLAB_TOKEN"
         )
@@ -120,9 +125,16 @@ class ForgeSource(Source):
 
     # --- polling ----------------------------------------------------------
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
-        if self.platform == "github":
-            return self._poll_github()
-        return self._poll_gitlab()
+        items = self._poll_github() if self.platform == "github" else self._poll_gitlab()
+        return self._within_age(items)
+
+    def _within_age(self, items: list[NewsItem]) -> list[NewsItem]:
+        """Keep only items updated within ``max_age`` seconds. Items whose update
+        time is unknown are kept (we can't judge their age). No limit → unchanged."""
+        if self.max_age is None:
+            return items
+        cutoff = self._now().timestamp() - self.max_age
+        return [n for n in items if n.timestamp is None or n.timestamp.timestamp() >= cutoff]
 
     def _poll_github(self) -> list[NewsItem]:
         base = f"https://api.github.com/repos/{self.slug}"

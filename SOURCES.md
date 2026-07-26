@@ -62,11 +62,16 @@ source = "hackernews"
 every  = "15m"
 
 [[segments]]
-topic  = "Engineering"
-source = "repo"
-repo   = "https://github.com/your-org/your-repo"
-every  = "15m"
+topic   = "Engineering"
+source  = "repo"
+repo    = "https://github.com/your-org/your-repo"
+max_age = "7d"   # only air work items updated in the last 7 days (optional)
+every   = "15m"
 ```
+
+For the GitHub/GitLab `repo` source, `repo` may be a project URL **or a pasted
+issue / PR / MR URL** (it's normalized to the project). `max_age` (e.g. `48h`,
+`7d`) limits it to work items updated that recently — leave it off for no limit.
 
 ## Adding a new source kind
 
