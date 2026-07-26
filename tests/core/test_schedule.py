@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.core.models import AudioRef, Script
-from maelcom.core.schedule import (
+from statemediafm.core.models import AudioRef, Script
+from statemediafm.core.schedule import (
     Cadence,
     Programme,
     assemble_broadcast,

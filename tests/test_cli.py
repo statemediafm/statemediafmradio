@@ -6,8 +6,8 @@ import urllib.error
 
 import pytest
 
-from maelcom import cli
-from maelcom.cli import _CliError, _poll
+from statemediafm import cli
+from statemediafm.cli import _CliError, _poll
 
 
 class _Boom:

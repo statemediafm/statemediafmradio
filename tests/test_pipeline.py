@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from maelcom import pipeline
-from maelcom.core.models import NewsItem
-from maelcom.core.plan import plan_to_dict
-from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
-from maelcom.newsroom.tts import ToneWavTTS
+from statemediafm import pipeline
+from statemediafm.core.models import NewsItem
+from statemediafm.core.plan import plan_to_dict
+from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
+from statemediafm.newsroom.tts import ToneWavTTS
 
 
 def _items():

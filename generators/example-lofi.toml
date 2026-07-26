@@ -5,6 +5,6 @@ name = "Lo-Fi (config)"
 description = "The built-in chilled lo-fi beat, registered from a config file (demo)."
 prompt = """
 Chilled lo-fi: a jazzy ii-V-I pad, a plucky pentatonic lead, a synthesized beat
-(sine kick, noise snare/hats). See maelcom/genmusic/styles/lofi.py.
+(sine kick, noise snare/hats). See statemediafm/genmusic/styles/lofi.py.
 """
-renderer = "maelcom.genmusic.styles.lofi:render"
+renderer = "statemediafm.genmusic.styles.lofi:render"

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.core.schedule import Cadence
-from maelcom.roster import build_roster, load_config
-from maelcom.sources.git_source import GitSource
-from maelcom.sources.hackernews import HackerNewsSource
+from statemediafm.core.schedule import Cadence
+from statemediafm.roster import build_roster, load_config
+from statemediafm.sources.git_source import GitSource
+from statemediafm.sources.hackernews import HackerNewsSource
 
 
 def test_build_roster_maps_sources_and_cadences():
@@ -66,7 +66,7 @@ def test_load_config_toml_and_json(tmp_path):
 
 
 def test_build_segment_and_source_kinds():
-    from maelcom.roster import build_segment, source_kinds
+    from statemediafm.roster import build_segment, source_kinds
 
     topic, source, cadence, headlines = build_segment(
         {"topic": "HN", "source": "hackernews", "every": "5m"}, 0
@@ -79,7 +79,7 @@ def test_build_segment_and_source_kinds():
 
 
 def test_llm_settings_reads_the_llm_table():
-    from maelcom.roster import llm_settings
+    from statemediafm.roster import llm_settings
 
     assert llm_settings({}) == {}
     assert llm_settings({"llm": {"model": "openai/x", "temperature": 0.2}}) == {
@@ -93,7 +93,7 @@ def test_llm_settings_reads_the_llm_table():
 
 
 def test_register_and_build_custom_source_kind():
-    from maelcom.roster import build_roster, register_source_kind
+    from statemediafm.roster import build_roster, register_source_kind
 
     class _FakeSrc:
         name = "fake"
@@ -107,10 +107,10 @@ def test_register_and_build_custom_source_kind():
 
 
 def test_load_source_plugins_registers_from_config_and_skips_bad():
-    from maelcom.roster import _SOURCE_KINDS, load_source_plugins
+    from statemediafm.roster import _SOURCE_KINDS, load_source_plugins
 
     good = load_source_plugins(
-        {"source_plugins": [{"kind": "hn2", "builder": "maelcom.roster:_build_hackernews"}]}
+        {"source_plugins": [{"kind": "hn2", "builder": "statemediafm.roster:_build_hackernews"}]}
     )
     assert good == ["hn2"] and "hn2" in _SOURCE_KINDS
     assert load_source_plugins({"source_plugins": [{"kind": "bad", "builder": "no.mod:fn"}]}) == []
@@ -118,7 +118,7 @@ def test_load_source_plugins_registers_from_config_and_skips_bad():
 
 
 def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
-    from maelcom import roster
+    from statemediafm import roster
 
     captured = {}
 

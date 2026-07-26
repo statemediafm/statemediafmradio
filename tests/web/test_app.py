@@ -9,9 +9,9 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient
 
-from maelcom.core.models import ActivitySignal
-from maelcom.genmusic.compose import compose
-from maelcom.web.app import _State, create_app
+from statemediafm.core.models import ActivitySignal
+from statemediafm.genmusic.compose import compose
+from statemediafm.web.app import _State, create_app
 
 
 def test_health_ok():
@@ -98,8 +98,8 @@ def test_news_model_select_when_live():
 
 
 def test_news_model_discovery_merges_gateway_models(monkeypatch):
-    import maelcom.newsroom.llm as llm_pkg
-    from maelcom.newsroom.llm import LLMConfig
+    import statemediafm.newsroom.llm as llm_pkg
+    from statemediafm.newsroom.llm import LLMConfig
 
     # The endpoint imports discover_models from the package namespace — patch there.
     monkeypatch.setattr(llm_pkg, "discover_models",
@@ -123,7 +123,7 @@ def test_news_model_discovery_rejected_when_not_live():
 
 
 def test_sources_list_add_and_remove():
-    from maelcom.roster import build_segment
+    from statemediafm.roster import build_segment
 
     state = _State()
     state.segments = [{"topic": "HN", "source": "hackernews"}]
@@ -150,7 +150,7 @@ def test_sources_list_add_and_remove():
 
 
 def test_sources_never_leak_tokens():
-    from maelcom.roster import build_segment
+    from statemediafm.roster import build_segment
 
     state = _State()
     state.segments = [{"topic": "R", "source": "repo",
@@ -189,8 +189,8 @@ def test_style_and_voice_endpoints():
 
 
 def test_personas_are_locked_without_a_license(monkeypatch):
-    monkeypatch.delenv("MAELCOM_LICENSE", raising=False)
-    monkeypatch.setenv("MAELCOM_LICENSE_FILE", "/nonexistent/maelcom.license")
+    monkeypatch.delenv("STATEMEDIAFM_LICENSE", raising=False)
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE_FILE", "/nonexistent/statemediafm.license")
     state = _State()
     client = TestClient(create_app(state))
 
@@ -205,7 +205,7 @@ def test_personas_are_locked_without_a_license(monkeypatch):
 
 
 def test_intensity_endpoint_sets_base_energy():
-    from maelcom.core.models import ActivitySignal
+    from statemediafm.core.models import ActivitySignal
 
     state = _State()
     client = TestClient(create_app(state))
@@ -224,10 +224,10 @@ def test_intensity_endpoint_sets_base_energy():
 
 
 def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
-    from maelcom.licensing import sign_license
-    from maelcom.newsroom.personas import MODULE
+    from statemediafm.licensing import sign_license
+    from statemediafm.newsroom.personas import MODULE
 
-    monkeypatch.setenv("MAELCOM_LICENSE", sign_license([MODULE]))
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", sign_license([MODULE]))
     state = _State()
     client = TestClient(create_app(state))
 
@@ -247,11 +247,11 @@ def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
 
 
 def test_license_endpoint_saves_key_and_unlocks(monkeypatch, tmp_path):
-    from maelcom.licensing import sign_license
-    from maelcom.newsroom.personas import MODULE
+    from statemediafm.licensing import sign_license
+    from statemediafm.newsroom.personas import MODULE
 
-    monkeypatch.delenv("MAELCOM_LICENSE", raising=False)
-    monkeypatch.setenv("MAELCOM_LICENSE_FILE", str(tmp_path / "maelcom.license"))
+    monkeypatch.delenv("STATEMEDIAFM_LICENSE", raising=False)
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE_FILE", str(tmp_path / "statemediafm.license"))
     client = TestClient(create_app(_State()))
 
     assert client.get("/license").json()["has_key"] is False
@@ -278,7 +278,7 @@ def test_news_model_temperature_and_max_tokens():
 
 
 def test_schedule_endpoint():
-    from maelcom.core.director import Director
+    from statemediafm.core.director import Director
 
     state = _State()
     client = TestClient(create_app(state))
@@ -301,7 +301,7 @@ def test_llm_presets_listed():
 def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
     import json as _json
 
-    monkeypatch.setenv("MAELCOM_AUTH", str(tmp_path / "auth.toml"))
+    monkeypatch.setenv("STATEMEDIAFM_AUTH", str(tmp_path / "auth.toml"))
     client = TestClient(create_app())
 
     got = client.get("/auth").json()
@@ -342,10 +342,10 @@ def test_tuning_list_and_switch():
 
 
 def test_serve_refresh_makes_genmusic_and_plan_live():
-    from maelcom.core.models import NewsItem
-    from maelcom.core.schedule import Cadence
-    from maelcom.newsroom.tts import ToneWavTTS
-    from maelcom.serve import refresh_once
+    from statemediafm.core.models import NewsItem
+    from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.tts import ToneWavTTS
+    from statemediafm.serve import refresh_once
 
     class _FakeSource:
         def poll(self, since=None):
@@ -364,10 +364,10 @@ def test_serve_refresh_makes_genmusic_and_plan_live():
 
 
 def test_serve_holds_the_journey_across_news_updates():
-    from maelcom.core.models import NewsItem
-    from maelcom.core.schedule import Cadence
-    from maelcom.newsroom.tts import ToneWavTTS
-    from maelcom.serve import refresh_once
+    from statemediafm.core.models import NewsItem
+    from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.tts import ToneWavTTS
+    from statemediafm.serve import refresh_once
 
     class _ChangingSource:
         def __init__(self):
@@ -393,10 +393,10 @@ def test_serve_holds_the_journey_across_news_updates():
 
 
 def test_stop_broadcast_pauses_the_loop_and_silences():
-    from maelcom.core.models import NewsItem
-    from maelcom.core.schedule import Cadence
-    from maelcom.newsroom.tts import ToneWavTTS
-    from maelcom.serve import refresh_once
+    from statemediafm.core.models import NewsItem
+    from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.tts import ToneWavTTS
+    from statemediafm.serve import refresh_once
 
     polled = {"n": 0}
 
@@ -436,10 +436,10 @@ def test_quiet_endpoint_toggle():
 
 
 def test_quiet_mode_gates_music_around_the_news():
-    from maelcom.core.models import NewsItem
-    from maelcom.core.schedule import Cadence
-    from maelcom.newsroom.tts import ToneWavTTS
-    from maelcom.serve import refresh_once
+    from statemediafm.core.models import NewsItem
+    from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.tts import ToneWavTTS
+    from statemediafm.serve import refresh_once
 
     class _Src:
         def poll(self, since=None):

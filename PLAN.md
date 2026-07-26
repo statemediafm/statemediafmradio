@@ -1,4 +1,4 @@
-# Maelcom — Development Plan
+# State Media FM — Development Plan
 
 > A self-hostable, multi-tenant **internal radio station** that turns a team's
 > collaboration exhaust (git, Jira, Slack, Grafana, …) into a continuous,
@@ -25,7 +25,7 @@ everything before it is context and contracts.
 3. **Plugins over hard-coded integrations.** Data sources, voices, music
    genres, and auth providers are all discovered via entry points, not
    `if/elif` chains. Adding a source = shipping a plugin, not editing core.
-4. **Inherit the platform's access model.** Maelcom never invents its own view
+4. **Inherit the platform's access model.** State Media FM never invents its own view
    of "who can see what." It collects as a service/bot user and respects the
    source platform's ACLs on every item.
 5. **Deterministic, testable core; probabilistic parts at the edges.** LLM
@@ -77,7 +77,7 @@ These are the working defaults. Where a decision is genuinely open it's marked
 | Concern | Choice | Notes |
 |---|---|---|
 | Backend language | **Python 3.12+** | Implied by "installable by uv." |
-| Packaging/deps | **uv** + `pyproject.toml`, single `maelcom` package w/ plugin entry points | `uvx maelcom` to run the demo. |
+| Packaging/deps | **uv** + `pyproject.toml`, single `statemediafm` package w/ plugin entry points | `uvx statemediafm` to run the demo. |
 | Web framework | **FastAPI** + `uvicorn` | Async, OpenAPI for free, easy background tasks. |
 | Background scheduling | **APScheduler** (in-process) for MVP; pluggable to a queue later | Drives the news cadence + rhythm. |
 | Persistence | **SQLite** default (per-tenant file); Postgres via same SQLAlchemy layer | Keeps zero-config promise; scale-up path exists. |
@@ -93,11 +93,11 @@ These are the working defaults. Where a decision is genuinely open it's marked
 ## 4. Proposed repository layout
 
 ```
-maelcom/
+statemediafm/
 ├── pyproject.toml            # uv-managed, defines console script + plugin groups
 ├── PLAN.md                   # this file
 ├── README.md                 # quickstart / demo
-├── src/maelcom/
+├── src/statemediafm/
 │   ├── core/                 # integration core: event bus, orchestrator, scheduler
 │   │   ├── models.py         # NewsItem, Segment, BroadcastPlan, ActivitySignal (§6)
 │   │   ├── bus.py            # async pub/sub between pillars
@@ -135,7 +135,7 @@ maelcom/
 │   │   ├── app.py
 │   │   ├── templates/
 │   │   └── client/           # Strudel player + visualizer (TS, small bundle)
-│   └── cli.py                # `maelcom demo`, `maelcom serve`, `maelcom source ...`
+│   └── cli.py                # `statemediafm demo`, `statemediafm serve`, `statemediafm source ...`
 └── tests/                    # mirror of src/, one suite per pillar + integration
 ```
 
@@ -261,22 +261,22 @@ profiles:
   enforced. **Full:** full provider set + per-item ACL filtering.
 
 ### 5.8 Packaging / deploy (cross-cutting)
-- **Responsibility:** `uvx maelcom demo` for zero-config local run; container
+- **Responsibility:** `uvx statemediafm demo` for zero-config local run; container
   image for hosted multi-tenant deployment; config via file + env.
 
 ### 5.9 Commercial modules & licensing (open-core, cross-cutting)
-Maelcom is **open-core**. The base station — sources, the deterministic news
+State Media FM is **open-core**. The base station — sources, the deterministic news
 copy, the generative music, the browser player — is free, fully offline, and
 never needs a key. A **commercial distribution** adds *modules* (the first being
 **themed voice personas**, `voice-personas`) that are unlocked by a **license
-key**. Implemented in `maelcom/licensing.py`.
+key**. Implemented in `statemediafm/licensing.py`.
 
 - **Entitlement model.** Each commercial feature registers a stable module
   **slug** via `register_module(slug, name, description)`. The feature's
   enable-points guard on `entitled(slug)` / `require(slug)` (raises
   `LicenseError`). Everything not gated is free.
-- **Key resolution.** `$MAELCOM_LICENSE`, else a gitignored `maelcom.license`
-  file (`$MAELCOM_LICENSE_FILE` overrides), else open-core only. The key is never
+- **Key resolution.** `$STATEMEDIAFM_LICENSE`, else a gitignored `statemediafm.license`
+  file (`$STATEMEDIAFM_LICENSE_FILE` overrides), else open-core only. The key is never
   logged or returned by the API. Web: `GET /license` (status — modules +
   `entitled` flags, never the key), `POST /license` (save key in the body).
 - **Offline verification, no phone-home.** A key is a signed token verified
@@ -335,7 +335,7 @@ adding breadth.
 - `uv` project, `pyproject.toml`, console script, CI (lint+test), pre-commit.
 - Define §6 models with schema tests. Stub FastAPI app with `/health`, `/plan`.
 - Core event bus + tenant config loader. Fakes for LLM + TTS providers.
-- **Demo:** `maelcom serve` boots; `/plan` returns an empty plan.
+- **Demo:** `statemediafm serve` boots; `/plan` returns an empty plan.
 
 ### M1 — Vertical slice: git → summary → voice → play  ⭐ *the concept's demo*
 - `git_source` (recent commits of a target repo) → `NewsItem`s. ✅
@@ -343,10 +343,10 @@ adding breadth.
   **latest comment**) → `NewsItem`s; `open_source()` routes a forge URL here and
   a local/bare repo to `git_source`. Optional API token; stdlib-only. ✅
 - `hackernews_source` (news.ycombinator.com front page via the HN API) →
-  `NewsItem`s; `maelcom demo --hn`. stdlib-only. ✅
+  `NewsItem`s; `statemediafm demo --hn`. stdlib-only. ✅
 - **Multi-source segments / scheduler seed** (`core/schedule.py`): `Cadence` +
   `Programme` + `assemble_broadcast` place each source at its own times as
-  titled `Segment`s; `maelcom broadcast` airs several sources as an interleaved
+  titled `Segment`s; `statemediafm broadcast` airs several sources as an interleaved
   rundown. Pure/deterministic (no wall-clock reads). Groundwork for §5.5. ✅
 - Newsroom: `summarize()` → prompt → **`LLMClient`** → 1–2 min who/what/… script.
   Ship `LiteLLMClient` (default profile = local Claude client,
@@ -361,9 +361,9 @@ adding breadth.
   participants, themes, actor→voice map). Deterministic.
 - ✅ `genmusic/brainwave.py`: intensity ↔ band mapping; theta-start, activity-lift.
 - ✅ `genmusic/compose.py` + `styles/lofi.py`: `ActivitySignal` → `StrudelProgram`
-  (Strudel source text). Golden/deterministic; `maelcom genmusic` CLI demo.
+  (Strudel source text). Golden/deterministic; `statemediafm genmusic` CLI demo.
 - ✅ Program-text endpoint `GET /genmusic` (JSON) on the FastAPI app.
-- ✅ `maelcom serve` (`serve.py`): boots uvicorn + a background refresh loop that
+- ✅ `statemediafm serve` (`serve.py`): boots uvicorn + a background refresh loop that
   reuses the roster — each tick recomputes the music program (and re-voices the
   news plan only when activity changes), publishing live `/genmusic` + `/plan`.
   `refresh_once` is web-free and unit-tested.

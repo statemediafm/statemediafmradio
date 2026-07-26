@@ -1,6 +1,6 @@
 # LLM / model gateway — config scaffold
 
-Maelcom's news parsing (the `--live` summarizer, and future LLM paths) goes
+State Media FM's news parsing (the `--live` summarizer, and future LLM paths) goes
 through the provider-neutral `LLMClient`. The default is `LiteLLMClient`, whose
 model, gateway URL and key are all **config**, not code. In development it points
 at the local Claude client; cutting over to a gateway is a config change.
@@ -33,7 +33,7 @@ models = ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "ollama/llama3.1"
 
 ## Live news-model selection
 
-`maelcom serve --live` runs the LLM as the news writer (the gateway *parses* the
+`statemediafm serve --live` runs the LLM as the news writer (the gateway *parses* the
 activity into prose). The **Settings tab** then shows a **News-parsing model**
 picker: choose one of the `[llm] models` above, type any model string the gateway
 serves, or click **↻ Discover from gateway** to auto-populate the list from the
@@ -104,7 +104,7 @@ them in your shell / process env (never committed):
 ```
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=<key>
-LANGSMITH_PROJECT=maelcom
+LANGSMITH_PROJECT=statemediafm
 ```
 
 ## How it resolves

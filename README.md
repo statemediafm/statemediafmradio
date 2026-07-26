@@ -1,4 +1,4 @@
-# Maelcom
+# State Media FM
 
 Internal streaming radio built on a team's collaboration, project, and
 version-control data. It turns activity (git, Slack, Jira, Grafana, …) into a
@@ -19,7 +19,7 @@ single-file zipapp — no install, no `pip`, no `PYTHONPATH`:
 
 ```sh
 ./scripts/build_standalone.sh
-python3 dist/maelcom.pyz demo --repo /path/to/a/git/repo
+python3 dist/statemediafm.pyz demo --repo /path/to/a/git/repo
 ```
 
 Choose a source:
@@ -32,10 +32,10 @@ Choose a source:
 - **`--repo <local/bare repo path>`** — falls back to recent **commits** (all
   that is available without a forge API);
 - **`--hn`** — the **Hacker News front page** (top stories via the official HN
-  API). Try it with `python3 dist/maelcom.pyz demo --hn`.
+  API). Try it with `python3 dist/statemediafm.pyz demo --hn`.
 
 It writes a radio script to stdout and saves the voiced audio to
-`maelcom-demo.wav`. Copy `dist/maelcom.pyz` anywhere and run it with just
+`statemediafm-demo.wav`. Copy `dist/statemediafm.pyz` anywhere and run it with just
 `python3`. Passing **both** `--hn` and `--repo` combines them into one segment,
 covering each source in full before the next (depth-first, not interleaved),
 with each source's headlines attributed and voiced in its own voice.
@@ -52,11 +52,11 @@ for the zipapp, which has no `[tts]` extra. Install it and run normally:
 
 ```sh
 uv pip install -e ".[tts]"          # or: pip install -e ".[tts]"
-maelcom demo --repo /path/to/repo --out news.wav   # spoken; add --tone to force the placeholder
+statemediafm demo --repo /path/to/repo --out news.wav   # spoken; add --tone to force the placeholder
 ```
 
 The first run downloads a small voice model (~60 MB) into `./voices/`
-(override with `MAELCOM_VOICES_DIR`); later runs are offline. Pick a voice with
+(override with `STATEMEDIAFM_VOICES_DIR`); later runs are offline. Pick a voice with
 `--voice`:
 
 | Alias | Voice |
@@ -77,7 +77,7 @@ uv pip install -e ".[all]"          # or: pip install -e ".[all]"
 
 # Real summaries via the local Claude client (LiteLLM → anthropic/claude-opus-4-8).
 # Auth: set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) in the environment.
-maelcom demo --repo /path/to/repo --live
+statemediafm demo --repo /path/to/repo --live
 ```
 
 Extras: `.[llm]` (LiteLLM + config), `.[tts]` (Piper neural speech), `.[web]`
@@ -91,7 +91,7 @@ so they read as distinct news segments about their topic (a step toward the
 
 ```sh
 # Ad hoc: sources on a shared interval, auto-staggered to interleave.
-maelcom broadcast --hn --repo https://github.com/meltano/meltano --every 15m --window 60
+statemediafm broadcast --hn --repo https://github.com/meltano/meltano --every 15m --window 60
 ```
 
 It prints a rundown plus the script for each segment:
@@ -109,7 +109,7 @@ staggered by what offset — pass a TOML/JSON roster (see
 [`examples/roster.toml`](examples/roster.toml)):
 
 ```sh
-maelcom broadcast --config examples/roster.toml --window 60
+statemediafm broadcast --config examples/roster.toml --window 60
 ```
 
 ```toml
@@ -129,7 +129,7 @@ offset = "0"
 
 **Audio.** `--out` (default `news.wav`, `''` to skip) writes one combined WAV of
 all segments back to back; `--out-dir DIR` writes one WAV per segment topic. So
-`maelcom broadcast --hn --window 120` alone drops a spoken `news.wav` in the
+`statemediafm broadcast --hn --window 120` alone drops a spoken `news.wav` in the
 current directory (installed instances speak by default; `--tone` forces the
 placeholder). Each segment is voiced in a **different** rotating voice so the
 topics sound distinct. The broadcast opens with a spoken time greeting ("Good day. It is
@@ -142,13 +142,13 @@ pure/deterministic — it never reads the wall clock.
 
 ## Serving live (M2)
 
-`maelcom serve` runs the web server with a background loop that reuses the same
+`statemediafm serve` runs the web server with a background loop that reuses the same
 roster and keeps `/genmusic` (generative music) and `/plan` (voiced news) fresh
 from live activity:
 
 ```sh
 uv pip install -e ".[web]"                      # FastAPI + uvicorn
-maelcom serve --hn --repo <URL> --refresh 60    # or: --config examples/roster.toml
+statemediafm serve --hn --repo <URL> --refresh 60    # or: --config examples/roster.toml
 # → http://127.0.0.1:8000  ·  GET /genmusic, /plan, /audio/{id}, /health
 ```
 
@@ -165,14 +165,14 @@ button is required: browsers block audio until a user gesture.
 
 ## Generative music (M2)
 
-Maelcom also turns a repo's activity into a **Strudel program** — generative
+State Media FM also turns a repo's activity into a **Strudel program** — generative
 music that tracks the project. Activity becomes an `ActivitySignal` (volume,
 volatility, participants, themes); that maps to an intensity on the
 brainwave-band scale (sessions start at **theta** and rise toward gamma as
 activity climbs), and a style renderer emits Strudel source text:
 
 ```sh
-python3 dist/maelcom.pyz genmusic --repo /path/to/repo
+python3 dist/statemediafm.pyz genmusic --repo /path/to/repo
 ```
 
 A quiet repo idles calm and dark; a busy, multi-contributor repo brightens,
@@ -193,12 +193,12 @@ pytest
 ## Layout
 
 ```
-src/maelcom/
+src/statemediafm/
   core/       data model (§6 contracts) + plan assembly + schedule (cadences)
   sources/    forge issues/MRs, git commits, Hacker News front page → NewsItem
   newsroom/   summarize (LLMClient) + voice (TTSProvider)
   genmusic/   activity → ActivitySignal → compose → StrudelProgram (lofi)
   web/        FastAPI: /health, /plan, /audio/{id}, /genmusic, Tufte page
   pipeline.py NewsItems → summarize → voice → BroadcastPlan
-  cli.py      `maelcom demo`, `maelcom genmusic`, `maelcom broadcast`
+  cli.py      `statemediafm demo`, `statemediafm genmusic`, `statemediafm broadcast`
 ```

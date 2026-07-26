@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from maelcom.newsroom.personas import PERSONAS, get_persona, persona_names
-from maelcom.newsroom.tts import voice_names
+from statemediafm.newsroom.personas import PERSONAS, get_persona, persona_names
+from statemediafm.newsroom.tts import voice_names
 
 
 def test_curated_personas_present():

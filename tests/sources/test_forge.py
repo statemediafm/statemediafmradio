@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from maelcom.sources import detect_forge, open_source
-from maelcom.sources.forge import ForgeSource
-from maelcom.sources.git_source import GitSource
+from statemediafm.sources import detect_forge, open_source
+from statemediafm.sources.forge import ForgeSource
+from statemediafm.sources.git_source import GitSource
 
 
 def test_detect_forge_recognizes_hosts_and_slugs():

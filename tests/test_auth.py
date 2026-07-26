@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from maelcom.auth import (
+from statemediafm.auth import (
     AUTH_SOURCES,
     load_auth,
     masked_auth,
@@ -49,8 +49,8 @@ def test_llm_gateway_is_an_auth_slot():
 
 
 def test_litellm_client_uses_llm_gateway_auth_fallback(monkeypatch):
-    from maelcom.newsroom.llm import litellm_client as lc
-    from maelcom.newsroom.llm.base import LLMConfig
+    from statemediafm.newsroom.llm import litellm_client as lc
+    from statemediafm.newsroom.llm.base import LLMConfig
 
     monkeypatch.setattr(lc, "source_endpoint",
                         lambda name, path=None: "https://proxy:4000" if name == "llm-gateway" else None)

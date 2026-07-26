@@ -1,6 +1,6 @@
 # Entrainment — design & research plan
 
-A Maelcom **ambient generator** (one of the user-selectable models alongside
+A State Media FM **ambient generator** (one of the user-selectable models alongside
 _ScratchPad_) that turns the day's activity into long-form ambient music designed
 around **brainwave entrainment**: the sound pulses and beats at the frequency of
 the current brainwave band to gently nudge the listener toward that state, and is
@@ -25,7 +25,7 @@ Everything below the roadmap is research grounding for what comes next.
 ## 1. Vision
 
 - **Input:** the same `ActivitySignal → intensity → brainwave band` pipeline the
-  rest of Maelcom uses. Busier collaboration → higher band → a more alert target;
+  rest of State Media FM uses. Busier collaboration → higher band → a more alert target;
   a quiet day → theta/delta → relaxation.
 - **Output:** a calm, evolving ambient bed whose **entrainment carrier tracks the
   band**, layered with synthesized new-age instruments (water drops, rain sticks,
@@ -273,7 +273,7 @@ space that slowly reveals itself."
 - **Headphone vs speaker.** No reliable web API to detect headphones; likely a UI
   toggle (default speaker-safe monaural/isochronic; binaural opt-in).
 - **How much the band should _drive_ vs a fixed session arc.** Activity-driven Δ
-  (Maelcom-native) vs a Richter-style scripted descent — probably both, blended.
+  (State Media FM-native) vs a Richter-style scripted descent — probably both, blended.
 
 ---
 

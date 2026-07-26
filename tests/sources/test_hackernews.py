@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from maelcom.sources.hackernews import HackerNewsSource
+from statemediafm.sources.hackernews import HackerNewsSource
 
 
 class _FakeGet:

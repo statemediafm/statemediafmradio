@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.licensing import (
+from statemediafm.licensing import (
     LicenseError,
     entitled,
     entitlements,
@@ -18,8 +18,8 @@ from maelcom.licensing import (
 @pytest.fixture(autouse=True)
 def _isolate_license(monkeypatch, tmp_path):
     # No ambient license; a temp file so nothing leaks between tests.
-    monkeypatch.delenv("MAELCOM_LICENSE", raising=False)
-    monkeypatch.setenv("MAELCOM_LICENSE_FILE", str(tmp_path / "maelcom.license"))
+    monkeypatch.delenv("STATEMEDIAFM_LICENSE", raising=False)
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE_FILE", str(tmp_path / "statemediafm.license"))
 
 
 def test_open_core_has_no_entitlements_by_default():
@@ -30,23 +30,23 @@ def test_open_core_has_no_entitlements_by_default():
 
 
 def test_signed_key_unlocks_named_modules(monkeypatch):
-    monkeypatch.setenv("MAELCOM_LICENSE", sign_license(["voice-personas"]))
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", sign_license(["voice-personas"]))
     assert entitled("voice-personas") is True
     assert entitled("something-else") is False
     require("voice-personas")  # no raise
 
 
 def test_wildcard_key_unlocks_everything(monkeypatch):
-    monkeypatch.setenv("MAELCOM_LICENSE", sign_license(["*"]))
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", sign_license(["*"]))
     assert entitled("voice-personas") and entitled("anything-at-all")
 
 
 def test_forged_or_tampered_key_unlocks_nothing(monkeypatch):
     key = sign_license(["voice-personas"])
     body, _sig = key.split(".", 1)
-    monkeypatch.setenv("MAELCOM_LICENSE", body + ".deadbeef")  # bad signature
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", body + ".deadbeef")  # bad signature
     assert entitlements() == frozenset()
-    monkeypatch.setenv("MAELCOM_LICENSE", "garbage")
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", "garbage")
     assert entitlements() == frozenset()
 
 
@@ -57,7 +57,7 @@ def test_expired_key_unlocks_nothing():
 
 
 def test_license_file_is_read(tmp_path, monkeypatch):
-    monkeypatch.setenv("MAELCOM_LICENSE_FILE", str(tmp_path / "lic"))
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE_FILE", str(tmp_path / "lic"))
     save_license(sign_license(["voice-personas"]))
     assert license_key() is not None
     assert entitled("voice-personas") is True

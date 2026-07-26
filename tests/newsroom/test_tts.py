@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.core.models import AudioRef, Script
-from maelcom.newsroom.tts import (
+from statemediafm.core.models import AudioRef, Script
+from statemediafm.newsroom.tts import (
     _VOICE_ALIASES,
     _VOICE_PATHS,
     ToneWavTTS,

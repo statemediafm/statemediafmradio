@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "maelcom"
+name = "statemediafm"
 version = "0.1.0"
 description = "Internal streaming radio built on team collaboration, project, and version-control data."
 readme = "README.md"
@@ -26,13 +26,13 @@ tts = ["piper-tts>=1.2"]
 # Dev tooling.
 dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
 # Everything.
-all = ["maelcom[llm,web,tts]"]
+all = ["statemediafm[llm,web,tts]"]
 
 [project.scripts]
-maelcom = "maelcom.cli:main"
+statemediafm = "statemediafm.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/maelcom"]
+packages = ["src/statemediafm"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

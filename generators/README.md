@@ -1,6 +1,6 @@
 # Ambient generators — add your own
 
-Maelcom ships two built-in ambient generators (`Entrainment 0.1`, `ScratchPad`).
+State Media FM ships two built-in ambient generators (`Entrainment 0.1`, `ScratchPad`).
 You can add more **without touching the package**: drop a small TOML file in a
 generators directory and point your config at it.
 
@@ -15,7 +15,7 @@ selector  = false               # show the generator dropdown in the UI? (defaul
 generators = "generators"       # directory of generator configs to load (this one)
 ```
 
-`maelcom serve --config your.toml` will load every `*.toml` in that directory
+`statemediafm serve --config your.toml` will load every `*.toml` in that directory
 (files named `template.toml` or starting with `_` are skipped) and register the
 **playable** ones as selectable generators.
 
@@ -39,7 +39,7 @@ A renderer is any Python callable with the signature
 def render(signal, intensity, band, fade_ms=2000) -> str: ...
 ```
 
-returning a self-contained Strudel program (see `maelcom/genmusic/styles/` for
+returning a self-contained Strudel program (see `statemediafm/genmusic/styles/` for
 the built-ins). Put your module on the Python path and reference it, e.g.
 `renderer = "my_generators.glacial:render"`.
 

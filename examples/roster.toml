@@ -1,5 +1,5 @@
-# Maelcom broadcast roster — run with:
-#   maelcom broadcast --config examples/roster.toml --window 60
+# State Media FM broadcast roster — run with:
+#   statemediafm broadcast --config examples/roster.toml --window 60
 #
 # Each [[segments]] is one news segment: a source aired on its own cadence.
 # `every` and `offset` accept units (s/m/h/d) or bare seconds; staggering the

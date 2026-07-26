@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.core.models import ActivitySignal
-from maelcom.genmusic import compose
-from maelcom.genmusic.brainwave import BAND_TRAITS, band_traits
-from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES, modular_bleep, space_dub
+from statemediafm.core.models import ActivitySignal
+from statemediafm.genmusic import compose
+from statemediafm.genmusic.brainwave import BAND_TRAITS, band_traits
+from statemediafm.genmusic.styles import AMBIENT_MODELS, STYLES, modular_bleep, space_dub
 
 _BANDS = ["delta", "theta", "alpha", "beta", "gamma"]
 # @strudel/web 1.0.3 has none of these — emitting one makes the whole program

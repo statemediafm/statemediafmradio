@@ -7,8 +7,8 @@ import subprocess
 
 import pytest
 
-from maelcom.sources import GitSource, get_source, is_remote
-from maelcom.sources.git_source import _repo_name
+from statemediafm.sources import GitSource, get_source, is_remote
+from statemediafm.sources.git_source import _repo_name
 
 
 def test_repo_name_for_attribution():

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from maelcom.core.models import ActivitySignal, NewsItem
-from maelcom.genmusic.activity import activity
+from statemediafm.core.models import ActivitySignal, NewsItem
+from statemediafm.genmusic.activity import activity
 
 
 def _commit(id_: str, title: str, actor: str, when: datetime | None = None) -> NewsItem:

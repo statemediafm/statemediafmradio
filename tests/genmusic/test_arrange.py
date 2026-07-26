@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from maelcom.genmusic.arrange import (
+from statemediafm.genmusic.arrange import (
     FRESH_SECTIONS,
     REPEAT_SECTIONS,
     SECTION_BARS,

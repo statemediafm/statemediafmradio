@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from maelcom.core.director import FELT_MAX_GAP_S, Director
-from maelcom.core.schedule import Cadence
+from statemediafm.core.director import FELT_MAX_GAP_S, Director
+from statemediafm.core.schedule import Cadence
 
 
 def test_news_bulletins_on_the_17_minute_cadence():

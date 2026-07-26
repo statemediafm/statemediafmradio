@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from maelcom.sources.jira import JiraSource
-from maelcom.sources.pagerduty import PagerDutySource
+from statemediafm.sources.jira import JiraSource
+from statemediafm.sources.pagerduty import PagerDutySource
 
 
 def test_jira_reads_project_issues():
@@ -74,7 +74,7 @@ def test_pagerduty_needs_token():
 
 
 def test_roster_builds_jira_and_pagerduty():
-    from maelcom.roster import build_roster
+    from statemediafm.roster import build_roster
 
     roster = build_roster(
         {

@@ -6,8 +6,8 @@ import re
 
 import pytest
 
-from maelcom.core.models import ActivitySignal, StrudelProgram
-from maelcom.genmusic.compose import compose
+from statemediafm.core.models import ActivitySignal, StrudelProgram
+from statemediafm.genmusic.compose import compose
 
 
 def _signal(volume: int, participants: int, volatility: float = 0.2) -> ActivitySignal:
@@ -28,7 +28,7 @@ def test_compose_returns_program_with_matching_band():
     assert program.style == "Entrainment 0.1"  # the default ambient generator
     assert 0.0 <= program.intensity <= 1.0
     # The band is exactly the one the intensity falls in.
-    from maelcom.genmusic.brainwave import band_for_intensity
+    from statemediafm.genmusic.brainwave import band_for_intensity
 
     assert program.brainwave_band == band_for_intensity(program.intensity)
 
@@ -60,7 +60,7 @@ def test_program_text_is_valid_looking_strudel():
     # Metadata appears only in the leading header comment — never inline, so it
     # can't comment out a layer-separating comma.
     lines = text.splitlines()
-    assert lines[0].startswith("// maelcom lofi")
+    assert lines[0].startswith("// statemediafm lofi")
     for line in lines[1:]:
         assert "//" not in line
 
@@ -197,7 +197,7 @@ def test_tuning_retunes_all_notes_via_global_detune():
 
 
 def test_ambient_models_are_registered():
-    from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES
+    from statemediafm.genmusic.styles import AMBIENT_MODELS, STYLES
 
     assert list(AMBIENT_MODELS[:2]) == ["Entrainment 0.1", "ScratchPad"]  # defaults, first is default
     for model in AMBIENT_MODELS:

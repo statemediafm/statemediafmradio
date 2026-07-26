@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from maelcom.genmusic.generators import load_generators, register_generators
-from maelcom.genmusic.styles import AMBIENT_MODELS, STYLES
-from maelcom.roster import genmusic_settings
+from statemediafm.genmusic.generators import load_generators, register_generators
+from statemediafm.genmusic.styles import AMBIENT_MODELS, STYLES
+from statemediafm.roster import genmusic_settings
 
 
 def test_genmusic_settings_defaults_and_parsing():
@@ -24,7 +24,7 @@ def test_genmusic_settings_defaults_and_parsing():
 def test_load_generators_reads_specs_and_skips_template(tmp_path):
     (tmp_path / "beat.toml").write_text(
         'name = "Cfg Beat"\ndescription = "d"\n'
-        'renderer = "maelcom.genmusic.styles.lofi:render"\n',
+        'renderer = "statemediafm.genmusic.styles.lofi:render"\n',
         encoding="utf-8",
     )
     (tmp_path / "spec.toml").write_text('name = "Spec Only"\nprompt = "rules"\n', encoding="utf-8")
@@ -44,7 +44,7 @@ def test_load_generators_missing_dir_is_empty(tmp_path):
 
 def test_register_generators_registers_only_playable(tmp_path):
     (tmp_path / "beat.toml").write_text(
-        'name = "Cfg Beat X"\nrenderer = "maelcom.genmusic.styles.lofi:render"\n', encoding="utf-8"
+        'name = "Cfg Beat X"\nrenderer = "statemediafm.genmusic.styles.lofi:render"\n', encoding="utf-8"
     )
     (tmp_path / "spec.toml").write_text('name = "Spec Only X"\nprompt = "r"\n', encoding="utf-8")
     try:

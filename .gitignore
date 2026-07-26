@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
-# Intermediate zipapp staging (dist/maelcom.pyz is the shippable artifact).
+# Intermediate zipapp staging (dist/statemediafm.pyz is the shippable artifact).
 build/standalone/
 
 # Downloaded Piper voice models (large; fetched on first --speak)
@@ -19,9 +19,9 @@ cmd
 voxs
 
 # Personal auth tokens / endpoints (secrets — never commit; written by the UI)
-maelcom.auth.toml
+statemediafm.auth.toml
 *.auth.toml
 
 # Commercial license key (never commit)
-maelcom.license
+statemediafm.license
 *.license

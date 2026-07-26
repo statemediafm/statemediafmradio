@@ -1,6 +1,6 @@
 # News sources — add your own
 
-Maelcom polls **sources** (each returns `NewsItem`s), summarizes them, and voices
+State Media FM polls **sources** (each returns `NewsItem`s), summarizes them, and voices
 a broadcast. Built-in kinds: `hackernews`, `repo` (GitHub/GitLab issues + PRs, or
 a local git repo's commits), `slack` (a channel's recent messages), `jira` (a
 project's recent issues), and `pagerduty` (recent incidents). You can add more —
@@ -79,11 +79,11 @@ to widen or narrow that window.
 ## Adding a new source kind
 
 A source is a class implementing `poll(since=None) -> list[NewsItem]` (see
-`maelcom/sources/`). Register a **builder** — `build(topic, seg) -> Source` — for
+`statemediafm/sources/`). Register a **builder** — `build(topic, seg) -> Source` — for
 your kind, either in code:
 
 ```python
-from maelcom.roster import register_source_kind
+from statemediafm.roster import register_source_kind
 register_source_kind("jira", lambda topic, seg: MyJiraSource(seg["project"]))
 ```
 
@@ -107,12 +107,12 @@ Your builder reads whatever it needs from `seg` and returns a `Source`.
 ## Endpoints & auth tokens
 
 Per-source **endpoints and personal tokens** live in a gitignored local file
-(`maelcom.auth.toml`, or `$MAELCOM_AUTH`), edited from the **Settings** tab in the
+(`statemediafm.auth.toml`, or `$STATEMEDIAFM_AUTH`), edited from the **Settings** tab in the
 UI. Tokens are masked in the UI, written owner-only, and never committed. A
-builder reads them via `maelcom.auth`:
+builder reads them via `statemediafm.auth`:
 
 ```python
-from maelcom.auth import source_token, source_endpoint
+from statemediafm.auth import source_token, source_endpoint
 token = source_token("jira")          # the saved token, or None
 base  = source_endpoint("jira")       # the saved endpoint, or None
 ```
@@ -122,7 +122,7 @@ token when no `token_env` is set.
 
 ## Managing sources live (serve)
 
-When running `maelcom serve`, the **Settings** tab has a **Sources** panel that
+When running `statemediafm serve`, the **Settings** tab has a **Sources** panel that
 lists the live roster and lets you add or remove sources without a restart
 (pick a kind, fill its one parameter — `channel`, `project`, `repo`, …). Changes
 apply to the running session only; they are not written back to the config file.

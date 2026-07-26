@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from maelcom.sources.slack import SlackSource, _clean
+from statemediafm.sources.slack import SlackSource, _clean
 
 
 def test_clean_slack_markup():
@@ -74,7 +74,7 @@ def test_slack_unknown_channel_returns_empty():
 
 
 def test_roster_builds_slack_source():
-    from maelcom.roster import build_roster
+    from statemediafm.roster import build_roster
 
     roster = build_roster({"segments": [{"topic": "Eng", "source": "slack", "channel": "eng"}]})
     assert roster[0][0] == "Eng" and isinstance(roster[0][1], SlackSource)

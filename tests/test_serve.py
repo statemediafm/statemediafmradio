@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import urllib.error
 
-from maelcom.core.models import NewsItem
-from maelcom.core.schedule import Cadence
-from maelcom.newsroom.tts import ToneWavTTS
-from maelcom.serve import refresh_once
-from maelcom.web.app import _State
+from statemediafm.core.models import NewsItem
+from statemediafm.core.schedule import Cadence
+from statemediafm.newsroom.tts import ToneWavTTS
+from statemediafm.serve import refresh_once
+from statemediafm.web.app import _State
 
 
 class _FakeSource:
@@ -49,7 +49,7 @@ def test_refresh_once_skips_revoicing_when_unchanged():
 
 
 def test_refresh_once_uses_llm_when_wired():
-    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
 
     state = _State()
     state.news_model = "openai/gpt-4o-mini"  # UI selection overrides the base model
@@ -68,7 +68,7 @@ def test_refresh_once_uses_llm_when_wired():
 
 
 def test_refresh_once_applies_live_llm_overrides():
-    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
 
     state = _State()
     state.news_model = "openai/o1"
@@ -96,7 +96,7 @@ def test_refresh_once_uses_live_style():
 
 
 def test_refresh_once_falls_back_when_llm_errors():
-    from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
 
     class _Boom(FakeLLMClient):
         def complete(self, prompt, cfg):
@@ -111,7 +111,7 @@ def test_refresh_once_falls_back_when_llm_errors():
 
 
 def test_refresh_once_gates_news_to_director_windows():
-    from maelcom.core.director import Director
+    from statemediafm.core.director import Director
 
     state = _State()
     director = Director()  # 17-min news cadence

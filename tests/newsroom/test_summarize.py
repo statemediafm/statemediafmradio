@@ -10,10 +10,10 @@ from datetime import datetime
 
 import pytest
 
-from maelcom.core.models import NewsItem, Script
-from maelcom.core.people import is_bot
-from maelcom.newsroom.llm import FakeLLMClient, LLMConfig
-from maelcom.newsroom.summarize import (
+from statemediafm.core.models import NewsItem, Script
+from statemediafm.core.people import is_bot
+from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
+from statemediafm.newsroom.summarize import (
     build_prompt,
     naive_radio_script,
     radio_reads,

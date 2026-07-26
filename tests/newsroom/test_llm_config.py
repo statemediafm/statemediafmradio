@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from maelcom.newsroom.llm import llm_config
+from statemediafm.newsroom.llm import llm_config
 
 CONFIG_YAML = """
 default: dev
@@ -69,7 +69,7 @@ def test_models_list_is_ignored_by_llm_config(cfg_path):
 
 
 def test_discover_models_parses_openai_listing():
-    from maelcom.newsroom.llm import LLMConfig, discover_models
+    from statemediafm.newsroom.llm import LLMConfig, discover_models
 
     calls = {}
 
@@ -84,8 +84,8 @@ def test_discover_models_parses_openai_listing():
 
 
 def test_discover_models_no_gateway_returns_empty(monkeypatch):
-    from maelcom.newsroom.llm import LLMConfig, discover_models
-    from maelcom.newsroom.llm import litellm_client as lc
+    from statemediafm.newsroom.llm import LLMConfig, discover_models
+    from statemediafm.newsroom.llm import litellm_client as lc
 
     # No api_base and no llm-gateway auth entry → nothing to query.
     monkeypatch.setattr(lc, "source_endpoint", lambda name, path=None: None)
@@ -94,7 +94,7 @@ def test_discover_models_no_gateway_returns_empty(monkeypatch):
 
 
 def test_discover_models_swallows_errors():
-    from maelcom.newsroom.llm import LLMConfig, discover_models
+    from statemediafm.newsroom.llm import LLMConfig, discover_models
 
     def boom(url, key):
         raise OSError("gateway unreachable")

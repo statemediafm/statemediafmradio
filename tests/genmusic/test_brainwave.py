@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from maelcom.core.models import ActivitySignal
-from maelcom.genmusic.brainwave import (
+from statemediafm.core.models import ActivitySignal
+from statemediafm.genmusic.brainwave import (
     THETA_START,
     band_for_intensity,
     clamp01,
