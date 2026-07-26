@@ -75,7 +75,43 @@ def load_model_config(
     if name not in profiles:
         raise KeyError(f"Profile {name!r} not found in {path} (have: {sorted(profiles)})")
 
-    raw = dict(profiles[name])
+    return _config_from_dict(profiles[name])
+
+
+def _config_from_dict(raw: dict[str, Any]) -> LLMConfig:
+    """Build an ``LLMConfig`` from a raw dict, collecting unknown keys into
+    ``extra`` (forwarded to LiteLLM verbatim)."""
+    raw = dict(raw)
     known = {f for f in LLMConfig.__dataclass_fields__ if f != "extra"}
-    extra = {k: raw.pop(k) for k in list(raw) if k not in known}
+    extra = {**raw.pop("extra", {}), **{k: raw.pop(k) for k in list(raw) if k not in known}}
     return LLMConfig(**raw, extra=extra)
+
+
+def llm_config(
+    settings: dict | None = None,
+    *,
+    profile: str | None = None,
+    path: Path | str = DEFAULT_CONFIG_PATH,
+) -> LLMConfig:
+    """Build an ``LLMConfig`` from an ``[llm]`` config table.
+
+    The table may name a ``profile`` (a ``model_config.yaml`` profile to base on)
+    and/or inline fields (``model``, ``api_base``, ``api_key_env``, ``temperature``
+    …) which override the profile. When it names a ``model``, no profile is needed.
+    Falls back to the default profile when the table is empty. The gateway base URL
+    and key can be left out entirely — they fall back to the ``llm-gateway`` auth
+    slot at call time (see ``LiteLLMClient``).
+    """
+    settings = dict(settings or {})
+    prof = settings.pop("profile", None) or profile
+    if "model" in settings:
+        return _config_from_dict(settings)
+    base = load_model_config(prof, path)
+    if not settings:
+        return base
+    merged = {
+        **{f: getattr(base, f) for f in LLMConfig.__dataclass_fields__ if f != "extra"},
+        **base.extra,
+        **settings,
+    }
+    return _config_from_dict({k: v for k, v in merged.items() if v is not None})

@@ -58,6 +58,13 @@ def load_config(path: str | Path) -> dict:
 _DEFAULT_GENERATOR = "Entrainment 0.1"
 
 
+def llm_settings(config: dict) -> dict:
+    """The ``[llm]`` config table (model/gateway selection for news parsing), or
+    ``{}`` when absent. Passed to ``newsroom.llm.llm_config`` to build an
+    ``LLMConfig``. See LLM.md for the per-provider scaffold."""
+    return dict(config.get("llm", {})) if isinstance(config, dict) else {}
+
+
 def genmusic_settings(config: dict) -> dict:
     """The ``[genmusic]`` config: which ambient generator to use, whether to show
     the UI selector (off by default), and an optional dir of user/contributor

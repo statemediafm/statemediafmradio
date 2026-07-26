@@ -65,6 +65,20 @@ def test_load_config_toml_and_json(tmp_path):
     assert build_roster(load_config(toml_file))[0][0] == "HN"
 
 
+def test_llm_settings_reads_the_llm_table():
+    from maelcom.roster import llm_settings
+
+    assert llm_settings({}) == {}
+    assert llm_settings({"llm": {"model": "openai/x", "temperature": 0.2}}) == {
+        "model": "openai/x",
+        "temperature": 0.2,
+    }
+    # A copy, not the live config table.
+    cfg = {"llm": {"model": "m"}}
+    llm_settings(cfg)["model"] = "mutated"
+    assert cfg["llm"]["model"] == "m"
+
+
 def test_register_and_build_custom_source_kind():
     from maelcom.roster import build_roster, register_source_kind
 

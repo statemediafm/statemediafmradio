@@ -242,10 +242,11 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <div id='settings-view' hidden>
   <h2>Sources &amp; auth</h2>
   <p class='muted'>Personal endpoints and tokens for the sources Maelcom polls,
-  plus <code>litellm</code> (the LLM/model gateway used for news parsing —
-  endpoint = its base URL, token = its API key). Stored locally in a gitignored
-  file (<code>maelcom.auth.toml</code>, owner-only); tokens are masked here and
-  never committed or sent anywhere but your own server.</p>
+  plus <code>llm-gateway</code> (the LLM/model gateway used for news parsing —
+  endpoint = its base URL, token = its API key; works with LiteLLM, OpenRouter,
+  Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.). Stored locally in a
+  gitignored file (<code>maelcom.auth.toml</code>, owner-only); tokens are masked
+  here and never committed or sent anywhere but your own server.</p>
   <div id='authform'></div>
 </div>
 

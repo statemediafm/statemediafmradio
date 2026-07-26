@@ -43,7 +43,7 @@ class LiteLLMClient(LLMClient):
         profile). Explicit config always wins over the auth fallback.
         """
         kwargs: dict[str, Any] = {"model": cfg.model}
-        api_base = cfg.api_base or source_endpoint("litellm")
+        api_base = cfg.api_base or source_endpoint("llm-gateway")
         if api_base:
             kwargs["api_base"] = api_base
         if cfg.temperature is not None:
@@ -53,7 +53,7 @@ class LiteLLMClient(LLMClient):
         if cfg.timeout is not None:
             kwargs["timeout"] = cfg.timeout
         api_key = os.environ.get(cfg.api_key_env) if cfg.api_key_env else None
-        api_key = api_key or source_token("litellm")
+        api_key = api_key or source_token("llm-gateway")
         if api_key:
             kwargs["api_key"] = api_key
         kwargs.update(cfg.extra)

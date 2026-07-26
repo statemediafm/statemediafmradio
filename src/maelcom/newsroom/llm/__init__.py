@@ -8,7 +8,7 @@ see ``model_config.yaml`` and :func:`load_model_config`.
 
 from __future__ import annotations
 
-from .base import DEFAULT_CONFIG_PATH, LLMClient, LLMConfig, load_model_config
+from .base import DEFAULT_CONFIG_PATH, LLMClient, LLMConfig, llm_config, load_model_config
 from .fake import FakeLLMClient
 from .litellm_client import LiteLLMClient
 
@@ -18,5 +18,6 @@ __all__ = [
     "LLMClient",
     "LLMConfig",
     "LiteLLMClient",
+    "llm_config",
     "load_model_config",
 ]

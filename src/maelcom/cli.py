@@ -26,10 +26,10 @@ from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
 from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
 from .genmusic import THETA_START, activity, compose
-from .newsroom.llm import LiteLLMClient, load_model_config
+from .newsroom.llm import LiteLLMClient, llm_config
 from .newsroom.summarize import radio_reads, summarize, time_greeting
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs, render_reads
-from .roster import build_roster, genmusic_settings, load_config, load_source_plugins
+from .roster import build_roster, genmusic_settings, llm_settings, load_config, load_source_plugins
 from .sources import HackerNewsSource, Source, open_source
 
 # Voices rotated across broadcast segments so each topic/source sounds distinct.
@@ -100,6 +100,15 @@ def _segment_tts(args: argparse.Namespace, index: int) -> TTSProvider:
     )
 
 
+def _llm_config(args: argparse.Namespace):
+    """LLMConfig for ``--live``: the ``[llm]`` table from ``--config`` (if any),
+    overlaid with ``--profile``, else the ``model_config.yaml`` profile. The
+    gateway URL/key fall back to the ``llm-gateway`` auth slot at call time."""
+    cfg_path = getattr(args, "config", None)
+    settings = llm_settings(load_config(cfg_path)) if cfg_path else {}
+    return llm_config(settings, profile=getattr(args, "profile", None))
+
+
 def _voice_segment(
     items: list,
     args: argparse.Namespace,
@@ -116,7 +125,7 @@ def _voice_segment(
     """
     style = args.style
     if getattr(args, "live", False):
-        script = summarize(items, style, client=LiteLLMClient(), cfg=load_model_config(args.profile))
+        script = summarize(items, style, client=LiteLLMClient(), cfg=_llm_config(args))
         if greeting:
             script = replace(script, text=f"{greeting} {script.text}")
         return script, tts.render(script)
