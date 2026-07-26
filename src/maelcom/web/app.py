@@ -241,9 +241,11 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 </div>
 <div id='settings-view' hidden>
   <h2>Sources &amp; auth</h2>
-  <p class='muted'>Personal endpoints and tokens for the sources Maelcom polls.
-  Stored locally in a gitignored file (<code>maelcom.auth.toml</code>, owner-only);
-  tokens are masked here and never committed or sent anywhere but your own server.</p>
+  <p class='muted'>Personal endpoints and tokens for the sources Maelcom polls,
+  plus <code>litellm</code> (the LLM/model gateway used for news parsing —
+  endpoint = its base URL, token = its API key). Stored locally in a gitignored
+  file (<code>maelcom.auth.toml</code>, owner-only); tokens are masked here and
+  never committed or sent anywhere but your own server.</p>
   <div id='authform'></div>
 </div>
 

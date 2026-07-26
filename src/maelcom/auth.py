@@ -13,8 +13,11 @@ import os
 import tomllib
 from pathlib import Path
 
-# Source kinds the Settings tab exposes (endpoint is optional per kind).
-AUTH_SOURCES = ("github", "gitlab", "jira", "slack", "pagerduty")
+# Entries the Settings tab exposes (endpoint optional per entry). Mostly news
+# sources; ``litellm`` is the LLM/model proxy (its endpoint = the gateway base
+# URL, token = the gateway API key) used for news parsing when cutting over from
+# the local model to a LiteLLM (or any OpenAI-compatible) gateway.
+AUTH_SOURCES = ("github", "gitlab", "jira", "slack", "pagerduty", "litellm")
 
 
 def auth_path() -> Path:

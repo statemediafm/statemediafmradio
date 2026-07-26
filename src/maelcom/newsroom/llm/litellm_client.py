@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from ...auth import source_endpoint, source_token
 from .base import LLMClient, LLMConfig
 
 
@@ -32,24 +33,28 @@ class LiteLLMClient(LLMClient):
         """Translate an ``LLMConfig`` into LiteLLM ``completion`` kwargs.
 
         ``None`` values are dropped so LiteLLM/the provider apply their own
-        defaults. When ``api_key_env`` is unset (or the variable is absent) no
-        key is passed, letting the backend resolve credentials itself — for the
-        Anthropic provider that means the ``ANTHROPIC_API_KEY`` (or
-        ``ANTHROPIC_AUTH_TOKEN``) environment variable. LiteLLM does not read a
-        local ``ant auth login`` profile, so one of those must be set.
+        defaults. The base URL and key fall back to the gitignored ``litellm``
+        auth entry (Settings tab) when the config doesn't set them — so an install
+        can cut over from the local model to a LiteLLM (or any OpenAI-compatible)
+        gateway just by entering its endpoint + key, no env vars or code change.
+        Otherwise, when ``api_key_env`` is unset the backend resolves credentials
+        itself — for the Anthropic provider that means ``ANTHROPIC_API_KEY`` /
+        ``ANTHROPIC_AUTH_TOKEN`` (LiteLLM does not read an ``ant auth login``
+        profile). Explicit config always wins over the auth fallback.
         """
         kwargs: dict[str, Any] = {"model": cfg.model}
-        if cfg.api_base is not None:
-            kwargs["api_base"] = cfg.api_base
+        api_base = cfg.api_base or source_endpoint("litellm")
+        if api_base:
+            kwargs["api_base"] = api_base
         if cfg.temperature is not None:
             kwargs["temperature"] = cfg.temperature
         if cfg.max_tokens is not None:
             kwargs["max_tokens"] = cfg.max_tokens
         if cfg.timeout is not None:
             kwargs["timeout"] = cfg.timeout
-        if cfg.api_key_env:
-            key = os.environ.get(cfg.api_key_env)
-            if key:
-                kwargs["api_key"] = key
+        api_key = os.environ.get(cfg.api_key_env) if cfg.api_key_env else None
+        api_key = api_key or source_token("litellm")
+        if api_key:
+            kwargs["api_key"] = api_key
         kwargs.update(cfg.extra)
         return kwargs

@@ -42,3 +42,25 @@ def test_masked_auth_hides_the_token(tmp_path):
 
 def test_load_missing_is_empty(tmp_path):
     assert load_auth(tmp_path / "nope.toml") == {}
+
+
+def test_litellm_is_an_auth_slot():
+    assert "litellm" in AUTH_SOURCES
+
+
+def test_litellm_client_uses_litellm_auth_fallback(monkeypatch):
+    from maelcom.newsroom.llm import litellm_client as lc
+    from maelcom.newsroom.llm.base import LLMConfig
+
+    monkeypatch.setattr(lc, "source_endpoint",
+                        lambda name, path=None: "https://proxy:4000" if name == "litellm" else None)
+    monkeypatch.setattr(lc, "source_token",
+                        lambda name, path=None: "sk-litellm" if name == "litellm" else None)
+
+    # No explicit base/key → fall back to the litellm auth entry.
+    kw = lc.LiteLLMClient._build_kwargs(LLMConfig(model="openai/gpt"))
+    assert kw["api_base"] == "https://proxy:4000" and kw["api_key"] == "sk-litellm"
+
+    # Explicit config wins over the fallback.
+    kw2 = lc.LiteLLMClient._build_kwargs(LLMConfig(model="m", api_base="https://explicit"))
+    assert kw2["api_base"] == "https://explicit"
