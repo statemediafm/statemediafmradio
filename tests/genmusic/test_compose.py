@@ -248,20 +248,28 @@ def test_entrainment_gamma_falls_back_to_filter_pulse():
 
 def test_entrainment_chimes_resolve_and_noise_is_a_slow_tide():
     text = compose(_signal(8, 3), style="Entrainment 0.1").text
-    # chimes: occasional 1-, 2-, or 3-tone gestures resolving to A(0) or D(3)
-    cells = re.findall(r'n\("(<[^"]*>)"\)\.scale\("a4:major"\)', text)
+    # chimes: 1-, 2-, 3-, or 5-tone gestures resolving to A(0) or D(3), in the warm
+    # low a3:major register (down an octave — never a bright ping)
+    cells = re.findall(r'n\("(<[^"]*>)"\)\.scale\("a3:major"\)', text)
     assert len(cells) > 0
     for cell in cells:
         toks = [t for t in cell.strip("<> ").split() if t != "~"]
         assert len(toks) in (1, 2, 3, 5)  # a 1-, 2-, 3-, or 5-tone chime
         assert toks[-1] in ("0", "3")  # resolves to the tonic (A) or the upcoming D
-    for m in re.finditer(r'a4:major"\)(\.s\("(\w+)"\)|\.s\("(\w+)"\)\.lpf)', text):
-        assert (m.group(2) or m.group(3)) in ("sine", "square")  # never triangle/sawtooth
-    # any white/colored noise is a slow tide — long attack/release, no fast flutter
-    noise_lines = [ln for ln in text.splitlines() if 's("white")' in ln]
-    assert noise_lines
-    for ln in noise_lines:
-        assert ".attack(8).release(10)" in ln and "rand" not in ln and ".fast(" not in ln
+    # pitched chimes are the prepared-piano square or the sine bell — never a bright
+    # triangle/sawtooth, and every one has a soft (>=0.01s) attack, not a ping
+    for m in re.finditer(r'a3:major"\)\.s\("(\w+)"\)', text):
+        assert m.group(1) in ("sine", "square")
+    assert ".attack(0.005)" not in text  # the old alarm-ping attack is gone
+    # the colored-noise TIDE is a slow swell (long attack/release, no fast flutter);
+    # the rain stick may tick, but gently (no rand, no fast LFO)
+    tides = [ln for ln in text.splitlines() if 's("white")' in ln and ".attack(8)" in ln]
+    assert tides
+    for ln in tides:
+        assert ".release(10)" in ln and "rand" not in ln and ".fast(" not in ln
+    for ln in text.splitlines():
+        if 's("white")' in ln:
+            assert "rand" not in ln and ".fast(" not in ln  # nothing flutters
 
 
 def test_synth_beat_is_always_present():

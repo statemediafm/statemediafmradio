@@ -16,7 +16,10 @@ drone's filter pulse carries it). See ENTRAINMENT.md for the research.
 - **Entrainment (every phase):** a **binaural** beat from the harmony root A (two
   pure sines a `hz` beat apart, hard L/R, exact via ``freq()``) where viable
   (beat ≤ 30 Hz); for gamma the drone's **filter** pulses at the band rate.
-- **Chimes:** occasional sparse high major‑pentatonic bells with long echo.
+- **Chimes:** occasional, in the warm low‑A‑major register (down an octave, soft
+  attack — never a bright ping). Mostly a **prepared‑piano** voice (a muted,
+  low‑passed pluck drenched in reverb and ducked so it drifts under the drone),
+  sometimes a warm **sine** bell, and now and then a soft **rain stick**.
 - **Noise waves:** occasional — a slow **tide** (low‑passed swell) or a **rain**
   hiss (high‑passed grains), drifting spatially.
 
@@ -71,6 +74,8 @@ def _phase_harmony(i: int, seed: int) -> tuple[str, str]:
 # resolution note — the tonic (A = degree 0) or the upcoming resolution (D = 3).
 _CHIME_NS = (1, 2, 3, 5)  # a chime is a 1-, 2-, 3-, or 5-tone gesture
 _CHIME_POS = {1: (6,), 2: (3, 6), 3: (2, 4, 6), 5: (1, 2, 3, 4, 6)}  # slot placements per count
+# The chime timbre, weighted: mostly prepared piano, then synth bell, some rain stick.
+_CHIME_TIMBRES = ("piano", "piano", "piano", "synth", "synth", "rainstick")
 
 
 def _seed(signal: ActivitySignal) -> int:
@@ -139,9 +144,12 @@ def _chime_resolution(i: int, seed: int) -> int:
 
 
 def _m_chime(i: int, seed: int) -> str:
-    """A 1-, 2-, 3-, or 5-tone chime: a short stepwise gesture that resolves to
-    the tonic or the next resolution note, with a long echo. Sine only, with an
-    occasional square (softened by a low-pass); never a triangle or sawtooth."""
+    """A 1-, 2-, 3-, or 5-tone chime that steps down to the resolution note, in the
+    warm low ``a3:major`` register with a soft attack — never a bright alarm ping.
+    Mostly a prepared-piano voice (a muted low-passed square pluck, a lot of reverb,
+    ducked by a slow quiet gain swell); sometimes a warm sine bell; occasionally a
+    soft rain stick. The intended effect is an uninterrupted flow, not a chime that
+    pokes out of the wash."""
     n = _CHIME_NS[_pick(seed, i, "chimen", len(_CHIME_NS))]
     res = _chime_resolution(i, seed)
     gesture = list(range(res + n - 1, res - 1, -1))  # step down to the resolution note
@@ -149,12 +157,31 @@ def _m_chime(i: int, seed: int) -> str:
     for k, p in enumerate(_CHIME_POS[n]):
         slots[p] = str(gesture[k])
     cell = "<" + " ".join(slots) + ">"
-    square = _pick(seed, i, "chimewave", 4) == 0  # ~1 in 4 chimes is a (tamed) square
-    wave = ".s(\"square\").lpf(2200)" if square else '.s("sine")'
-    return (  # more delay + a longer fade-off — a deeper, more hypnotic echo trail
-        f'    n("{cell}").scale("a4:major"){wave}'
-        f".attack(0.005).release(6).delay(0.9).delaytime(0.66).delayfeedback(0.74)"
-        f".pan(sine.range(0.25,0.75).slow(34)).room(0.9).roomsize(9).gain(0.09)"
+    timbre = _CHIME_TIMBRES[_pick(seed, i, "chimbre", len(_CHIME_TIMBRES))]
+    if timbre == "rainstick":
+        # A soft rain stick: sparse high filtered grains with a long reverb wash —
+        # gentle, never a fast flutter.
+        return (
+            '    s("white").struct("~ x ~ ~ x ~ x ~ ~ x ~ x ~ ~ x ~").decay(0.05).sustain(0)'
+            ".hpf(2200).lpf(7000).attack(0.001).release(0.3)"
+            ".pan(sine.range(0.2,0.8).slow(30)).room(0.92).roomsize(11).gain(0.045)"
+        )
+    if timbre == "piano":
+        # Prepared piano: a MUTED (heavily low-passed) square pluck, a LOT of reverb,
+        # and DUCKING via a slow, quiet gain swell — it drifts under the drone.
+        return (
+            f'    n("{cell}").scale("a3:major").s("square").lpf(760)'
+            ".attack(0.01).decay(0.6).sustain(0.03).release(5)"
+            ".delay(0.85).delaytime(0.66).delayfeedback(0.62)"
+            ".pan(sine.range(0.3,0.7).slow(34)).room(0.95).roomsize(12)"
+            ".gain(sine.range(0.03,0.08).slow(26))"
+        )
+    # Synth: a warm sine bell — low register + a SOFT attack so it blooms in, never
+    # a bright ping; the low-pass sits above it as a gentle ceiling.
+    return (
+        f'    n("{cell}").scale("a3:major").s("sine").lpf(900)'
+        ".attack(0.6).release(6).delay(0.9).delaytime(0.66).delayfeedback(0.72)"
+        ".pan(sine.range(0.25,0.75).slow(34)).room(0.9).roomsize(10).gain(0.07)"
     )
 
 
