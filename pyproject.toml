@@ -30,6 +30,10 @@ all = ["statemediafm[llm,web,tts]"]
 
 [project.scripts]
 statemediafm = "statemediafm.cli:main"
+# Short alias — the canonical name is `statemediafm`; `smfm` is a convenience for
+# the terminal (kept short only for the CLI, not the package/env/config names,
+# where the full name stays self-documenting and collision-safe).
+smfm = "statemediafm.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/statemediafm"]

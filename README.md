@@ -55,6 +55,11 @@ uv pip install -e ".[tts]"          # or: pip install -e ".[tts]"
 statemediafm demo --repo /path/to/repo --out news.wav   # spoken; add --tone to force the placeholder
 ```
 
+The CLI is installed under two names: **`statemediafm`** (canonical) and the
+short alias **`smfm`** — use whichever you prefer (`smfm serve`, `smfm demo …`).
+The package, environment variables (`STATEMEDIAFM_*`) and config files keep the
+full name.
+
 The first run downloads a small voice model (~60 MB) into `./voices/`
 (override with `STATEMEDIAFM_VOICES_DIR`); later runs are offline. Pick a voice with
 `--voice`:
