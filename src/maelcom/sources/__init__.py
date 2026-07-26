@@ -6,6 +6,8 @@ from .base import Source, get_source, register_source
 from .forge import ForgeSource, detect_forge
 from .git_source import GitSource, is_remote
 from .hackernews import HackerNewsSource
+from .jira import JiraSource
+from .pagerduty import PagerDutySource
 from .slack import SlackSource
 
 
@@ -26,6 +28,8 @@ __all__ = [
     "ForgeSource",
     "GitSource",
     "HackerNewsSource",
+    "JiraSource",
+    "PagerDutySource",
     "SlackSource",
     "Source",
     "detect_forge",

@@ -2,8 +2,38 @@
 
 Maelcom polls **sources** (each returns `NewsItem`s), summarizes them, and voices
 a broadcast. Built-in kinds: `hackernews`, `repo` (GitHub/GitLab issues + PRs, or
-a local git repo's commits), and `slack` (a channel's recent messages). You can
-add more — Jira, PagerDuty, an internal API — without editing core.
+a local git repo's commits), `slack` (a channel's recent messages), `jira` (a
+project's recent issues), and `pagerduty` (recent incidents). You can add more —
+an internal API, etc. — without editing core.
+
+## Jira
+
+```toml
+[[segments]]
+topic   = "Backlog"
+source  = "jira"
+project = "OPS"          # the project key
+max_count = 25
+every   = "15m"
+```
+
+In **Settings → jira**: set the **endpoint** to your site
+(`https://your-org.atlassian.net`) and the **token** to your `email:api_token`
+pair (Jira Cloud uses Basic auth). Reads recently-updated issues, newest first.
+
+## PagerDuty
+
+```toml
+[[segments]]
+topic    = "Incidents"
+source   = "pagerduty"
+statuses = ["triggered", "acknowledged"]   # optional; this is the default
+max_count = 25
+every    = "5m"
+```
+
+In **Settings → pagerduty**: set the **token** (a REST API key; endpoint defaults
+to `https://api.pagerduty.com`). Reads recent incidents, newest first.
 
 ## Slack
 

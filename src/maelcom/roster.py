@@ -35,7 +35,15 @@ from pathlib import Path
 
 from .auth import source_token
 from .core.schedule import Cadence, parse_duration
-from .sources import HackerNewsSource, SlackSource, Source, detect_forge, open_source
+from .sources import (
+    HackerNewsSource,
+    JiraSource,
+    PagerDutySource,
+    SlackSource,
+    Source,
+    detect_forge,
+    open_source,
+)
 
 
 def load_config(path: str | Path) -> dict:
@@ -100,10 +108,24 @@ def _build_slack(topic: str, seg: dict) -> Source:
     return SlackSource(channel, max_count=int(seg.get("max_count", 25)))
 
 
+def _build_jira(topic: str, seg: dict) -> Source:
+    project = seg.get("project")
+    if not project:
+        raise ValueError(f"segment {topic!r}: source='jira' needs a 'project'")
+    return JiraSource(project, max_count=int(seg.get("max_count", 25)))
+
+
+def _build_pagerduty(topic: str, seg: dict) -> Source:
+    statuses = seg.get("statuses") or ("triggered", "acknowledged")
+    return PagerDutySource(statuses=tuple(statuses), max_count=int(seg.get("max_count", 25)))
+
+
 register_source_kind("hackernews", _build_hackernews)
 register_source_kind("hn", _build_hackernews)
 register_source_kind("repo", _build_repo)
 register_source_kind("slack", _build_slack)
+register_source_kind("jira", _build_jira)
+register_source_kind("pagerduty", _build_pagerduty)
 
 
 def load_source_plugins(config: dict) -> list[str]:
