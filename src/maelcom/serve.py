@@ -108,7 +108,8 @@ def refresh_once(
         return
     per_topic: list[tuple] = []
     all_items: list = []
-    for topic, source, cadence, headlines in roster:
+    # Snapshot: the Settings tab can add/remove sources on another thread mid-tick.
+    for topic, source, cadence, headlines in list(roster):
         try:
             items = source.poll()
         except OSError:  # network / API failure — skip this source this tick
@@ -180,6 +181,7 @@ def run(
     generators_dir: str | None = None,
     llm=None,
     news_models: list[str] | None = None,
+    segments: list[dict] | None = None,
 ) -> int:
     """Boot the FastAPI app and drive ``refresh_once`` on an interval.
 
@@ -213,6 +215,9 @@ def run(
     else:
         print(f"unknown generator {generator!r}; using {state.model!r}", file=sys.stderr)
     state.show_selector = show_selector
+    # The live roster is owned by the app state so the Settings tab can edit it.
+    state.roster = list(roster)
+    state.segments = list(segments or [])
     # News-parsing model selection (Settings tab). Seed the current pick with the
     # wired model and offer the configured list (plus the current one) as options.
     if llm is not None:
@@ -232,7 +237,7 @@ def run(
                 await asyncio.to_thread(
                     refresh_once,
                     state,
-                    roster,
+                    state.roster,  # live roster — the Settings tab can edit it
                     tts,
                     cache=cache,
                     style=style,

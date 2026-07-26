@@ -29,7 +29,14 @@ from .genmusic import THETA_START, activity, compose
 from .newsroom.llm import LiteLLMClient, llm_config
 from .newsroom.summarize import radio_reads, summarize, time_greeting
 from .newsroom.tts import PiperTTS, ToneWavTTS, TTSProvider, concat_wavs, render_reads
-from .roster import build_roster, genmusic_settings, llm_settings, load_config, load_source_plugins
+from .roster import (
+    build_roster,
+    build_segment,
+    genmusic_settings,
+    llm_settings,
+    load_config,
+    load_source_plugins,
+)
 from .sources import HackerNewsSource, Source, open_source
 
 # Voices rotated across broadcast segments so each topic/source sounds distinct.
@@ -235,6 +242,41 @@ def _resolve_roster(args: argparse.Namespace) -> list:
     return _ad_hoc_roster(args)
 
 
+def _ad_hoc_segments(args: argparse.Namespace) -> list[dict]:
+    """Ad-hoc --hn/--repo as segment dicts, on --every and auto-staggered — the
+    same shape as config ``[[segments]]`` so serve can manage them live."""
+    segs: list[dict] = []
+    if args.hn:
+        segs.append({"topic": "Hacker News front page", "source": "hackernews",
+                     "max_count": args.max_count, "every": args.every})
+    if args.repo:
+        seg = {"topic": "Repository activity", "source": "repo", "repo": args.repo,
+               "max_count": args.max_count, "every": args.every}
+        if args.token:
+            seg["token"] = args.token
+        segs.append(seg)
+    every, n = parse_duration(args.every), len(segs) or 1
+    for i, seg in enumerate(segs):
+        seg["offset"] = i * every / n
+    return segs
+
+
+def _resolve_segments(args: argparse.Namespace) -> list[dict]:
+    """The roster as segment dicts (config ``[[segments]]`` or ad-hoc). Raises
+    _CliError on a bad config; returns [] when no source was given."""
+    if args.config:
+        try:
+            config = load_config(args.config)
+            load_source_plugins(config)
+            segs = config.get("segments")
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise _CliError(f"roster config error: {exc}") from exc
+        if not segs:
+            raise _CliError("roster config has no 'segments'")
+        return list(segs)
+    return _ad_hoc_segments(args)
+
+
 def _broadcast(args: argparse.Namespace) -> int:
     # The roster (which sources air, how often, staggered by what) comes from a
     # config file, or is built ad hoc from --hn/--repo on a shared --every.
@@ -300,10 +342,14 @@ def _broadcast(args: argparse.Namespace) -> int:
 
 
 def _serve(args: argparse.Namespace) -> int:
-    roster = _resolve_roster(args)
-    if not roster:
+    segments = _resolve_segments(args)
+    if not segments:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
+    try:
+        roster = [build_segment(seg, i) for i, seg in enumerate(segments)]
+    except (ValueError, KeyError) as exc:
+        raise _CliError(f"roster config error: {exc}") from exc
     tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
     config = load_config(args.config) if args.config else {}
     # The ambient generator is a config item ([genmusic] in the --config file);
@@ -328,6 +374,7 @@ def _serve(args: argparse.Namespace) -> int:
         generators_dir=gm["generators_dir"],
         llm=llm,
         news_models=news_models,
+        segments=segments,
     )
 
 

@@ -111,3 +111,12 @@ base  = source_endpoint("jira")       # the saved endpoint, or None
 
 The built-in `repo` source already falls back to the saved `github` / `gitlab`
 token when no `token_env` is set.
+
+## Managing sources live (serve)
+
+When running `maelcom serve`, the **Settings** tab has a **Sources** panel that
+lists the live roster and lets you add or remove sources without a restart
+(pick a kind, fill its one parameter — `channel`, `project`, `repo`, …). Changes
+apply to the running session only; they are not written back to the config file.
+The refresh loop reads the live roster on each tick, so a newly added source
+airs on the next cycle.

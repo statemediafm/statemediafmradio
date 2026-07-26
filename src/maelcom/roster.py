@@ -90,6 +90,11 @@ def register_source_kind(kind: str, build: Callable[[str, dict], Source]) -> Non
     _SOURCE_KINDS[kind] = build
 
 
+def source_kinds() -> list[str]:
+    """The registered source kinds (for the live source-management UI)."""
+    return sorted(_SOURCE_KINDS)
+
+
 def _build_hackernews(topic: str, seg: dict) -> Source:
     return HackerNewsSource(max_count=int(seg.get("max_count", 25)))
 
@@ -98,9 +103,9 @@ def _build_repo(topic: str, seg: dict) -> Source:
     repo = seg.get("repo")
     if not repo:
         raise ValueError(f"segment {topic!r}: source='repo' needs a 'repo' URL or path")
-    # Token precedence: an explicit token_env, else the gitignored auth config for
-    # the detected forge (github/gitlab), else none.
-    token = os.environ.get(seg["token_env"]) if seg.get("token_env") else None
+    # Token precedence: an explicit token, then token_env, else the gitignored
+    # auth config for the detected forge (github/gitlab), else none.
+    token = seg.get("token") or (os.environ.get(seg["token_env"]) if seg.get("token_env") else None)
     if token is None:
         forge = detect_forge(repo)  # (platform, slug) | None
         if forge is not None and forge[0] in ("github", "gitlab"):
@@ -163,6 +168,20 @@ def _build_source(topic: str, seg: dict) -> Source:
     return build(topic, seg)
 
 
+def build_segment(seg: dict, index: int = 0) -> tuple[str, Source, Cadence, int | None]:
+    """Build one roster entry ``(topic, source, cadence, headlines)`` from a
+    segment dict — the unit the live source-management UI adds/removes. ``index``
+    only names an untitled segment. Raises ``ValueError`` for a malformed segment.
+    """
+    topic = seg.get("topic") or f"Segment {index + 1}"
+    cadence = Cadence(
+        parse_duration(seg.get("every", "15m")),
+        parse_duration(seg.get("offset", 0)),
+    )
+    headlines = int(seg["headlines"]) if "headlines" in seg else None
+    return (topic, _build_source(topic, seg), cadence, headlines)
+
+
 def build_roster(config: dict) -> list[tuple[str, Source, Cadence, int | None]]:
     """Turn a parsed roster config into ``(topic, source, cadence, headlines)``.
 
@@ -174,14 +193,4 @@ def build_roster(config: dict) -> list[tuple[str, Source, Cadence, int | None]]:
     segments = config.get("segments")
     if not segments:
         raise ValueError("roster config has no 'segments'")
-
-    roster: list[tuple[str, Source, Cadence, int | None]] = []
-    for i, seg in enumerate(segments):
-        topic = seg.get("topic") or f"Segment {i + 1}"
-        cadence = Cadence(
-            parse_duration(seg.get("every", "15m")),
-            parse_duration(seg.get("offset", 0)),
-        )
-        headlines = int(seg["headlines"]) if "headlines" in seg else None
-        roster.append((topic, _build_source(topic, seg), cadence, headlines))
-    return roster
+    return [build_segment(seg, i) for i, seg in enumerate(segments)]

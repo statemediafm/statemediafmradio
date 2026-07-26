@@ -82,6 +82,17 @@ def test_refresh_once_falls_back_when_llm_errors():
     assert "firmwide radio service" in state.plan.segments[0].script.text
 
 
+def test_refresh_once_reads_a_live_edited_roster():
+    # The Settings tab appends to state.roster mid-session; the loop reads it live.
+    state = _State()
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    extra = NewsItem(id="2", source="slack", kind="message", title="Deploy done",
+                     origin="Slack", actors=["b"])
+    roster.append(("Chat", _FakeSource([extra]), Cadence(900, 0), 5))
+    refresh_once(state, roster, ToneWavTTS(), cache={})
+    assert {s.title for s in state.plan.segments} == {"HN", "Chat"}
+
+
 def test_refresh_once_skips_failing_sources():
     class _Bad:
         def poll(self, since=None):

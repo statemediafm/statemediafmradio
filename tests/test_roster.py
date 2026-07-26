@@ -65,6 +65,19 @@ def test_load_config_toml_and_json(tmp_path):
     assert build_roster(load_config(toml_file))[0][0] == "HN"
 
 
+def test_build_segment_and_source_kinds():
+    from maelcom.roster import build_segment, source_kinds
+
+    topic, source, cadence, headlines = build_segment(
+        {"topic": "HN", "source": "hackernews", "every": "5m"}, 0
+    )
+    assert topic == "HN" and isinstance(source, HackerNewsSource)
+    assert cadence.every_s == 300 and headlines is None
+    # An untitled segment is named by index.
+    assert build_segment({"source": "hackernews"}, 2)[0] == "Segment 3"
+    assert {"hackernews", "repo", "slack", "jira", "pagerduty"} <= set(source_kinds())
+
+
 def test_llm_settings_reads_the_llm_table():
     from maelcom.roster import llm_settings
 

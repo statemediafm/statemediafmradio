@@ -41,6 +41,9 @@ class _State:
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
         self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
+        # Live roster: the refresh loop reads these; the Settings tab edits them.
+        self.roster: list = []  # (topic, source, cadence, headlines) entries
+        self.segments: list[dict] = []  # the segment dicts behind roster (for display)
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -188,6 +191,58 @@ def create_app(state: _State | None = None):
         store.news_models = merged
         return {"models": merged, "discovered": found}
 
+    @app.get("/sources")
+    def sources() -> dict:
+        """The live roster (which sources air) and the registered source kinds.
+        Tokens are never included — those live in the auth tab."""
+        from ..roster import source_kinds
+
+        items = [
+            {
+                "index": i,
+                "topic": entry[0],
+                "kind": seg.get("source"),
+                "every": seg.get("every", "15m"),
+                "config": {k: v for k, v in seg.items() if k != "token"},
+            }
+            for i, (seg, entry) in enumerate(zip(store.segments, store.roster))
+        ]
+        return {"sources": items, "kinds": source_kinds()}
+
+    @app.post("/sources")
+    def add_source(seg: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
+        """Add a source to the live roster (this session only — not written to the
+        config file). ``seg`` is a segment dict: a ``source`` kind plus its params
+        (e.g. ``channel`` for slack, ``project`` for jira, ``repo`` for repo)."""
+        from ..roster import build_segment
+
+        if not isinstance(seg, dict) or not seg.get("source"):
+            raise HTTPException(status_code=400, detail="a 'source' kind is required")
+        try:
+            entry = build_segment(seg, len(store.segments))
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        store.segments.append(dict(seg))
+        store.roster.append(entry)
+        return {"index": len(store.roster) - 1, "topic": entry[0]}
+
+    @app.delete("/sources/{index}")
+    def remove_source(index: int) -> dict:
+        """Remove a source from the live roster by index."""
+        if not 0 <= index < len(store.roster):
+            raise HTTPException(status_code=404, detail="no such source")
+        store.roster.pop(index)
+        seg = store.segments.pop(index) if index < len(store.segments) else {}
+        return {"removed": index, "topic": seg.get("topic")}
+
+    @app.get("/llm-presets")
+    def llm_presets() -> dict:
+        """Quick-fill presets for the ``llm-gateway`` row (Azure, OpenRouter,
+        vLLM, Ollama, NIM, …) — endpoint + example model, no credentials."""
+        from ..newsroom.llm import GATEWAY_PRESETS
+
+        return {"presets": GATEWAY_PRESETS}
+
     @app.get("/auth")
     def auth() -> dict:
         """Per-source endpoints + whether a token is set (tokens are masked)."""
@@ -258,9 +313,19 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   .authrow input{font:inherit;font-size:.9rem;display:block;width:100%;max-width:26rem;margin:.2rem 0;
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
   .authrow button{margin-top:.2rem}
+  .authrow select{margin-left:0}
+  .chip{font:inherit;font-size:.8rem;padding:.2rem .5rem;margin:.15rem .3rem .15rem 0;
+        background:transparent;color:inherit;border:1px solid #bbb;border-radius:999px}
+  .srcrow{display:flex;align-items:baseline;gap:.5rem;margin:.3rem 0;padding:.35rem 0;
+          border-top:1px solid #eee}
+  .srcrow .grow{flex:1} .srcrow .kind{font-variant:small-caps;color:#666}
+  .srcrow button{margin:0;padding:.25rem .6rem;font-size:.8rem;background:transparent;
+                 color:inherit;border:1px solid #bbb;border-radius:2px}
+  #newsbadge{margin-left:1rem}
   @media(prefers-color-scheme:dark){
     #tabs{border-color:#333} #tabs a.active{color:#eee;border-bottom-color:#eee}
-    .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}}
+    .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
+    .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   audio{width:100%;margin:.4rem 0}
@@ -281,10 +346,24 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   <select id='tuning'></select>
 </label>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
+<span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
+  <h2>Sources</h2>
+  <p class='muted'>Which activity Maelcom airs. Changes apply to the running
+  session (not written to the config file).</p>
+  <div id='sourcelist'></div>
+  <div class='authrow'>
+    <select id='src-kind'></select>
+    <input id='src-topic' placeholder='topic (optional)'>
+    <input id='src-param' placeholder='—'>
+    <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
+    <button id='src-add'>Add source</button>
+    <span class='muted' id='src-status'></span>
+  </div>
+
   <div id='newsmodel-wrap' hidden>
     <h2>News-parsing model</h2>
     <p class='muted'>Which model on the <code>llm-gateway</code> writes the news.
@@ -305,6 +384,9 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.). Stored locally in a
   gitignored file (<code>maelcom.auth.toml</code>, owner-only); tokens are masked
   here and never committed or sent anywhere but your own server.</p>
+  <p class='muted'>Gateway presets (fill the <code>llm-gateway</code> endpoint below
+  and suggest a news model — the API key still goes in its token field):</p>
+  <div id='presets'></div>
   <div id='authform'></div>
 </div>
 
@@ -462,8 +544,78 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadNewsModel(); loadAuth(); }
+  if(tab==='settings'){ loadSources(); loadNewsModel(); loadPresets(); loadAuth(); }
 }));
+
+// ── Live source management ───────────────────────────────────────────────────
+// The `source` kind determines the one extra parameter each needs.
+const SRC_PARAM={repo:'repo', slack:'channel', jira:'project', pagerduty:'statuses (comma-sep)'};
+const srcKind=document.getElementById('src-kind');
+const srcParam=document.getElementById('src-param');
+function srcParamKey(kind){ return {repo:'repo',slack:'channel',jira:'project',pagerduty:'statuses'}[kind]; }
+async function loadSources(){
+  const list=document.getElementById('sourcelist');
+  try{
+    const d=await (await fetch('/sources')).json();
+    if(srcKind.options.length===0){
+      for(const k of (d.kinds||[])){ const o=document.createElement('option'); o.value=k; o.textContent=k; srcKind.appendChild(o); }
+      updateSrcPlaceholder();
+    }
+    list.innerHTML='';
+    for(const s of (d.sources||[])){
+      const row=document.createElement('div'); row.className='srcrow';
+      row.innerHTML='<span class="kind">'+esc(s.kind||'?')+'</span>'+
+        '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+'</span></span>'+
+        '<button>Remove</button>';
+      row.querySelector('button').addEventListener('click', async ()=>{
+        try{ await fetch('/sources/'+s.index,{method:'DELETE'}); await loadSources(); }catch(e){}
+      });
+      list.appendChild(row);
+    }
+    if(!(d.sources||[]).length) list.innerHTML='<p class="muted">No sources yet.</p>';
+  }catch(e){ list.textContent='Could not load sources.'; }
+}
+function updateSrcPlaceholder(){
+  const need=SRC_PARAM[srcKind.value];
+  srcParam.placeholder = need || '—'; srcParam.style.display = need ? '' : 'none';
+}
+srcKind.addEventListener('change', updateSrcPlaceholder);
+document.getElementById('src-add').addEventListener('click', async ()=>{
+  const st=document.getElementById('src-status'); const kind=srcKind.value;
+  const seg={source:kind}; const key=srcParamKey(kind);
+  if(key){
+    const v=srcParam.value.trim(); if(!v){ st.textContent='needs '+SRC_PARAM[kind]; return; }
+    seg[key] = kind==='pagerduty' ? v.split(',').map(x=>x.trim()).filter(Boolean) : v;
+  }
+  if(document.getElementById('src-topic').value.trim()) seg.topic=document.getElementById('src-topic').value.trim();
+  if(document.getElementById('src-every').value.trim()) seg.every=document.getElementById('src-every').value.trim();
+  st.textContent='adding…';
+  try{
+    const r=await fetch('/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(seg)});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
+    srcParam.value=''; document.getElementById('src-topic').value=''; st.textContent=''; await loadSources();
+  }catch(e){ st.textContent='error'; }
+});
+
+// ── LLM gateway presets ──────────────────────────────────────────────────────
+async function loadPresets(){
+  const wrap=document.getElementById('presets');
+  try{
+    const d=await (await fetch('/llm-presets')).json();
+    wrap.innerHTML='';
+    for(const p of (d.presets||[])){
+      const b=document.createElement('button'); b.className='chip'; b.textContent=p.name;
+      b.title='endpoint '+(p.api_base||'(set yours)')+' · model '+p.model;
+      b.addEventListener('click', ()=>{
+        const ep=document.querySelector('.authrow[data-source="llm-gateway"] .ep');
+        if(ep) ep.value=p.api_base;
+        newsModelCustom.value=p.model;
+        document.getElementById('newsmodel-status').textContent='preset: '+p.name+' — set the API key below, then Save.';
+      });
+      wrap.appendChild(b);
+    }
+  }catch(e){}
+}
 
 // News-parsing model selector (Settings) — only shown when the server runs live.
 const newsModelSel=document.getElementById('newsmodel');
@@ -488,7 +640,7 @@ document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
   try{
     const r=await fetch('/news-model?name='+encodeURIComponent(name), {method:'POST'});
     if(!r.ok){ st.textContent='error: '+r.status; return; }
-    newsModelCustom.value=''; await loadNewsModel();
+    newsModelCustom.value=''; await loadNewsModel(); loadNewsBadge();
   }catch(e){ st.textContent='error'; }
 });
 // Auto-discover the gateway's model catalogue (OpenAI-compatible /models).
@@ -509,7 +661,7 @@ async function loadAuth(){
     wrap.innerHTML='';
     for(const src of d.sources){
       const c=(d.config&&d.config[src])||{};
-      const row=document.createElement('div'); row.className='authrow';
+      const row=document.createElement('div'); row.className='authrow'; row.dataset.source=src;
       row.innerHTML='<strong>'+esc(src)+'</strong> <span class="muted">'+
         (c.token_set?('· token set '+esc(c.token_hint||'')):'· no token')+'</span>'+
         '<input class="ep" placeholder="endpoint (optional)" value="'+esc(c.endpoint||'')+'">'+
@@ -529,9 +681,20 @@ async function loadAuth(){
   }catch(e){ wrap.textContent='Could not load settings.'; }
 }
 
-loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); pollMusic(); pollNews();
+// News-parsing badge on the Player tab: live model, or the deterministic copy.
+const newsBadge=document.getElementById('newsbadge');
+async function loadNewsBadge(){
+  try{
+    const d=await (await fetch('/news-model')).json();
+    newsBadge.textContent = d.live ? ('news: '+(d.current||'live model')) : 'news: offline copy';
+    newsBadge.title = d.live ? 'LLM-written via the llm-gateway' : 'deterministic, no LLM';
+  }catch(e){}
+}
+
+loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
+setInterval(loadNewsBadge, 30000);
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
 const cv=document.getElementById('viz'), ctx=cv.getContext('2d');

@@ -41,6 +41,23 @@ class LLMConfig:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+# Quick-fill presets for the Settings tab's llm-gateway row — the OpenAI-
+# compatible gateways from LLM.md. ``api_base`` seeds the endpoint field (blank
+# where it's install-specific) and ``model`` an example model string. Not
+# credentials — the key still goes in the auth slot. See LLM.md.
+GATEWAY_PRESETS: list[dict[str, str]] = [
+    {"name": "Azure OpenAI", "api_base": "https://<resource>.openai.azure.com",
+     "model": "azure/<deployment-name>"},
+    {"name": "OpenRouter", "api_base": "https://openrouter.ai/api/v1",
+     "model": "openrouter/anthropic/claude-3.5-sonnet"},
+    {"name": "TrueFoundry", "api_base": "", "model": "openai/<gateway-model-name>"},
+    {"name": "vLLM", "api_base": "http://localhost:8000/v1", "model": "openai/<served-model>"},
+    {"name": "Ollama", "api_base": "http://localhost:11434", "model": "ollama/llama3.1"},
+    {"name": "NVIDIA NIM", "api_base": "http://localhost:8000/v1",
+     "model": "openai/meta/llama-3.1-8b-instruct"},
+]
+
+
 class LLMClient(ABC):
     """Provider-neutral completion primitive.
 

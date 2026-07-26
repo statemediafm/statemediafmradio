@@ -121,6 +121,51 @@ def test_news_model_discovery_rejected_when_not_live():
     assert client.post("/news-model/discover").status_code == 409
 
 
+def test_sources_list_add_and_remove():
+    from maelcom.roster import build_segment
+
+    state = _State()
+    state.segments = [{"topic": "HN", "source": "hackernews"}]
+    state.roster = [build_segment(state.segments[0])]
+    client = TestClient(create_app(state))
+
+    listing = client.get("/sources").json()
+    assert listing["sources"][0]["kind"] == "hackernews"
+    assert "slack" in listing["kinds"] and "jira" in listing["kinds"]
+
+    # Add a source live → it lands in the live roster the refresh loop reads.
+    resp = client.post("/sources", json={"source": "slack", "channel": "general", "topic": "Chat"})
+    assert resp.status_code == 200 and resp.json()["topic"] == "Chat"
+    assert len(state.roster) == 2 and state.segments[1]["channel"] == "general"
+
+    # A kind that needs a param but is missing it → 400, roster unchanged.
+    assert client.post("/sources", json={"source": "jira"}).status_code == 400
+    assert len(state.roster) == 2
+
+    # Remove by index.
+    assert client.delete("/sources/0").json()["removed"] == 0
+    assert len(state.roster) == 1 and state.roster[0][0] == "Chat"
+    assert client.delete("/sources/9").status_code == 404
+
+
+def test_sources_never_leak_tokens():
+    from maelcom.roster import build_segment
+
+    state = _State()
+    state.segments = [{"topic": "R", "source": "repo",
+                       "repo": "https://github.com/x/y", "token": "ghp_secret"}]
+    state.roster = [build_segment(state.segments[0])]
+    client = TestClient(create_app(state))
+    import json as _json
+    assert "ghp_secret" not in _json.dumps(client.get("/sources").json())
+
+
+def test_llm_presets_listed():
+    client = TestClient(create_app(_State()))
+    names = [p["name"] for p in client.get("/llm-presets").json()["presets"]]
+    assert "OpenRouter" in names and "Ollama" in names
+
+
 def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
     import json as _json
 
