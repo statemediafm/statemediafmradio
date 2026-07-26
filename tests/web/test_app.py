@@ -435,6 +435,60 @@ def test_quiet_endpoint_toggle():
     assert state.music_on is True
 
 
+def test_demo_mode_adds_and_removes_sources():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/demo").json() == {"demo_mode": False}
+
+    # On: adds Hacker News + a repo (git issues), and switches quiet mode off.
+    state.quiet_mode = True
+    body = client.post("/demo", params={"on": True}).json()
+    assert body == {"demo_mode": True}
+    assert state.demo_mode is True and state.quiet_mode is False
+    topics = {s["topic"] for s in state.segments}
+    assert {"Hacker News front page", "Engineering issues"} <= topics
+    assert len(state.roster) == len(state.segments)  # roster/segments stay in sync
+
+    # Off: removes exactly the two sources it added.
+    client.post("/demo", params={"on": False})
+    assert state.demo_mode is False
+    topics = {s["topic"] for s in state.segments}
+    assert "Hacker News front page" not in topics and "Engineering issues" not in topics
+    assert len(state.roster) == len(state.segments)
+
+
+def test_demo_mode_uses_a_five_minute_cadence():
+    from statemediafm.core.models import NewsItem
+    from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.tts import ToneWavTTS
+    from statemediafm.serve import refresh_once
+
+    state = _State()
+    state.demo_mode = True  # no director passed → demo's 5-min cadence gates news
+    item = NewsItem(id="1", source="hackernews", kind="story", title="Big",
+                    origin="Hacker News", actors=["a"])
+
+    class _Src:
+        def poll(self, since=None):
+            return [item]
+
+    roster = [("HN", _Src(), Cadence(900, 0), 5)]
+    cache: dict = {}
+    # Opening bulletin airs on the first tick.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0)
+    first = state.plan
+    assert first is not None
+    # Fresh activity 1 minute later, but the 5-min slot isn't due → held.
+    roster[0] = ("HN", type("S", (), {"poll": lambda self, since=None: [
+        NewsItem(id="2", source="hackernews", kind="story", title="New",
+                 origin="Hacker News", actors=["b"])]})(), Cadence(900, 0), 5)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1060.0)
+    assert state.plan is first
+    # Past the 5-min slot → the held news airs.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 5 * 60 + 1)
+    assert state.plan is not first
+
+
 def test_quiet_mode_gates_music_around_the_news():
     from statemediafm.core.models import NewsItem
     from statemediafm.core.schedule import Cadence

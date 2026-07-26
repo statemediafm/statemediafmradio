@@ -26,6 +26,23 @@ from .newsroom.tts import TTSProvider, render_reads
 _QUIET_LEAD_MIN, _QUIET_LEAD_MAX = 60, 180
 _QUIET_TAIL = 60  # keep the music ~1 minute after the news, then go silent
 
+# Demo Mode: reproduce the earlier-milestone feel — read Hacker News + a repo's
+# git issues on a brisk 5-minute cadence, music in between. The toggle in
+# Settings flips ``state.demo_mode`` (see the web app) and adds these sources.
+DEMO_NEWS_EVERY_S = 300.0
+DEMO_REPO = "https://github.com/meltano/meltano"
+_DEMO_DIRECTOR = None
+
+
+def _demo_director():
+    """A cached 5-minute-cadence director used while Demo Mode is on."""
+    global _DEMO_DIRECTOR
+    if _DEMO_DIRECTOR is None:
+        from .core.director import Director
+        from .core.schedule import Cadence
+        _DEMO_DIRECTOR = Director(news=Cadence(DEMO_NEWS_EVERY_S))
+    return _DEMO_DIRECTOR
+
 
 def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) -> list[Read]:
     """The ``Read`` chunks for one segment.
@@ -145,7 +162,13 @@ def refresh_once(
         cache["t0"] = now
         cache["last_elapsed"] = -1.0  # so the opening bulletin airs on the first tick
     elapsed = now - cache["t0"]
-    news_due = director.news_due(cache["last_elapsed"], elapsed) if director is not None else True
+    # Demo Mode overrides the rhythm with a brisk 5-minute news cadence.
+    active_director = _demo_director() if getattr(state, "demo_mode", False) else director
+    news_due = (
+        active_director.news_due(cache["last_elapsed"], elapsed)
+        if active_director is not None
+        else True
+    )
     cache["last_elapsed"] = elapsed
     style = getattr(state, "style", None) or style  # live-selectable writing style
     per_topic: list[tuple] = []

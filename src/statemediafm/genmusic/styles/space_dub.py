@@ -63,28 +63,31 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
     seg = max(2, 8 - density)  # higher energy evolves the bass faster
 
     def _b(riff: str) -> str:
-        return f'note("{riff}").s("sine").decay(0.5).sustain(0.2)'
+        # Sawtooth (not pure sine) so the low bass has audible harmonics on any
+        # speaker; short-ish decay for a plucky dub feel.
+        return f'note("{riff}").s("sawtooth").decay(0.5).sustain(0.25)'
 
     kick_gain = round(0.18 + intensity * 0.34, 2)
     layers = [
         # Evolving dub bass: an arrange of riffs (r0 r1 r2 r1) that morphs over
-        # bars; the filter breathes and the gain pumps for constant movement.
+        # bars; a breathing low-pass gives it constant movement without pumping
+        # the level (which was silencing it before).
         (
             f'  arrange([{seg}, {_b(r0)}], [{seg}, {_b(r1)}], '
             f'[{seg}, {_b(r2)}], [{seg}, {_b(r1)}])'
-            f".lpf(sine.range(70, 200).slow(24)).gain(sine.range(0.4, 0.55).slow(8)).slow(2)"
+            f".lpf(sine.range(140, 560).slow(20)).gain(0.6).slow(2)"
         ),
         # Off-beat chord stab: dub delay, a breathing filter, and slow auto-pan.
         (
             f'  chord("{prog}").voicing().s("sawtooth").struct("{stab}")'
             f".lpf(sine.range(280, {lpf}).slow(16)).delay(0.5).delaytime(0.375)"
             ".delayfeedback(0.55).room(0.7).roomsize(6).pan(sine.range(0.35, 0.65).slow(11))"
-            ".gain(0.22).slow(2)"
+            ".gain(0.2).slow(2)"
         ),
-        # A slow reverb pad breath underneath, dark, swelling in and out.
+        # A slow reverb pad breath underneath, dark and steady.
         (
             f'  chord("{prog}").voicing().s("sawtooth").lpf(360).room(0.8).roomsize(7)'
-            ".gain(sine.range(0.1, 0.2).slow(20)).slow(4)"
+            ".gain(0.14).slow(4)"
         ),
         # A soft kick for pulse; a quiet hiss wash always present.
         f'  note("c1 ~ ~ ~").s("sine").decay(0.2).sustain(0).gain({kick_gain})',

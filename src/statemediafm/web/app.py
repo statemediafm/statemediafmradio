@@ -56,6 +56,8 @@ class _State:
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
+        self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 5 min
+        self.demo_topics: list[str] = []  # source topics Demo Mode added (to remove on off)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
@@ -156,6 +158,52 @@ def create_app(state: _State | None = None):
         if not on:
             store.music_on = True
         return {"quiet_mode": store.quiet_mode, "music_on": store.music_on}
+
+    @app.get("/demo")
+    def demo() -> dict:
+        return {"demo_mode": store.demo_mode}
+
+    @app.post("/demo")
+    def set_demo(on: bool) -> dict:
+        """Demo Mode: the earlier-milestone feel. Turning it on adds Hacker News
+        and a repo's git-issues sources (if not already present) and switches the
+        news to a brisk 5-minute cadence (handled in the refresh loop); music
+        plays continuously in between. Turning it off removes the sources it added
+        and restores the normal rhythm."""
+        from ..roster import build_segment
+        from ..serve import DEMO_REPO
+
+        if on and not store.demo_mode:
+            store.demo_mode = True
+            store.quiet_mode = False  # music continuous between readings
+            store.music_on = True
+            wanted = [
+                {"topic": "Hacker News front page", "source": "hackernews"},
+                {"topic": "Engineering issues", "source": "repo", "repo": DEMO_REPO},
+            ]
+            existing = {s.get("topic") for s in store.segments}
+            for seg in wanted:
+                if seg["topic"] in existing:
+                    continue
+                try:
+                    entry = build_segment(seg, len(store.segments))
+                except (ValueError, KeyError):
+                    continue
+                store.segments.append(dict(seg))
+                store.roster.append(entry)
+                store.demo_topics.append(seg["topic"])
+        elif not on and store.demo_mode:
+            store.demo_mode = False
+            # Remove only the sources Demo Mode added, leaving user-added ones.
+            for topic in list(store.demo_topics):
+                for i, s in enumerate(store.segments):
+                    if s.get("topic") == topic:
+                        store.segments.pop(i)
+                        if i < len(store.roster):
+                            store.roster.pop(i)
+                        break
+            store.demo_topics = []
+        return {"demo_mode": store.demo_mode}
 
     @app.get("/models")
     def models() -> dict:
@@ -491,6 +539,16 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
   .authrow button{margin-top:.2rem}
   .authrow select{margin-left:0}
+  /* Toggle switch (Demo Mode). */
+  .switch{display:inline-flex;align-items:center;gap:.6rem;cursor:pointer;font-style:normal}
+  .switch input{position:absolute;opacity:0;width:0;height:0}
+  .switch .track{position:relative;width:2.6rem;height:1.4rem;border-radius:999px;background:#ccc;
+                 transition:background .15s;flex:none}
+  .switch .track::after{content:'';position:absolute;top:.15rem;left:.15rem;width:1.1rem;height:1.1rem;
+                 border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .switch input:checked + .track{background:#3a7}
+  .switch input:checked + .track::after{transform:translateX(1.2rem)}
+  .switch input:focus-visible + .track{outline:2px solid #3a7;outline-offset:2px}
   .chip{font:inherit;font-size:.8rem;padding:.2rem .5rem;margin:.15rem .3rem .15rem 0;
         background:transparent;color:inherit;border:1px solid #bbb;border-radius:999px}
   .srcrow{display:flex;align-items:baseline;gap:.5rem;margin:.3rem 0;padding:.35rem 0;
@@ -508,7 +566,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   @media(prefers-color-scheme:dark){
     #tabs{border-color:#333} #tabs a.active{color:#eee;border-bottom-color:#eee}
     .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
-    .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}}
+    .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}
+    .switch .track{background:#444}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   .newslist{margin:.4rem 0;padding-left:1.2rem}
@@ -543,6 +602,16 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
+  <h2>Demo Mode</h2>
+  <p class='muted'>The earlier-milestone feel: reads the Hacker News front page and a
+  repo's git issues every 5 minutes, generating music in between. Turning it on adds
+  those two sources; turning it off removes them.</p>
+  <div class='authrow'>
+    <label class='switch'><input type='checkbox' id='demo'><span class='track'></span>
+      <strong>Demo Mode</strong></label>
+    <span class='muted' id='demo-status'></span>
+  </div>
+
   <h2>Sources</h2>
   <p class='muted'>Which activity State Media FM airs. Changes apply to the running
   session (not written to the config file).</p>
@@ -683,6 +752,26 @@ quietBox.addEventListener('change', async ()=>{
   try{ await fetch('/quiet?on='+(quietBox.checked?'true':'false'), {method:'POST'}); await pollMusic(); }catch(e){}
 });
 
+// Demo Mode — earlier-milestone feel: HN + git issues every 5 min, music between.
+const demoBox=document.getElementById('demo');
+const demoStatus=document.getElementById('demo-status');
+async function loadDemo(){
+  try{ const d=await (await fetch('/demo')).json();
+    demoBox.checked=!!d.demo_mode;
+    demoStatus.textContent=d.demo_mode?'on · reading every 5 min':'';
+  }catch(e){}
+}
+demoBox.addEventListener('change', async ()=>{
+  const on=demoBox.checked;
+  demoStatus.textContent=on?'starting…':'';
+  try{
+    const d=await (await fetch('/demo?on='+(on?'true':'false'), {method:'POST'})).json();
+    demoStatus.textContent=d.demo_mode?'on · reading every 5 min':'';
+    if(quietBox && d.demo_mode) quietBox.checked=false;  // demo keeps music continuous
+    await loadSources();
+  }catch(e){ demoStatus.textContent='could not toggle'; }
+});
+
 // Base energy — the brainwave level a session starts at; news lifts it.
 const intensityEl=document.getElementById('intensity');
 const intensityBand=document.getElementById('intensity-band');
@@ -819,7 +908,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); }
+  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); }
 }));
 
 // ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
