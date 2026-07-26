@@ -292,6 +292,22 @@ def test_schedule_endpoint():
     assert d["order"][0]["kind"] == "news" and d["order"][0]["at_s"] == 0.0
 
 
+def test_spotify_credentials_saved_and_masked(tmp_path, monkeypatch):
+    import json as _json
+
+    monkeypatch.setenv("STATEMEDIAFM_AUTH", str(tmp_path / "auth.toml"))
+    client = TestClient(create_app())
+
+    assert client.get("/spotify").json() == {"client_id": "", "secret_set": False, "configured": False}
+    got = client.post("/spotify", json={"client_id": "abc123", "client_secret": "sh_supersecret"}).json()
+    assert got == {"client_id": "abc123", "secret_set": True, "configured": True}
+    # The Client ID is shown; the secret is never returned by the API.
+    assert "sh_supersecret" not in _json.dumps(client.get("/spotify").json())
+    # Saving just the id again keeps the stored secret (blank secret doesn't wipe it).
+    client.post("/spotify", json={"client_id": "abc123", "client_secret": ""})
+    assert client.get("/spotify").json()["configured"] is True
+
+
 def test_llm_presets_listed():
     client = TestClient(create_app(_State()))
     names = [p["name"] for p in client.get("/llm-presets").json()["presets"]]

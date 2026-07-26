@@ -496,6 +496,49 @@ def create_app(state: _State | None = None):
         )
         return {"config": masked_auth()}
 
+    def _spotify_status() -> dict:
+        from ..auth import source_endpoint, source_token
+
+        cid = source_endpoint("spotify") or ""
+        return {
+            "client_id": cid,  # the Client ID is not a secret; the secret is masked
+            "secret_set": bool(source_token("spotify")),
+            "configured": bool(cid and source_token("spotify")),
+        }
+
+    @app.get("/spotify")
+    def spotify() -> dict:
+        """Spotify connection status: the Client ID and whether a secret is stored
+        (the secret itself is never returned)."""
+        return _spotify_status()
+
+    @app.post("/spotify")
+    def set_spotify(payload: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
+        """Save the Spotify Client ID + Client Secret to the gitignored auth file
+        (secret from the body, never the URL; only overwritten when non-empty)."""
+        from ..auth import save_auth_entry
+
+        save_auth_entry(
+            "spotify",
+            endpoint=(payload.get("client_id") or ""),
+            token=(payload.get("client_secret") or None),
+        )
+        return _spotify_status()
+
+    @app.post("/spotify/test")
+    def spotify_test() -> dict:
+        """Verify the stored credentials by fetching an app token (Client Credentials)."""
+        from ..spotify import from_auth
+
+        conn = from_auth()
+        if not conn.configured:
+            return {"ok": False, "detail": "no credentials saved"}
+        try:
+            conn.token()
+        except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
+            return {"ok": False, "detail": str(exc)}
+        return {"ok": True}
+
     @app.get("/audio/{clip_id}")
     def audio(clip_id: str) -> Response:
         clip = store.audio.get(clip_id)
@@ -683,6 +726,18 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <label class='muted'>voice <select id='voice-sel'></select></label>
       <button id='narration-save'>Apply</button>
       <span class='muted' id='narration-status'></span>
+    </div>
+    <h3>Spotify</h3>
+    <p class='muted'>Connect Spotify to resolve song slots to tracks. Create an app at
+    <code>developer.spotify.com</code> and paste its Client ID + Client Secret —
+    stored locally in the gitignored auth file, the secret masked and never sent
+    anywhere but your own server.</p>
+    <div class='authrow'>
+      <input id='sp-id' placeholder='Client ID'>
+      <input id='sp-secret' type='password' autocomplete='off' placeholder='Client Secret'>
+      <button id='sp-save'>Save</button>
+      <button id='sp-test'>Test connection</button>
+      <span class='muted' id='sp-status'></span>
     </div>
     <div id='newsmodel-wrap' hidden>
       <h3>News-parsing model</h3>
@@ -941,7 +996,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
 // ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
@@ -995,6 +1050,32 @@ document.getElementById('license-save').addEventListener('click', async ()=>{
     st.textContent = ok ? 'unlocked' : 'key saved, but no modules unlocked';
     document.getElementById('license-key').value='';
     await loadNarration(); await loadLicense();
+  }catch(e){ st.textContent='error'; }
+});
+// Spotify connector (under Narration) — Client ID + Secret, saved gitignored.
+async function loadSpotify(){
+  try{
+    const d=await (await fetch('/spotify')).json();
+    document.getElementById('sp-id').value=d.client_id||'';
+    document.getElementById('sp-status').textContent =
+      d.configured ? 'connected · secret set' : (d.secret_set ? 'secret set — add Client ID' : 'not connected');
+  }catch(e){}
+}
+document.getElementById('sp-save').addEventListener('click', async ()=>{
+  const st=document.getElementById('sp-status'); st.textContent='saving…';
+  const body={client_id:document.getElementById('sp-id').value.trim(),
+              client_secret:document.getElementById('sp-secret').value};
+  try{
+    await fetch('/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    document.getElementById('sp-secret').value='';
+    await loadSpotify();
+  }catch(e){ st.textContent='error'; }
+});
+document.getElementById('sp-test').addEventListener('click', async ()=>{
+  const st=document.getElementById('sp-status'); st.textContent='testing…';
+  try{
+    const d=await (await fetch('/spotify/test',{method:'POST'})).json();
+    st.textContent = d.ok ? 'connection OK ✓' : ('failed: '+(d.detail||'unknown'));
   }catch(e){ st.textContent='error'; }
 });
 // Commercial Features — the registered modules and whether each is unlocked.
