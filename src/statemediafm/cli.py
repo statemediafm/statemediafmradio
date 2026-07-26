@@ -216,7 +216,7 @@ def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence,
     (use the CLI --headlines default) since ad-hoc has no per-segment config."""
     every = parse_duration(args.every)
     sources: list[tuple[str, Source]] = []
-    if args.hn:
+    if args.hn or not args.repo:  # default to HN unless only --repo was given
         sources.append(("Hacker News front page", HackerNewsSource(max_count=args.max_count)))
     if args.repo:
         sources.append(
@@ -244,9 +244,10 @@ def _resolve_roster(args: argparse.Namespace) -> list:
 
 def _ad_hoc_segments(args: argparse.Namespace) -> list[dict]:
     """Ad-hoc --hn/--repo as segment dicts, on --every and auto-staggered — the
-    same shape as config ``[[segments]]`` so serve can manage them live."""
+    same shape as config ``[[segments]]`` so serve can manage them live. With no
+    source given at all, the Hacker News front page is the zero-config default."""
     segs: list[dict] = []
-    if args.hn:
+    if args.hn or not args.repo:  # default to HN unless only --repo was given
         segs.append({"topic": "Hacker News front page", "source": "hackernews",
                      "max_count": args.max_count, "every": args.every})
     if args.repo:

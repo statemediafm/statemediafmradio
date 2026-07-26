@@ -57,3 +57,16 @@ def test_rundown_prints_the_hour_of_radio(capsys):
     assert "♪ Song slot" in out and "Station ident" in out
     assert "[OK]" in out  # felt cadence within the cap
     assert "[TOO LONG]" not in out
+
+
+def test_serve_defaults_to_hacker_news_with_no_source():
+    import argparse
+    # Bare `serve` (no --config/--hn/--repo) demos the HN front page by default.
+    args = argparse.Namespace(config=None, hn=False, repo=None, token=None,
+                              max_count=25, every="15m")
+    segs = cli._resolve_segments(args)
+    assert [s["source"] for s in segs] == ["hackernews"]
+    # But `--repo X` alone does NOT pull in HN.
+    args2 = argparse.Namespace(config=None, hn=False, repo="https://github.com/o/r",
+                              token=None, max_count=25, every="15m")
+    assert [s["source"] for s in cli._resolve_segments(args2)] == ["repo"]

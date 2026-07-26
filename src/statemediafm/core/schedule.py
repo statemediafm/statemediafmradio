@@ -94,15 +94,17 @@ def assemble_broadcast(
 ) -> BroadcastPlan:
     """Place each programme's airings at their scheduled times as Segments.
 
-    ``content`` maps a topic to its voiced ``(Script, AudioRef)``; a programme
-    with no content is skipped (e.g. a source that returned nothing this cycle).
+    ``content`` maps a topic to its voiced ``(Script, AudioRef)`` — optionally with
+    a third element, a list of ``(headline, url)`` pairs for the on-page list; a
+    programme with no content is skipped (e.g. a source that returned nothing).
     """
     segments: list[Segment] = []
     for air_s, topic in build_rundown(programmes, window_s, start_s=start_s):
         pair = content.get(topic)
         if pair is None:
             continue
-        script, audio = pair
+        script, audio, *rest = pair
+        headlines = rest[0] if rest else []
         segments.append(
             Segment(
                 kind="news",
@@ -111,6 +113,7 @@ def assemble_broadcast(
                 audio=audio,
                 script=script,
                 title=topic,
+                headlines=headlines,
             )
         )
     return BroadcastPlan(segments=segments, tenant=tenant)

@@ -123,6 +123,8 @@ class Segment:
 
     ``title`` names the segment's topic/source ("Hacker News front page",
     "Repository activity") so a multi-source rundown reads as distinct segments.
+    ``headlines`` are the underlying news items — ``(title, url)`` pairs — so the
+    page can list them with links instead of just the spoken prose.
     """
 
     kind: str  # "news" | "music" | "song"
@@ -131,6 +133,7 @@ class Segment:
     audio: AudioRef | None = None
     script: Script | None = None
     title: str | None = None
+    headlines: list[tuple[str, str | None]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

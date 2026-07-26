@@ -36,6 +36,21 @@ def test_refresh_once_publishes_program_and_plan():
     assert state.plan.segments[0].title == "Hacker News"
 
 
+def test_plan_carries_headline_links_for_the_page_list():
+    state = _State()
+    items = [
+        NewsItem(id="1", source="hackernews", kind="story", title="Big story",
+                 origin="Hacker News", actors=["a"], refs=["https://news.ycombinator.com/item?id=1"]),
+        NewsItem(id="2", source="hackernews", kind="story", title="No link here",
+                 origin="Hacker News", actors=["b"]),
+    ]
+    roster = [("HN", _FakeSource(items), Cadence(900, 0), 5)]
+    refresh_once(state, roster, ToneWavTTS(), cache={})
+    heads = state.plan.segments[0].headlines
+    assert ("Big story", "https://news.ycombinator.com/item?id=1") in heads
+    assert ("No link here", None) in heads  # no ref → plain text, no crash
+
+
 def test_refresh_once_skips_revoicing_when_unchanged():
     state, cache = _State(), {}
     roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]

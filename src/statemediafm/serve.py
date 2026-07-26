@@ -47,6 +47,23 @@ def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) ->
     return radio_reads(items, style, max_headlines=headlines or 5, ident=ident, signoff=signoff)
 
 
+def _headlines(items, cap) -> list[tuple[str, str | None]]:
+    """Deduped ``(title, url)`` pairs for the on-page linked list, capped like the
+    spoken reads (``cap`` or 5). ``url`` is the item's first ref, or None."""
+    out: list[tuple[str, str | None]] = []
+    seen: set[str] = set()
+    for it in items:
+        title = (it.title or "").strip()
+        if not title or title.lower() in seen:
+            continue
+        seen.add(title.lower())
+        refs = getattr(it, "refs", None)
+        out.append((title, refs[0] if refs else None))
+        if len(out) >= (cap or 5):
+            break
+    return out
+
+
 def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None) -> None:
     voice = getattr(state, "voice", None)  # live-selectable narration voice
     ident = getattr(state, "ident", None)  # persona station phrasing
@@ -59,7 +76,7 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None) -> 
         audio = render_reads(
             reads, tts, style=style, voice=voice, headline_pause_ms=headline_pause_ms
         )
-        content[topic] = (script, audio)
+        content[topic] = (script, audio, _headlines(items, headlines))
         programmes.append(Programme(topic, _cadence))
     state.set_plan(assemble_broadcast(programmes, content, window_s=3600))
 

@@ -54,6 +54,7 @@ def plan_to_dict(plan: BroadcastPlan) -> dict:
                 "audio_url": f"/audio/{s.audio.id}" if s.audio else None,
                 "script": s.script.text if s.script else None,
                 "style": s.script.style if s.script else None,
+                "headlines": [{"title": t, "url": u} for t, u in s.headlines],
             }
             for s in plan.segments
         ],

@@ -511,6 +511,10 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
+  .newslist{margin:.4rem 0;padding-left:1.2rem}
+  .newslist li{margin:.25rem 0}
+  .newslist a{color:inherit;text-decoration:none;border-bottom:1px solid #bbb}
+  .newslist a:hover{border-bottom-color:currentColor}
   audio{width:100%;margin:.4rem 0}
   @media(prefers-color-scheme:dark){
     body{background:#111;color:#eee}.muted{color:#aaa}
@@ -770,8 +774,16 @@ async function pollNews(){
     const segs=d.segments||[]; const seen=new Set(); let html='';
     for(const s of segs){
       if(seen.has(s.title)) continue; seen.add(s.title);
-      html+='<article><h2>'+(s.title||'News')+'</h2><p>'+(s.script||'')+'</p>'+
-            (s.audio_url?'<audio controls src="'+s.audio_url+'"></audio>':'')+'</article>';
+      const hs=s.headlines||[];
+      // The news items as a linked list (each links to its source); fall back to
+      // the spoken prose if a segment has no discrete headlines.
+      const body = hs.length
+        ? '<ul class="newslist">'+hs.map(h=>'<li>'+(h.url
+            ? '<a href="'+esc(h.url)+'" target="_blank" rel="noopener noreferrer">'+esc(h.title)+'</a>'
+            : esc(h.title))+'</li>').join('')+'</ul>'
+        : '<p>'+esc(s.script||'')+'</p>';
+      html+='<article><h2>'+esc(s.title||'News')+'</h2>'+body+
+            (s.audio_url?'<audio controls src="'+esc(s.audio_url)+'"></audio>':'')+'</article>';
     }
     newsEl.innerHTML=html||'<p class="muted">No broadcast yet.</p>';
     const first=segs.find(s=>s.audio_url);
