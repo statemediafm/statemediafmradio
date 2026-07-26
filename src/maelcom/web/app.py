@@ -646,17 +646,33 @@ document.getElementById('narration-save').addEventListener('click', async ()=>{
 });
 
 // ── Live source management ───────────────────────────────────────────────────
-// The `source` kind determines the one extra parameter each needs.
-const SRC_PARAM={repo:'repo', slack:'channel', jira:'project', pagerduty:'statuses (comma-sep)'};
+// The add menu leads with GitHub/GitLab work-item URLs (both the forge `repo`
+// kind — a repo URL or a pasted issue/PR/MR URL), then the other sources. Each
+// option names its one extra parameter and a placeholder.
+const ADD_OPTIONS=[
+  {label:'GitHub work items (URL)', kind:'repo', key:'repo',
+   ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
+  {label:'GitLab work items (URL)', kind:'repo', key:'repo',
+   ph:'https://gitlab.com/group/project  (or an issue/MR URL)'},
+  {label:'Hacker News', kind:'hackernews', key:null, ph:null},
+  {label:'Slack channel', kind:'slack', key:'channel', ph:'channel name or ID'},
+  {label:'Jira project', kind:'jira', key:'project', ph:'project key, e.g. OPS'},
+  {label:'PagerDuty', kind:'pagerduty', key:'statuses',
+   ph:'statuses (comma-sep), e.g. triggered,acknowledged'},
+];
 const srcKind=document.getElementById('src-kind');
 const srcParam=document.getElementById('src-param');
-function srcParamKey(kind){ return {repo:'repo',slack:'channel',jira:'project',pagerduty:'statuses'}[kind]; }
+let addOptions=[];  // ADD_OPTIONS plus any extra server kinds (e.g. plugins)
+function currentAddOption(){ return addOptions[srcKind.value] || {}; }
 async function loadSources(){
   const list=document.getElementById('sourcelist');
   try{
     const d=await (await fetch('/sources')).json();
     if(srcKind.options.length===0){
-      for(const k of (d.kinds||[])){ const o=document.createElement('option'); o.value=k; o.textContent=k; srcKind.appendChild(o); }
+      const covered=new Set(['hn','repo','hackernews','slack','jira','pagerduty']);
+      const extras=(d.kinds||[]).filter(k=>!covered.has(k)).map(k=>({label:k, kind:k, key:null, ph:null}));
+      addOptions=ADD_OPTIONS.concat(extras);
+      addOptions.forEach((opt,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=opt.label; srcKind.appendChild(o); });
       updateSrcPlaceholder();
     }
     list.innerHTML='';
@@ -678,16 +694,16 @@ async function loadSources(){
   }catch(e){ list.textContent='Could not load sources.'; }
 }
 function updateSrcPlaceholder(){
-  const need=SRC_PARAM[srcKind.value];
-  srcParam.placeholder = need || '—'; srcParam.style.display = need ? '' : 'none';
+  const opt=currentAddOption();
+  srcParam.placeholder = opt.ph || '—'; srcParam.style.display = opt.key ? '' : 'none';
 }
 srcKind.addEventListener('change', updateSrcPlaceholder);
 document.getElementById('src-add').addEventListener('click', async ()=>{
-  const st=document.getElementById('src-status'); const kind=srcKind.value;
-  const seg={source:kind}; const key=srcParamKey(kind);
-  if(key){
-    const v=srcParam.value.trim(); if(!v){ st.textContent='needs '+SRC_PARAM[kind]; return; }
-    seg[key] = kind==='pagerduty' ? v.split(',').map(x=>x.trim()).filter(Boolean) : v;
+  const st=document.getElementById('src-status'); const opt=currentAddOption();
+  const seg={source:opt.kind};
+  if(opt.key){
+    const v=srcParam.value.trim(); if(!v){ st.textContent='needs '+opt.ph; return; }
+    seg[opt.key] = opt.kind==='pagerduty' ? v.split(',').map(x=>x.trim()).filter(Boolean) : v;
   }
   const val=id=>document.getElementById(id).value.trim();
   if(val('src-topic')) seg.topic=val('src-topic');

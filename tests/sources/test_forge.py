@@ -22,6 +22,17 @@ def test_detect_forge_recognizes_hosts_and_slugs():
     assert detect_forge("https://example.com/x/y") is None
 
 
+def test_detect_forge_normalizes_work_item_urls():
+    # A pasted issue / PR / MR URL resolves to its project root.
+    assert detect_forge("https://github.com/owner/repo/issues/123") == ("github", "owner/repo")
+    assert detect_forge("https://github.com/owner/repo/pull/5") == ("github", "owner/repo")
+    assert detect_forge("https://gitlab.com/group/project/-/merge_requests/3") == (
+        "gitlab", "group/project")
+    # GitLab nested groups keep their full project path.
+    assert detect_forge("https://gitlab.com/group/sub/project/-/issues/1") == (
+        "gitlab", "group/sub/project")
+
+
 def test_open_source_routes_forge_vs_git():
     assert isinstance(open_source("https://github.com/a/b"), ForgeSource)
     assert isinstance(open_source("/local/path"), GitSource)

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -31,23 +30,31 @@ from .base import Source, register_source
 
 # Recognized forge hosts → platform key.
 _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
-_SLUG = re.compile(r"[/:]([^/:]+/[^/]+?)(?:\.git)?/?$")
 
 
 def detect_forge(repo: str) -> tuple[str, str] | None:
     """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL.
 
-    Recognizes github.com / gitlab.com in https or scp-like form; returns
-    ``None`` for anything else (e.g. a local path), so callers can fall back to
-    the git-commit source.
+    Recognizes github.com / gitlab.com in https or scp-like form and normalizes
+    to the project root, so a pasted **work-item URL** (an issue / PR / MR link)
+    resolves to its project too — e.g. ``github.com/o/r/issues/12`` →
+    ``o/r`` and ``gitlab.com/g/p/-/merge_requests/3`` → ``g/p``. Returns ``None``
+    for anything else (e.g. a local path), so callers fall back to the git source.
     """
     host = next((h for h in _HOSTS if h in repo), None)
     if host is None:
         return None
-    match = _SLUG.search(repo)
-    if not match:
+    # The path after the host, for https or scp-like (git@host:owner/repo) forms.
+    path = repo.split(host, 1)[1].lstrip(":/").split("#", 1)[0].split("?", 1)[0]
+    path = path.split("/-/", 1)[0]  # GitLab work-item URLs: project sits before /-/
+    path = path.removesuffix("/").removesuffix(".git")
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < 2:
         return None
-    return _HOSTS[host], match.group(1)
+    # GitHub: owner/repo are the first two segments (drop /issues/123, /pull/5, …).
+    # GitLab: keep the full (possibly nested) project path — the API takes it whole.
+    slug = "/".join(parts[:2] if _HOSTS[host] == "github" else parts)
+    return _HOSTS[host], slug
 
 
 def _parse_ts(value: str | None) -> datetime | None:
