@@ -1,11 +1,14 @@
 """The ``space-dub`` generator — deep dub-techno ambient parameterized by activity.
 
-A slow, spacious dub: an **evolving** syncopated dub-bass (an ``arrange`` of riffs
-that morphs over bars, its filter breathing and gain pumping for movement),
-off-beat chord stabs drenched in tape delay and reverb, a swelling dark pad, and
-a **very occasional sub-bass drop** — a rare descending deep boom. Calm bands sit
-dark and sparse; busier bands open the filter, add stabs, and evolve the bass
-faster. Uses the shared brainwave-band traits (``band_traits``).
+A slow, spacious dub built as a **phrase with a shape**, not a flat loop: an acid
+bass (TB-303-style — a sine-leaning sawtooth through a resonant, percussive filter
+envelope) that **loops a few times, plays a turnaround, pauses, then drops** to a
+clean sub boom. The chord **chime** rides the *same* phrase shape — it answers the
+bass in its rests, pauses with it, and rings out over the drop — so the two feel
+connected rather than independent. Movement comes from rests and silence in the
+voices plus breathing filters; the drop stands alone (everything else cuts) so it
+hits clean without clipping. Calm bands sit darker and loop longer; busier bands
+open the filter, add stabs, and turn the phrase around sooner.
 
 Deterministic: the same ``(signal, intensity, band, fade_ms)`` renders
 byte-identical text, so it is golden-file testable. Only @strudel/web 1.0.3
@@ -23,22 +26,40 @@ _PROGRESSIONS = (
     "<Am9 Fmaj7 Dm9 Em7>",
     "<Ebmaj9 Cm9 Abmaj7 Bb7>",
 )
-# Evolving dub-bass riffs per variant (three 8-step phrases, low and syncopated).
-# ``arrange`` walks them so the loop mutates rather than merely repeating.
-_BASS_RIFFS = (
-    ("c1 ~ ~ c1 ~ ab0 ~ ~", "c1 ~ ab0 ~ ~ f0 ~ g0", "c1 ~ ~ eb1 ~ ab0 ~ ~"),
-    ("a0 ~ ~ a0 ~ f0 ~ ~", "a0 ~ f0 ~ ~ d1 ~ e1", "a0 ~ ~ c1 ~ f0 ~ ~"),
-    ("eb1 ~ ~ eb1 ~ c1 ~ ~", "eb1 ~ c1 ~ ~ ab0 ~ bb0", "eb1 ~ ~ g0 ~ c1 ~ ~"),
+# The acid bass LOOP riff per variant: sparse, syncopated, lots of rests so the
+# chime can answer in the gaps (the two are call-and-response, not stacked).
+_BASS_LOOP = (
+    "c1 ~ [~ c1] ~ eb1 ~ c1 ~",
+    "a0 ~ [~ a0] ~ c1 ~ a0 ~",
+    "eb1 ~ [~ eb1] ~ g0 ~ eb1 ~",
 )
-# The rare sub-drop: a descending deep boom (tonic → an octave below).
-_DROPS = ("c1 ~ ~ ~ c0 ~ ~ ~", "a0 ~ ~ ~ f0 ~ ~ ~", "eb1 ~ ~ ~ eb0 ~ ~ ~")
-# Off-beat stab density, sparse → busy, keyed by band density (1,2,3,4,6).
-_STABS = {
+# The TURNAROUND: a walking fill that lifts into the pause + drop.
+_BASS_TURN = (
+    "c1 eb1 f1 g1 ab1 g1 f1 eb1",
+    "a0 c1 d1 e1 f1 e1 d1 c1",
+    "eb1 g0 ab0 bb0 c1 bb0 ab0 g0",
+)
+# The DROP: a clean descending sub boom, tonic dropping an octave.
+_DROPS = (
+    "c1 ~ c0 ~ ~ ~ ~ ~",
+    "a1 ~ a0 ~ ~ ~ ~ ~",
+    "eb1 ~ eb0 ~ ~ ~ ~ ~",
+)
+# Two evolving chime patterns (A rides the loop, B the turnaround) — hits fall in
+# the bass's rests. Keyed by band density (1,2,3,4,6): sparse → busy.
+_STAB_A = {
     1: "~ ~ x ~",
     2: "~ x ~ x",
     3: "~ x ~ [x x]",
     4: "[~ x] x ~ [x x]",
     6: "~ x [x x] x [~ x] x [x ~]",
+}
+_STAB_B = {
+    1: "~ x ~ ~",
+    2: "~ ~ x x",
+    3: "[~ x] ~ x ~",
+    4: "~ [x x] ~ x",
+    6: "x ~ [x x] ~ x [x ~] ~ x",
 }
 
 
@@ -57,49 +78,56 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
 
     variant = _seed(signal) % len(_PROGRESSIONS)
     prog = _PROGRESSIONS[variant]
-    r0, r1, r2 = _BASS_RIFFS[variant]
-    drop = _DROPS[variant]
-    stab = _STABS[density]
-    seg = max(2, 8 - density)  # higher energy evolves the bass faster
+    loop, turn, drop = _BASS_LOOP[variant], _BASS_TURN[variant], _DROPS[variant]
+    stab_a, stab_b = _STAB_A[density], _STAB_B[density]
+    loops = max(3, 7 - density)  # calm bands loop longer before turning around
+    cut = round(120 + density * 60)  # acid filter base cutoff — darker when calm
 
-    def _b(riff: str) -> str:
-        # Sawtooth (not pure sine) so the low bass has audible harmonics on any
-        # speaker; short-ish decay for a plucky dub feel.
-        return f'note("{riff}").s("sawtooth").decay(0.5).sustain(0.25)'
+    def _acid(pat: str) -> str:
+        # Sine-leaning sawtooth kept dark by a resonant, percussive filter envelope
+        # (TB-303 acid): the low base cutoff rounds it toward a sine; lpenv plucks
+        # it open per note. Low gain to keep the sub clean (no clipping).
+        return (
+            f'note("{pat}").s("sawtooth").lpf(sine.range(90, {cut}).slow(6)).lpq(7)'
+            ".lpenv(2.5).lpattack(0.01).lpdecay(0.16).lpsustain(0.25)"
+            ".decay(0.28).sustain(0.2)"
+        )
 
-    kick_gain = round(0.18 + intensity * 0.34, 2)
+    def _chime(struct: str) -> str:
+        # The chord chime, drenched in tape delay + reverb, a slow filter breath.
+        return (
+            f'chord("{prog}").voicing().s("sawtooth").struct("{struct}")'
+            f".lpf(sine.range(400, {lpf}).slow(4)).lpq(4).delay(0.5).delaytime(0.375)"
+            ".delayfeedback(0.5).room(0.7).roomsize(6).gain(0.16)"
+        )
+
+    kick_gain = round(0.15 + intensity * 0.13, 2)
     layers = [
-        # Evolving dub bass: an arrange of riffs (r0 r1 r2 r1) that morphs over
-        # bars; a breathing low-pass gives it constant movement without pumping
-        # the level (which was silencing it before).
+        # BASS phrase: loop ×N → turnaround → pause → drop. The drop is a clean
+        # sub sine with everything else silent around it, so it lands without mud.
         (
-            f'  arrange([{seg}, {_b(r0)}], [{seg}, {_b(r1)}], '
-            f'[{seg}, {_b(r2)}], [{seg}, {_b(r1)}])'
-            f".lpf(sine.range(140, 560).slow(20)).gain(0.6).slow(2)"
+            f'  arrange([{loops}, {_acid(loop)}], [1, {_acid(turn)}], [1, silence], '
+            f'[1, note("{drop}").s("sine").attack(0.005).decay(1.4).sustain(0)'
+            ".lpf(110).gain(0.55)]).gain(0.5).slow(2)"
         ),
-        # Off-beat chord stab: dub delay, a breathing filter, and slow auto-pan.
+        # CHIME rides the SAME shape: answers the loop (A), accents the turnaround
+        # (B), pauses with the bass, then one ringing hit over the drop.
         (
-            f'  chord("{prog}").voicing().s("sawtooth").struct("{stab}")'
-            f".lpf(sine.range(280, {lpf}).slow(16)).delay(0.5).delaytime(0.375)"
-            ".delayfeedback(0.55).room(0.7).roomsize(6).pan(sine.range(0.35, 0.65).slow(11))"
-            ".gain(0.2).slow(2)"
+            f'  arrange([{loops}, {_chime(stab_a)}], [1, {_chime(stab_b)}], [1, silence], '
+            f'[1, chord("{prog}").voicing().s("sawtooth").struct("x ~ ~ ~").lpf({lpf})'
+            ".room(0.9).roomsize(8).delay(0.6).delaytime(0.5).delayfeedback(0.6).gain(0.14)])"
+            ".slow(2)"
         ),
-        # A slow reverb pad breath underneath, dark and steady.
+        # A soft kick pulses under the loop + turnaround, then cuts for the pause
+        # and drop (so the drop is felt, not stepped on).
         (
-            f'  chord("{prog}").voicing().s("sawtooth").lpf(360).room(0.8).roomsize(7)'
-            ".gain(0.14).slow(4)"
+            f'  arrange([{loops + 1}, note("c1 ~ ~ ~").s("sine").decay(0.2).sustain(0)'
+            f".gain({kick_gain})], [2, silence]).slow(2)"
         ),
-        # A soft kick for pulse; a quiet hiss wash always present.
-        f'  note("c1 ~ ~ ~").s("sine").decay(0.2).sustain(0).gain({kick_gain})',
+        # A quiet hiss wash, always present, gluing the space together.
         (
             '  s("white").struct("x ~ ~ ~").decay(0.3).sustain(0).hpf(4000)'
-            ".room(0.5).roomsize(4).gain(0.06)"
-        ),
-        # Very occasional sub-bass drop: ~31 bars of silence, then a deep descending
-        # boom that swoops an octave down with a long tail.
-        (
-            f'  arrange([31, silence], [1, note("{drop}").s("sine")'
-            ".attack(0.005).decay(1.6).sustain(0).lpf(90).gain(0.72)])"
+            ".room(0.5).roomsize(4).gain(0.05)"
         ),
     ]
 
