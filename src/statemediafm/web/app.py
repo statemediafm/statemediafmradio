@@ -469,10 +469,15 @@ def create_app(state: _State | None = None):
 
     @app.get("/auth")
     def auth() -> dict:
-        """Per-source endpoints + whether a token is set (tokens are masked)."""
-        from ..auth import AUTH_SOURCES, masked_auth
+        """Endpoints + whether a token is set (masked), split into activity news
+        ``sources`` and model/LLM ``gateways`` (configured separately in the UI)."""
+        from ..auth import AUTH_GATEWAYS, AUTH_NEWS_SOURCES, masked_auth
 
-        return {"sources": list(AUTH_SOURCES), "config": masked_auth()}
+        return {
+            "sources": list(AUTH_NEWS_SOURCES),
+            "gateways": list(AUTH_GATEWAYS),
+            "config": masked_auth(),
+        }
 
     @app.post("/auth")
     def set_auth(payload: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
@@ -633,16 +638,24 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 
   <details class='section'>
     <summary>Auth</summary>
-    <p class='muted'>Personal endpoints and tokens for the sources State Media FM polls,
-    plus <code>llm-gateway</code> (the LLM/model gateway used for news parsing —
-    endpoint = its base URL, token = its API key; works with LiteLLM, OpenRouter,
-    Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.). Stored locally in a
-    gitignored file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked
-    here and never committed or sent anywhere but your own server.</p>
-    <p class='muted'>Gateway presets (fill the <code>llm-gateway</code> endpoint below
-    and suggest a news model — the API key still goes in its token field):</p>
-    <div id='presets'></div>
+    <p class='muted'>Personal endpoints and tokens for the activity sources State Media
+    FM polls (GitHub, GitLab, Jira, Slack, PagerDuty). Stored locally in a gitignored
+    file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and
+    never committed or sent anywhere but your own server.</p>
     <div id='authform'></div>
+  </details>
+
+  <details class='section'>
+    <summary>Gateways</summary>
+    <p class='muted'>Model/LLM gateways used for news parsing — configure each
+    gateway's <strong>URL</strong> (base endpoint) and <strong>auth token</strong>
+    (API key). Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted
+    vLLM/Ollama/NIM, etc. Stored in the same gitignored auth file; tokens masked,
+    never sent anywhere but your own server.</p>
+    <p class='muted'>Presets (fill a gateway's URL below and suggest a news model —
+    the API key still goes in its token field):</p>
+    <div id='presets'></div>
+    <div id='gatewayform'></div>
   </details>
 
   <details class='section'>
@@ -928,7 +941,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
 // ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
@@ -1152,31 +1165,41 @@ document.getElementById('newsmodel-discover').addEventListener('click', async ()
       ? ('discovered '+d.discovered.length+' models') : 'no models returned by the gateway';
   }catch(e){ st.textContent='error'; }
 });
+// A single endpoint/token row, shared by the Auth (news sources) and Gateways
+// sections — both POST to /auth; the placeholder differs (endpoint vs URL).
+function authRow(src, c, epPlaceholder){
+  const row=document.createElement('div'); row.className='authrow'; row.dataset.source=src;
+  row.innerHTML='<strong>'+esc(src)+'</strong> <span class="muted">'+
+    (c.token_set?('· token set '+esc(c.token_hint||'')):'· no token')+'</span>'+
+    '<input class="ep" placeholder="'+esc(epPlaceholder)+'" value="'+esc(c.endpoint||'')+'">'+
+    '<input class="tok" type="password" autocomplete="off" placeholder="'+
+      (c.token_set?'new token (blank keeps current)':'auth token')+'">'+
+    '<button>Save</button>';
+  const btn=row.querySelector('button');
+  btn.addEventListener('click', async ()=>{
+    btn.disabled=true; btn.textContent='Saving…';
+    const body={source:src, endpoint:row.querySelector('.ep').value, token:row.querySelector('.tok').value};
+    try{ await fetch('/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      await loadAuth(); await loadGateways();
+    }catch(e){ btn.disabled=false; btn.textContent='Save'; }
+  });
+  return row;
+}
 async function loadAuth(){
   const wrap=document.getElementById('authform');
   try{
     const d=await (await fetch('/auth')).json();
     wrap.innerHTML='';
-    for(const src of d.sources){
-      const c=(d.config&&d.config[src])||{};
-      const row=document.createElement('div'); row.className='authrow'; row.dataset.source=src;
-      row.innerHTML='<strong>'+esc(src)+'</strong> <span class="muted">'+
-        (c.token_set?('· token set '+esc(c.token_hint||'')):'· no token')+'</span>'+
-        '<input class="ep" placeholder="endpoint (optional)" value="'+esc(c.endpoint||'')+'">'+
-        '<input class="tok" type="password" autocomplete="off" placeholder="'+
-          (c.token_set?'new token (blank keeps current)':'token')+'">'+
-        '<button>Save</button>';
-      const btn=row.querySelector('button');
-      btn.addEventListener('click', async ()=>{
-        btn.disabled=true; btn.textContent='Saving…';
-        const body={source:src, endpoint:row.querySelector('.ep').value, token:row.querySelector('.tok').value};
-        try{ await fetch('/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-          await loadAuth();
-        }catch(e){ btn.disabled=false; btn.textContent='Save'; }
-      });
-      wrap.appendChild(row);
-    }
+    for(const src of (d.sources||[])) wrap.appendChild(authRow(src,(d.config&&d.config[src])||{},'endpoint (optional)'));
   }catch(e){ wrap.textContent='Could not load settings.'; }
+}
+async function loadGateways(){
+  const wrap=document.getElementById('gatewayform');
+  try{
+    const d=await (await fetch('/auth')).json();
+    wrap.innerHTML='';
+    for(const g of (d.gateways||[])) wrap.appendChild(authRow(g,(d.config&&d.config[g])||{},'URL (base endpoint)'));
+  }catch(e){ wrap.textContent='Could not load gateways.'; }
 }
 
 // News-parsing badge on the Player tab: live model, or the deterministic copy.

@@ -18,6 +18,10 @@ from pathlib import Path
 # URL, token = the gateway API key) used for news parsing — provider-agnostic:
 # LiteLLM, OpenRouter, Azure OpenAI, a self-hosted vLLM/Ollama/NIM, etc.
 AUTH_SOURCES = ("github", "gitlab", "jira", "slack", "pagerduty", "llm-gateway")
+# Gateways (model/LLM endpoints) are configured in their own Settings section,
+# separate from the activity news sources.
+AUTH_GATEWAYS = ("llm-gateway",)
+AUTH_NEWS_SOURCES = tuple(s for s in AUTH_SOURCES if s not in AUTH_GATEWAYS)
 
 
 def auth_path() -> Path:

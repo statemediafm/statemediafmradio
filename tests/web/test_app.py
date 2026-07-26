@@ -306,6 +306,8 @@ def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
 
     got = client.get("/auth").json()
     assert "github" in got["sources"] and got["config"]["github"]["token_set"] is False
+    # Gateways are configured separately from the news sources.
+    assert "llm-gateway" in got["gateways"] and "llm-gateway" not in got["sources"]
 
     # The token is sent in the body (never the URL) and stored gitignored.
     resp = client.post("/auth", json={"source": "github", "token": "ghp_supersecret9999"})
