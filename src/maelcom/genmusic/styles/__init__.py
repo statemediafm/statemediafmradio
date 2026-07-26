@@ -16,17 +16,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from . import entrainment, lofi, scratchpad
+from . import entrainment, lofi, modular_bleep, scratchpad, space_dub
 
 # The user-selectable ambient-generator models, in display order (default first).
 # A list so user/contributor generators can be registered at runtime (see
 # ``maelcom.genmusic.generators``).
-AMBIENT_MODELS = ["Entrainment 0.1", "ScratchPad"]
+AMBIENT_MODELS = ["Entrainment 0.1", "ScratchPad", "Space Dub", "Modular Bleep"]
 
 # Style/model name → render(signal, intensity, band, fade_ms) -> str
 STYLES: dict[str, Callable] = {
     "Entrainment 0.1": entrainment.render,
     "ScratchPad": scratchpad.render,
+    "Space Dub": space_dub.render,
+    "Modular Bleep": modular_bleep.render,
     "lofi": lofi.render,
 }
 
@@ -39,4 +41,13 @@ def register_model(name: str, render: Callable, *, ambient: bool = True) -> None
         AMBIENT_MODELS.append(name)
 
 
-__all__ = ["AMBIENT_MODELS", "STYLES", "entrainment", "lofi", "register_model", "scratchpad"]
+__all__ = [
+    "AMBIENT_MODELS",
+    "STYLES",
+    "entrainment",
+    "lofi",
+    "modular_bleep",
+    "register_model",
+    "scratchpad",
+    "space_dub",
+]

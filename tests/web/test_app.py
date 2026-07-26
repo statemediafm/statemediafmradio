@@ -55,7 +55,8 @@ def test_models_list_and_switch():
     state = _State()
     client = TestClient(create_app(state))
     listing = client.get("/models").json()
-    assert listing["models"] == ["Entrainment 0.1", "ScratchPad"]
+    assert listing["models"][:2] == ["Entrainment 0.1", "ScratchPad"]
+    assert {"Space Dub", "Modular Bleep"} <= set(listing["models"])
     assert listing["current"] == "Entrainment 0.1"  # default
 
     # Switching with a live signal recomposes immediately with the new model.
@@ -201,6 +202,25 @@ def test_personas_are_locked_without_a_license(monkeypatch):
     assert client.post("/persona", params={"name": "BBC World"}).status_code == 402
     assert state.persona is None
     assert client.post("/persona", params={"name": "Custom"}).status_code == 200
+
+
+def test_intensity_endpoint_sets_base_energy():
+    from maelcom.core.models import ActivitySignal
+
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/intensity").json() == {"current": 0.25, "band": "theta"}
+
+    resp = client.post("/intensity", params={"level": 0.9}).json()
+    assert resp["current"] == 0.9 and resp["band"] == "gamma"
+    assert state.base_intensity == 0.9
+    assert client.post("/intensity", params={"level": 2}).status_code == 400
+
+    # With a signal present, changing base energy recomposes immediately.
+    state.last_signal = ActivitySignal(window_s=0.0, volume=0, volatility=0.0,
+                                       participant_count=0)
+    client.post("/intensity", params={"level": 0.05})
+    assert state.program is not None and state.program.brainwave_band == "delta"
 
 
 def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):

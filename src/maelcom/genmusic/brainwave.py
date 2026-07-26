@@ -23,6 +23,24 @@ _BANDS: tuple[tuple[str, float], ...] = (
 # Sessions begin here — the low end of theta (plan §5.3).
 THETA_START = 0.25
 
+# The full brainwave-band mapping (plan §5.3): each band's shared *musical
+# traits*, from calmest (delta) to most focused (gamma). Generators read these so
+# every band renders distinctly and consistently — ``carrier_hz`` is the
+# entrainment pulse rate, ``density`` the note/voice busyness, ``lpf`` the
+# brightness ceiling (Hz), ``motion`` the tempo multiplier. Monotonic in each.
+BAND_TRAITS: dict[str, dict[str, float]] = {
+    "delta": {"carrier_hz": 2.0, "density": 1, "lpf": 300, "motion": 0.5},
+    "theta": {"carrier_hz": 6.0, "density": 2, "lpf": 500, "motion": 0.7},
+    "alpha": {"carrier_hz": 10.0, "density": 3, "lpf": 800, "motion": 1.0},
+    "beta": {"carrier_hz": 20.0, "density": 4, "lpf": 1200, "motion": 1.4},
+    "gamma": {"carrier_hz": 40.0, "density": 6, "lpf": 1800, "motion": 1.9},
+}
+
+
+def band_traits(band: str) -> dict[str, float]:
+    """The musical traits for ``band`` (a copy; defaults to theta if unknown)."""
+    return dict(BAND_TRAITS.get(band, BAND_TRAITS["theta"]))
+
 
 def clamp01(x: float) -> float:
     """Clamp ``x`` to the closed unit interval."""

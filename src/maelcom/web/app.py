@@ -12,6 +12,24 @@ from ..core.models import AudioRef, BroadcastPlan, StrudelProgram
 from ..core.plan import plan_to_dict
 
 
+def _recompose(store) -> None:
+    """Regenerate the music program from the last activity with the current model,
+    tuning and base energy — the shared body of the /model, /tuning and /intensity
+    switches. No-op until there's a signal to compose from."""
+    if store.last_signal is None:
+        return
+    from ..genmusic import compose
+
+    store.set_program(
+        compose(
+            store.last_signal,
+            style=store.model,
+            tuning_a=store.tuning,
+            base_intensity=store.base_intensity,
+        )
+    )
+
+
 def program_to_dict(program: StrudelProgram) -> dict:
     """JSON view of a StrudelProgram — the client plays ``text`` and crossfades
     over ``fade_ms`` between polls."""
@@ -34,6 +52,7 @@ class _State:
         self.model: str = "Entrainment 0.1"  # the selected ambient generator (default)
         self.show_selector: bool = False  # show the generator dropdown in the UI? (config)
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
+        self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
@@ -153,14 +172,12 @@ def create_app(state: _State | None = None):
     @app.post("/model")
     def set_model(name: str) -> dict:
         """Switch the ambient generator; recompose immediately if we have a signal."""
-        from ..genmusic import compose
         from ..genmusic.styles import STYLES
 
         if name not in STYLES:
             raise HTTPException(status_code=400, detail="unknown model")
         store.model = name
-        if store.last_signal is not None:
-            store.set_program(compose(store.last_signal, style=name, tuning_a=store.tuning))
+        _recompose(store)
         return {"current": store.model}
 
     @app.get("/tuning")
@@ -173,15 +190,32 @@ def create_app(state: _State | None = None):
     @app.post("/tuning")
     def set_tuning(a: float) -> dict:
         """Set the concert-A reference (Hz); recompose immediately if we have a signal."""
-        from ..genmusic import compose
         from ..genmusic.compose import TUNINGS
 
         if a not in TUNINGS:
             raise HTTPException(status_code=400, detail="unsupported tuning")
         store.tuning = a
-        if store.last_signal is not None:
-            store.set_program(compose(store.last_signal, style=store.model, tuning_a=a))
+        _recompose(store)
         return {"current": store.tuning}
+
+    @app.get("/intensity")
+    def intensity() -> dict:
+        """The user's base energy (0..1). Sessions start at this brainwave level;
+        news activity lifts the music above it (plan §5.3)."""
+        from ..genmusic import band_for_intensity
+
+        return {"current": store.base_intensity, "band": band_for_intensity(store.base_intensity)}
+
+    @app.post("/intensity")
+    def set_intensity(level: float) -> dict:
+        """Set the base energy 0..1; recompose immediately if we have a signal."""
+        from ..genmusic import band_for_intensity
+
+        if not 0.0 <= level <= 1.0:
+            raise HTTPException(status_code=400, detail="intensity must be 0..1")
+        store.base_intensity = level
+        _recompose(store)
+        return {"current": store.base_intensity, "band": band_for_intensity(level)}
 
     # A few writing-style suggestions for the UI; the field accepts any string.
     _STYLE_SUGGESTIONS = ["bbc-world", "npr", "sports-desk", "tech-brief", "noir"]
@@ -445,7 +479,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   button{font:inherit;padding:.5rem 1rem;margin:1rem 0;cursor:pointer;
          background:#111;color:#fffff8;border:0;border-radius:2px}
   button[disabled]{opacity:.6;cursor:default}
-  #modelwrap,#tuningwrap,#quietwrap{display:inline-block;margin-left:1rem}
+  #modelwrap,#tuningwrap,#quietwrap,#intensitywrap{display:inline-block;margin-left:1rem}
+  #intensity{vertical-align:middle;width:6rem}
   select{font:inherit;font-size:.85rem;margin-left:.35rem}
   #tabs{margin:.3rem 0 1rem;border-bottom:1px solid #ccc}
   #tabs a{cursor:pointer;display:inline-block;padding:.3rem .7rem;margin-right:.2rem;
@@ -494,6 +529,10 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   <select id='tuning'></select>
 </label>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
+<label class='muted' id='intensitywrap'>energy
+  <input type='range' id='intensity' min='0' max='1' step='0.05'>
+  <span id='intensity-band'></span>
+</label>
 <span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
 <ol id='runorder' hidden></ol>
@@ -638,6 +677,19 @@ async function loadQuiet(){
 }
 quietBox.addEventListener('change', async ()=>{
   try{ await fetch('/quiet?on='+(quietBox.checked?'true':'false'), {method:'POST'}); await pollMusic(); }catch(e){}
+});
+
+// Base energy — the brainwave level a session starts at; news lifts it.
+const intensityEl=document.getElementById('intensity');
+const intensityBand=document.getElementById('intensity-band');
+async function loadIntensity(){
+  try{ const d=await (await fetch('/intensity')).json();
+    intensityEl.value=d.current; intensityBand.textContent=d.band||''; }catch(e){}
+}
+intensityEl.addEventListener('change', async ()=>{
+  try{ const d=await (await fetch('/intensity?level='+encodeURIComponent(intensityEl.value), {method:'POST'})).json();
+    intensityBand.textContent=d.band||''; lastProgram=''; await pollMusic();
+  }catch(e){}
 });
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
 const newsPlayer=new Audio(); let lastNewsUrl='';
@@ -1028,7 +1080,7 @@ async function pollSchedule(){
   }catch(e){ el.hidden=true; }
 }
 
-loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); loadNewsBadge(); pollSchedule(); pollMusic(); pollNews();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollSchedule(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(loadNewsBadge, 30000);

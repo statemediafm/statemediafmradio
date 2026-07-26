@@ -18,7 +18,7 @@ from dataclasses import replace
 
 from .core.models import Script
 from .core.schedule import Programme, assemble_broadcast
-from .genmusic import activity, compose
+from .genmusic import THETA_START, activity, compose
 from .newsroom.summarize import Read, radio_reads, summarize
 from .newsroom.tts import TTSProvider, render_reads
 
@@ -159,6 +159,7 @@ def refresh_once(
                 signal,
                 style=getattr(state, "model", "Entrainment 0.1"),
                 tuning_a=getattr(state, "tuning", 440.0),
+                base_intensity=getattr(state, "base_intensity", THETA_START),
             )
         )
 
