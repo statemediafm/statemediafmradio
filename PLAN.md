@@ -72,7 +72,7 @@ fade-in/out between segments. State is per-tenant.
 ## 3. Tech stack & key decisions
 
 These are the working defaults. Where a decision is genuinely open it's marked
-**(assumption — revisit)** and echoed in §9.
+**(assumption — revisit)** and echoed in §10.
 
 | Concern | Choice | Notes |
 |---|---|---|
@@ -406,7 +406,81 @@ adding breadth.
 
 ---
 
-## 8. Testing & quality
+## 8. Commercial roadmap — the fork (paid distribution)
+
+> **This is the intended direction.** The open-core line (§7, M0–M6) stays free,
+> offline and self-hostable forever. A **commercial distribution** *forks* from it:
+> paid **modules** layered on the same pillars and gated by the licensing layer
+> (§5.9), with two **marketplaces** and an **enterprise** tier above them. Each
+> module registers a slug and guards its enable-points with `require(slug)`;
+> nothing here weakens or gates the free core. Sequencing is indicative and some
+> specifics (notably the mobile QR bootstrap protocol) are **deferred to
+> development time**.
+
+**Prerequisites that must exist first:** licensing (§5.9, *shipped* — but swap to
+asymmetric verification before selling), the streaming pillar (§5.4 / M5) for
+music modules, SSO/identity (§5.7 / M6) for enterprise modules, and the scheduler
+/ Director (§5.5, M4-A *shipped*) for ad slots.
+
+### 8.1 Content & voice modules
+- **`voice-personas` — Themed voice personas.** *Shipped (M4-C).* Curated on-air
+  identities (BBC World, John Peel, Public Radio) = writing-style + voice +
+  station-phrasing bundles. Free tier = the Custom style/voice controls.
+- **`premium-voices` — Commercially licensed voices.** High-quality / licensed TTS
+  voices beyond the free Piper set, slotting into the `TTSProvider` abstraction
+  (§5.2). Likely per-voice sub-entitlements. *Legal:* per-voice / vendor voice
+  licensing and consent.
+
+### 8.2 Music streaming modules (extend §5.4 / M5)
+- **`apple-music` — Apple Music integration.** Fills song slots (`SongCue`) via
+  MusicKit; user-authorised playback. Requires the M5 streaming pillar.
+- *(Spotify desktop/base playback is M5 itself; the mobile surface is `ios-spotify`
+  in §8.4.)*
+
+### 8.3 Enterprise & identity modules (extend §5.7 / M6)
+- **`entra-authz` — Microsoft Entra ID federated authorization to news sources.**
+  Delegated / on-behalf-of per-user tokens to sources (GitHub Enterprise, Jira,
+  internal APIs) via Entra OIDC, honouring source-side scopes and per-user ACLs
+  (§5.7). Enterprise SSO for the station itself.
+- **`enterprise-ad-free` — Ad-free mode for enterprises.** An entitlement that
+  suppresses the ad marketplace (§8.5) station-wide — the inverse gate: present =
+  no ads aired.
+
+### 8.4 Mobile companion apps
+- **`ios-app` — iPhone app.** Acquires the user's news-site config + source tokens
+  from a running station via a **QR code**, using a **security protocol the user
+  will specify at development time** (⚠ deferred). Constraint: source tokens are
+  sensitive — the handoff must never expose long-lived secrets; assume ephemeral,
+  scoped, channel-bound, one-time, with on-device confirmation until the protocol
+  is fixed.
+- **`ios-spotify` — Spotify in the iPhone app.** Mobile song-slot playback /
+  account link inside `ios-app`.
+
+### 8.5 Marketplaces (two-sided platforms)
+- **`avatar-marketplace` — Announcer persona avatar marketplace.** Creators
+  publish/sell announcer **avatars** (visual + voice + persona bundle); revenue
+  share. Builds on `voice-personas` (+ `premium-voices` for licensed voices).
+- **`ad-marketplace` — Advertiser marketplace.** Advertisers buy **targeted ads of
+  a fixed length**, delivered as **text the news announcer reads** in dedicated ad
+  slots. Needs: ad-slot cues in the Director (§5.5 — an ad cue alongside news/song,
+  respecting the felt cadence), targeting + billing + payouts, brand-safety review,
+  and the read voiced in the active persona. `enterprise-ad-free` (§8.3) opts an
+  org out. *Legal:* sponsorship-disclosure / advertising-standards obligations.
+
+### 8.6 Business-model & risk notes
+- **Licensing:** all gates use §5.9; **must** move HMAC → asymmetric (or a signing
+  license server) before any paid release.
+- **Marketplaces** are two-sided: billing, payouts, creator/advertiser onboarding,
+  and content review are net-new subsystems, not just modules.
+- **Provider ToS / legal:** Apple Music, Spotify, voice-vendor, Entra, and
+  ad-standards compliance each need a review before their module ships (echoes §9).
+- **Trust boundary:** the mobile QR handoff and Entra delegation both move real
+  credentials — treat as security-critical; the QR protocol spec is a blocking
+  prerequisite for `ios-app`.
+
+---
+
+## 9. Testing & quality
 
 - **Per-pillar unit tests** against contracts, using fakes for LLM/TTS/music so
   the suite runs offline and deterministically.
@@ -418,7 +492,7 @@ adding breadth.
 
 ---
 
-## 9. Open questions (resolve before the milestone that needs them)
+## 10. Open questions (resolve before the milestone that needs them)
 
 1. ~~**LLM provider (M1):**~~ **Resolved** — LiteLLM behind an `LLMClient`
    interface, model selection via `model_config.yaml`; dev default routes to the
