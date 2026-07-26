@@ -45,6 +45,9 @@ class _State:
         self.news_max_tokens: int | None = None  # live [llm] length override
         self.style: str = "bbc-world"  # live-selectable writing style for the news
         self.voice: str = "alan"  # live-selectable narration voice (Piper)
+        self.persona: str | None = None  # selected themed persona (None → Custom)
+        self.ident: str | None = None  # persona station-ident line (None → default)
+        self.signoff: str | None = None  # persona sign-off line (None → default)
         # Live roster: the refresh loop reads these; the Settings tab edits them.
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
@@ -213,6 +216,64 @@ def create_app(state: _State | None = None):
             raise HTTPException(status_code=400, detail="unknown voice")
         store.voice = name
         return {"current": store.voice}
+
+    @app.get("/persona")
+    def persona() -> dict:
+        """The themed personas (a **commercial module**), the current pick, and
+        whether the ``voice-personas`` module is licensed. Unlicensed, only
+        ``Custom`` (free-form style/voice, default phrasing) may be selected."""
+        from ..licensing import entitled
+        from ..newsroom.personas import MODULE, persona_names
+
+        return {
+            "current": store.persona or "Custom",
+            "personas": persona_names(),
+            "licensed": entitled(MODULE),
+            "module": MODULE,
+        }
+
+    @app.post("/persona")
+    def set_persona(name: str) -> dict:
+        """Select a persona — sets style, voice and station phrasing together — or
+        ``Custom`` to keep the free-form controls and default phrasing. Selecting a
+        persona requires the ``voice-personas`` license (402 otherwise). Next cycle."""
+        from ..licensing import LicenseError, require
+        from ..newsroom.personas import MODULE, get_persona
+
+        if name == "Custom":
+            store.persona = store.ident = store.signoff = None
+            return {"current": "Custom", "style": store.style, "voice": store.voice}
+        p = get_persona(name)
+        if p is None:
+            raise HTTPException(status_code=400, detail="unknown persona")
+        try:
+            require(MODULE)  # commercial gate — open-core has Custom only
+        except LicenseError as exc:
+            raise HTTPException(status_code=402, detail=str(exc)) from exc
+        store.persona = p.name
+        store.style, store.voice = p.style, p.voice
+        store.ident, store.signoff = p.ident, p.signoff
+        return {"current": p.name, "style": p.style, "voice": p.voice}
+
+    @app.get("/license")
+    def license_() -> dict:
+        """Licensing status: whether a key is present and which commercial modules
+        it unlocks (the key itself is never returned)."""
+        from ..licensing import license_status
+
+        return license_status()
+
+    @app.post("/license")
+    def set_license(payload: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
+        """Save a license key (taken from the request body, never the URL) to the
+        gitignored license file, unlocking its commercial modules."""
+        from ..licensing import license_status, save_license
+
+        key = (payload.get("key") or "").strip()
+        if not key:
+            raise HTTPException(status_code=400, detail="empty key")
+        save_license(key)
+        return license_status()
 
     @app.get("/news-model")
     def news_model() -> dict:
@@ -457,8 +518,20 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   </div>
 
   <h2>Narration</h2>
-  <p class='muted'>The news writing style (a free-form prompt hint) and the
-  speaking voice. Applies to the next news cycle.</p>
+  <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
+  station-phrasing bundle), or <em>Custom</em> to set the style and voice yourself.
+  Applies to the next news cycle.</p>
+  <div class='authrow'>
+    <label class='muted'>persona <select id='persona-sel'></select></label>
+    <span class='muted' id='persona-lock'></span>
+  </div>
+  <div class='authrow' id='license-row' hidden>
+    <p class='muted'>Themed personas are a commercial module. Paste a license key to
+    unlock, or continue with <em>Custom</em>.</p>
+    <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
+    <button id='license-save'>Unlock</button>
+    <span class='muted' id='license-status'></span>
+  </div>
   <div class='authrow'>
     <label class='muted'>style
       <input id='style-input' list='style-list' placeholder='e.g. bbc-world'>
@@ -685,9 +758,25 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   if(tab==='settings'){ loadSources(); loadNarration(); loadNewsModel(); loadPresets(); loadAuth(); }
 }));
 
-// ── Narration: writing style + speaking voice ────────────────────────────────
+// ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
+const personaSel=document.getElementById('persona-sel');
 async function loadNarration(){
   try{
+    const p=await (await fetch('/persona')).json();
+    const licensed = !!p.licensed;
+    personaSel.innerHTML='';
+    for(const x of ['Custom', ...(p.personas||[])]){
+      const o=document.createElement('option'); o.value=x; o.textContent=x;
+      // Personas are a commercial module: lock them until licensed.
+      if(x!=='Custom' && !licensed){ o.disabled=true; o.textContent=x+' 🔒'; }
+      if(x===p.current) o.selected=true; personaSel.appendChild(o);
+    }
+    document.getElementById('persona-lock').textContent = licensed ? '' : '· commercial module';
+    document.getElementById('license-row').hidden = licensed;
+    const custom = (p.current||'Custom')==='Custom';
+    // Custom → the style/voice fields are yours to set; a persona drives them.
+    document.getElementById('style-input').disabled = !custom;
+    document.getElementById('voice-sel').disabled = !custom;
     const s=await (await fetch('/style')).json();
     const inp=document.getElementById('style-input'); inp.value=s.current||'';
     const dl=document.getElementById('style-list'); dl.innerHTML='';
@@ -698,6 +787,30 @@ async function loadNarration(){
       if(x===v.current) o.selected=true; sel.appendChild(o); }
   }catch(e){}
 }
+personaSel.addEventListener('change', async ()=>{
+  const st=document.getElementById('narration-status'); st.textContent='saving…';
+  try{
+    const r=await fetch('/persona?name='+encodeURIComponent(personaSel.value), {method:'POST'});
+    if(!r.ok){ const e=await r.json().catch(()=>({}));
+      st.textContent = r.status===402 ? 'locked — add a license key' : ('error: '+(e.detail||r.status));
+      return; }
+    await loadNarration(); loadNewsBadge();
+    st.textContent = personaSel.value==='Custom' ? 'custom' : ('persona: '+personaSel.value+' (next cycle)');
+  }catch(e){ st.textContent='error'; }
+});
+document.getElementById('license-save').addEventListener('click', async ()=>{
+  const st=document.getElementById('license-status'); st.textContent='checking…';
+  const key=document.getElementById('license-key').value.trim(); if(!key) return;
+  try{
+    const r=await fetch('/license',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ st.textContent='error: '+(d.detail||r.status); return; }
+    const ok=(d.modules||[]).some(m=>m.entitled);
+    st.textContent = ok ? 'unlocked' : 'key saved, but no modules unlocked';
+    document.getElementById('license-key').value='';
+    await loadNarration();
+  }catch(e){ st.textContent='error'; }
+});
 document.getElementById('narration-save').addEventListener('click', async ()=>{
   const st=document.getElementById('narration-status'); st.textContent='saving…';
   const style=document.getElementById('style-input').value.trim();

@@ -27,7 +27,7 @@ _QUIET_LEAD_MIN, _QUIET_LEAD_MAX = 60, 180
 _QUIET_TAIL = 60  # keep the music ~1 minute after the news, then go silent
 
 
-def _segment_reads(items, style, headlines, llm) -> list[Read]:
+def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) -> list[Read]:
     """The ``Read`` chunks for one segment.
 
     With a live ``llm`` (a ``(client, cfg)`` pair) the segment is written by the
@@ -35,7 +35,7 @@ def _segment_reads(items, style, headlines, llm) -> list[Read]:
     A live-model failure degrades to the deterministic ``radio_reads`` copy and
     prints a note, so a flaky gateway can't take the broadcast off air. Offline
     (the default) it's the deterministic reads with their per-headline pauses and
-    per-source voices.
+    per-source voices. ``ident``/``signoff`` are the persona's station phrasing.
     """
     if llm is not None:
         client, cfg = llm
@@ -44,15 +44,17 @@ def _segment_reads(items, style, headlines, llm) -> list[Read]:
             return [Read("other", script.text)]
         except Exception as exc:  # noqa: BLE001 — degrade to offline copy, stay on air
             print(f"live summarize failed ({exc}); using deterministic copy", file=sys.stderr)
-    return radio_reads(items, style, max_headlines=headlines or 5)
+    return radio_reads(items, style, max_headlines=headlines or 5, ident=ident, signoff=signoff)
 
 
 def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None) -> None:
     voice = getattr(state, "voice", None)  # live-selectable narration voice
+    ident = getattr(state, "ident", None)  # persona station phrasing
+    signoff = getattr(state, "signoff", None)
     programmes: list[Programme] = []
     content: dict = {}
     for topic, items, _cadence, headlines in per_topic:
-        reads = _segment_reads(items, style, headlines, llm)
+        reads = _segment_reads(items, style, headlines, llm, ident=ident, signoff=signoff)
         script = Script(text=" ".join(r.text for r in reads), style=style)
         audio = render_reads(
             reads, tts, style=style, voice=voice, headline_pause_ms=headline_pause_ms

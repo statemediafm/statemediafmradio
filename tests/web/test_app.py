@@ -187,6 +187,63 @@ def test_style_and_voice_endpoints():
     assert client.post("/voice", params={"name": "nope"}).status_code == 400
 
 
+def test_personas_are_locked_without_a_license(monkeypatch):
+    monkeypatch.delenv("MAELCOM_LICENSE", raising=False)
+    monkeypatch.setenv("MAELCOM_LICENSE_FILE", "/nonexistent/maelcom.license")
+    state = _State()
+    client = TestClient(create_app(state))
+
+    d = client.get("/persona").json()
+    assert d["current"] == "Custom" and d["licensed"] is False
+    assert "BBC World" in d["personas"]  # listed, but locked
+
+    # Selecting a persona without the license is rejected (402), Custom is free.
+    assert client.post("/persona", params={"name": "BBC World"}).status_code == 402
+    assert state.persona is None
+    assert client.post("/persona", params={"name": "Custom"}).status_code == 200
+
+
+def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
+    from maelcom.licensing import sign_license
+    from maelcom.newsroom.personas import MODULE
+
+    monkeypatch.setenv("MAELCOM_LICENSE", sign_license([MODULE]))
+    state = _State()
+    client = TestClient(create_app(state))
+
+    assert client.get("/persona").json()["licensed"] is True
+    resp = client.post("/persona", params={"name": "BBC World"}).json()
+    assert resp["current"] == "BBC World"
+    assert state.persona == "BBC World"
+    assert state.style == "bbc-world" and state.voice == "alan"
+    assert state.ident and state.signoff  # station phrasing set
+
+    # Custom clears the persona and its phrasing (back to defaults).
+    client.post("/persona", params={"name": "Custom"})
+    assert state.persona is None and state.ident is None and state.signoff is None
+    assert state.style == "bbc-world"  # keeps the last style/voice
+
+    assert client.post("/persona", params={"name": "Nope"}).status_code == 400
+
+
+def test_license_endpoint_saves_key_and_unlocks(monkeypatch, tmp_path):
+    from maelcom.licensing import sign_license
+    from maelcom.newsroom.personas import MODULE
+
+    monkeypatch.delenv("MAELCOM_LICENSE", raising=False)
+    monkeypatch.setenv("MAELCOM_LICENSE_FILE", str(tmp_path / "maelcom.license"))
+    client = TestClient(create_app(_State()))
+
+    assert client.get("/license").json()["has_key"] is False
+    # An invalid key saves but unlocks nothing.
+    bad = client.post("/license", json={"key": "not-a-real-key"}).json()
+    assert all(not m["entitled"] for m in bad["modules"])
+    # A valid key unlocks the voice-personas module.
+    good = client.post("/license", json={"key": sign_license([MODULE])}).json()
+    assert any(m["slug"] == MODULE and m["entitled"] for m in good["modules"])
+    assert client.get("/persona").json()["licensed"] is True
+
+
 def test_news_model_temperature_and_max_tokens():
     state = _State()
     state.news_model = "openai/gpt-4o-mini"

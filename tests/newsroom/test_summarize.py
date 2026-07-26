@@ -194,6 +194,23 @@ def test_radio_reads_marks_headlines_and_greeting():
     assert "Deploy window moved to 14:00." in headlines
 
 
+def test_radio_reads_uses_persona_ident_and_signoff():
+    reads = radio_reads(_items(), "bbc-world",
+                        ident="This is the world service.",
+                        signoff="Do stay with us.")
+    texts = [r.text for r in reads]
+    assert "This is the world service." in texts
+    assert texts[-1] == "Do stay with us."
+    # The default firmwide phrasing is replaced, not appended.
+    assert "This is the firmwide radio service." not in texts
+
+
+def test_radio_reads_defaults_to_firmwide_phrasing():
+    texts = [r.text for r in radio_reads(_items(), "bbc-world")]
+    assert "This is the firmwide radio service." in texts
+    assert texts[-1] == "And that's the latest from the newsroom. More as it develops."
+
+
 def test_is_bot_detects_automation_but_not_people():
     for bot in ["dependabot[bot]", "codecov[bot]", "github-actions[bot]", "renovate",
                 "snyk-bot", "pre-commit_ci_bot", "MeltyBot"]:

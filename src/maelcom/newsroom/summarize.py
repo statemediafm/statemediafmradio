@@ -15,6 +15,7 @@ from typing import NamedTuple
 from ..core.models import NewsItem, Script
 from ..core.people import is_bot
 from .llm import LLMClient, LLMConfig
+from .personas import DEFAULT_IDENT, DEFAULT_SIGNOFF
 
 
 class Read(NamedTuple):
@@ -101,7 +102,13 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
 
 
 def radio_reads(
-    items: list[NewsItem], style: str, *, greeting: str | None = None, max_headlines: int = 5
+    items: list[NewsItem],
+    style: str,
+    *,
+    greeting: str | None = None,
+    max_headlines: int = 5,
+    ident: str | None = None,
+    signoff: str | None = None,
 ) -> list[Read]:
     """The broadcast read as an ordered list of ``Read`` chunks.
 
@@ -162,7 +169,7 @@ def radio_reads(
     reads: list[Read] = []
     if greeting:
         reads.append(Read("other", greeting))
-    reads.append(Read("other", "This is the firmwide radio service."))
+    reads.append(Read("other", ident or DEFAULT_IDENT))
     reads.append(Read("pause", "", "2"))  # a double pause after the station ident
     volume_line = (
         f"In the latest update there {'were' if plural else 'was'} "
@@ -190,7 +197,7 @@ def radio_reads(
     # before the sign-off (headline→other); add one more.
     if order:
         reads.append(Read("pause", "", "1"))
-    reads.append(Read("other", "And that's the latest from the newsroom. More as it develops."))
+    reads.append(Read("other", signoff or DEFAULT_SIGNOFF))
     return reads
 
 

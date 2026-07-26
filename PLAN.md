@@ -264,6 +264,46 @@ profiles:
 - **Responsibility:** `uvx maelcom demo` for zero-config local run; container
   image for hosted multi-tenant deployment; config via file + env.
 
+### 5.9 Commercial modules & licensing (open-core, cross-cutting)
+Maelcom is **open-core**. The base station — sources, the deterministic news
+copy, the generative music, the browser player — is free, fully offline, and
+never needs a key. A **commercial distribution** adds *modules* (the first being
+**themed voice personas**, `voice-personas`) that are unlocked by a **license
+key**. Implemented in `maelcom/licensing.py`.
+
+- **Entitlement model.** Each commercial feature registers a stable module
+  **slug** via `register_module(slug, name, description)`. The feature's
+  enable-points guard on `entitled(slug)` / `require(slug)` (raises
+  `LicenseError`). Everything not gated is free.
+- **Key resolution.** `$MAELCOM_LICENSE`, else a gitignored `maelcom.license`
+  file (`$MAELCOM_LICENSE_FILE` overrides), else open-core only. The key is never
+  logged or returned by the API. Web: `GET /license` (status — modules +
+  `entitled` flags, never the key), `POST /license` (save key in the body).
+- **Offline verification, no phone-home.** A key is a signed token verified
+  locally; nothing is sent anywhere. Stdlib only (`hmac`/`hashlib`/`base64`),
+  so it works in the zipapp. `["*"]` in a key unlocks everything; `exp` is an
+  optional epoch expiry.
+- **Enforcement is server-side, at the enable-point** (e.g. `POST /persona`
+  returns **402** unlicensed), not merely hidden in the UI. The UI reflects the
+  lock (personas shown 🔒, a key field to unlock) but is not the gate.
+- **⚠ Scaffold vs. shipped.** The current verifier is an **HMAC-signed token** —
+  fine to scaffold the gate and issue dev keys (`sign_license`), but a shipped
+  product **must** replace the shared secret with **asymmetric** verification (an
+  Ed25519/RSA *public* key baked in; private key held by the vendor) or a signing
+  license server, because a shared HMAC secret lives in the verifying binary and
+  can be extracted. This swap is isolated to `licensing._secret`/`_verify`.
+
+**When does a new feature need licensing scaffolding?** Decide per feature — most
+do **not**. A feature is gated **only if all three hold**: (1) it ships in the
+commercial distribution, not the open core; (2) it adds material value a paying
+user would expect to pay for (a curated pack, an integration, a scale/ops
+capability) — *not* a core primitive, bug-fix, or table-stakes control; and
+(3) it can be cleanly disabled, leaving a coherent free experience (personas →
+fall back to the free Custom style/voice). If gated: `register_module(slug, …)`
+and wrap the enable-points with `require(slug)` — no other change (the license
+core already exists). If free (the default — base sources, the offline copy,
+genmusic, the scheduler, narration Custom controls): **do nothing**, add no slug.
+
 ---
 
 ## 6. Integration contracts (the core data model)
@@ -344,7 +384,9 @@ adding breadth.
 ### M4 — Rhythm of the day + voices + styles breadth
 - Scheduler: news every n-min (default 15, −9 offset), song slots (stubbed),
   music between; 2–5 min felt cadence.
-- Themed voice modules (start: BBC world, John Peel, public radio).
+- Themed voice **personas** (start: BBC World, John Peel, Public Radio) — the
+  first **commercial module** (`voice-personas`, license-gated; see §5.9). The
+  free Custom style/voice controls remain open-core.
 - More music styles (space-dub, modular bleep) + full brainwave-band mapping +
   user base-intensity setting.
 - **Demo:** a full "hour of radio" with news/music/song-slot pacing.

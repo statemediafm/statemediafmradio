@@ -21,3 +21,7 @@ voxs
 # Personal auth tokens / endpoints (secrets — never commit; written by the UI)
 maelcom.auth.toml
 *.auth.toml
+
+# Commercial license key (never commit)
+maelcom.license
+*.license
