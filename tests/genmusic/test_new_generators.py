@@ -74,40 +74,24 @@ def test_space_dub_tempo_tracks_the_entrainment_carrier():
     assert fasts == sorted(fasts) and fasts[0] < fasts[-1]
 
 
-def test_space_dub_uses_the_curated_rhythm_bank():
-    # Every render names the genre groove it drew from the 12-pattern bank.
-    names = {name for name, _ in space_dub._RHYTHMS}
-    used = {space_dub.render(_signal(v, v % 5), 0.5, "alpha").split("groove=")[1].split(" ")[0]
-            for v in range(30)}
-    assert used <= names and len(used) >= 3  # variety, all from the bank
+def test_space_dub_uses_curated_riffs_from_the_genre_banks():
+    # Every render names its genre; all three banks appear across signals, and the
+    # bass is a curated riff (key-relative degrees), not random note placement.
+    used = {space_dub.render(_signal(v, v % 5), 0.5, b).split("groove=")[1].split(" ")[0]
+            for v in range(30) for b in ("theta", "gamma")}
+    assert used <= {"dub", "reggae", "dnb"} and len(used) == 3
+    text = space_dub.render(_signal(8, 3), 0.4, "theta")
+    assert any(riff.replace('"', "") in text  # the placed riff is a curated one
+               for pool in space_dub._RIFFS.values() for riff in pool)
 
 
-def test_space_dub_places_notes_only_on_rhythm_onsets():
-    # The generator puts pitches on a rhythm's onsets and leaves its rests as rests.
-    _, pattern = space_dub._RHYTHMS[8]  # dnb-roll
-    seq = space_dub._place(pattern, ("c1", "eb1", "g0"), seed=5)
-    tokens = seq.split(" ")
-    assert len(tokens) == len(pattern)  # same 16-step grid
-    assert sum(t != "~" for t in tokens) == pattern.count("x")  # notes == onsets
-    assert tokens[0] == "c1"  # first onset anchored to the root
-
-
-def test_space_dub_reaches_dnb_for_texture_on_calm_bands():
-    # Calm bands lean dub/reggae but the seed sometimes reaches into DnB.
-    picks = {space_dub._pick_rhythm(1, seed) for seed in range(40)}
-    assert picks & set(space_dub._DNB) and picks & set(space_dub._DUB_REGGAE)
-
-
-def test_space_dub_syncopation_adds_offbeat_onsets():
-    # More off-beat onsets as the amount rises; only off-beat rests get filled.
-    pat = space_dub._RHYTHMS[1][1]  # dub-stepper "x.......x......."
-    quiet = space_dub._syncopate(pat, seed=3, amount=0.0)
-    busy = space_dub._syncopate(pat, seed=3, amount=1.0)
-    assert quiet == pat  # amount 0 leaves the groove untouched
-    assert busy.count("x") > pat.count("x")  # more onsets when syncopated
-    # Quarter-note beats (steps 0,4,8,12) are never overwritten — syncopation is
-    # strictly off the beat.
-    assert all(busy[i] == pat[i] for i in (0, 4, 8, 12))
+def test_space_dub_wires_the_dub_building_blocks():
+    # Drum machine (samples), bass synth (round + key-relative riff), lead skank
+    # with delay — the classic dub kit, all present.
+    text = space_dub.render(_signal(10, 3), 0.4, "theta")
+    assert 's("bd")' in text and 's("sd")' in text and 's("hh")' in text  # drum machine
+    assert '.scale("c1:minor:pentatonic").s("triangle")' in text  # deep bass synth
+    assert '"~ x ~ x ~ x ~ x"' in text and ".delay(" in text  # off-beat skank + delay
 
 
 def _synco_of(text: str) -> float:
@@ -132,12 +116,11 @@ def test_space_dub_emits_only_verified_primitives(band):
         assert bad not in text
 
 
-def test_space_dub_chime_evolves_over_long_timescales():
-    # The chime must not sit still for hours: long mutually-prime LFOs (sampled
-    # from the global clock) + a wandering 8-chord cycle + bar-to-bar A/B stabs.
+def test_space_dub_pad_evolves_over_long_timescales():
+    # The atmosphere pad must not sit still for hours: long mutually-prime LFOs
+    # (sampled from the global clock) on a wandering 8-chord cycle.
     text = space_dub.render(_signal(14, 3), 0.5, "theta")
-    chime = next(ln for ln in text.splitlines() if "chord(" in ln)
-    assert ".slow(31)" in chime and ".slow(23)" in chime and ".slow(29)" in chime
-    assert chime.count(" ") > 0 and "<[" in chime  # A/B alternation in the loop
-    # eight-chord wandering cycle (longer than the 4-chord bass progression)
-    assert any(chord in chime for chord in ("Bbmaj7", "Gmaj7", "Cm11", "Dm11", "Fm11"))
+    pad = next(ln for ln in text.splitlines() if ".slow(31)" in ln)
+    assert ".slow(31)" in pad and ".slow(23)" in pad and ".slow(29)" in pad
+    # eight-chord wandering cycle (longer than the 4-chord skank progression)
+    assert any(chord in pad for chord in ("Bbmaj7", "Gmaj7", "Cm11", "Dm11", "Fm11"))

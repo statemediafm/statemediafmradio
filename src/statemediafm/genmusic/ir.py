@@ -27,9 +27,9 @@ from dataclasses import dataclass
 # small — each has been exercised and confirmed audible in @strudel/web 1.0.3.
 VERIFIED_METHODS = frozenset(
     {
-        "s", "struct", "voicing", "lpf", "hpf", "room", "roomsize", "delay",
-        "delaytime", "delayfeedback", "decay", "sustain", "attack", "gain",
-        "pan", "slow", "fast", "late", "range",
+        "s", "struct", "voicing", "scale", "lpf", "hpf", "room", "roomsize",
+        "delay", "delaytime", "delayfeedback", "decay", "sustain", "attack",
+        "gain", "pan", "slow", "fast", "late", "range",
     }
 )
 VERIFIED_FUNCS = frozenset({"note", "n", "chord", "s", "sine", "silence", "stack", "arrange"})
@@ -73,6 +73,7 @@ class Voice:
     sound: str  # waveform ("sawtooth"/"sine"/…) or noise ("white")
     segments: tuple[Seg, ...]
     chord: str = ""  # progression, for kind == "chord"
+    scale: str = ""  # e.g. "c1:minor:pentatonic" — makes note steps key-relative degrees
     gain: float = 0.5
     lpf: float | None = None
     hpf: float | None = None
@@ -121,7 +122,10 @@ def _core(v: Voice, body: str) -> str:
     filters + fx + LFO mods + gain. Swing and constant lay-back are added by the
     caller so they wrap the whole (possibly stacked) pattern."""
     if v.kind == "note":
-        s = f'note("{body}").s("{v.sound}")'
+        if v.scale:  # key-relative degrees: n("0 3 -5").scale("c1:minor:pentatonic")
+            s = f'n("{body}").scale("{v.scale}").s("{v.sound}")'
+        else:
+            s = f'note("{body}").s("{v.sound}")'
     elif v.kind == "chord":
         s = f'chord("{v.chord}").voicing().s("{v.sound}").struct("{body}")'
     else:  # perc
