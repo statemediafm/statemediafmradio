@@ -403,6 +403,12 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   .srcrow button{margin:0;padding:.25rem .6rem;font-size:.8rem;background:transparent;
                  color:inherit;border:1px solid #bbb;border-radius:2px}
   #newsbadge{margin-left:1rem}
+  #runorder{list-style:none;padding:0;margin:.6rem 0;font-size:.85rem;columns:2;color:#555}
+  #runorder li{padding:.05rem 0}
+  #runorder li.now{color:#111;font-weight:bold}
+  #runorder li.done{opacity:.45}
+  #runorder .t{display:inline-block;width:3.2rem;color:#999}
+  @media(prefers-color-scheme:dark){#runorder{color:#aaa} #runorder li.now{color:#eee}}
   @media(prefers-color-scheme:dark){
     #tabs{border-color:#333} #tabs a.active{color:#eee;border-bottom-color:#eee}
     .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
@@ -429,6 +435,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
+<ol id='runorder' hidden></ol>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
@@ -562,20 +569,51 @@ quietBox.addEventListener('change', async ()=>{
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
 const newsPlayer=new Audio(); let lastNewsUrl='';
 
-// Play the current program; while the news reads, duck the music by scaling the
-// whole stack's gain (drop the fadeIn so the toggle is immediate).
+// Ducking — the radio-production principles applied within the browser's limits.
+//   DEPTH: shallow, ~6-9 dB (gain 0.45 ≈ -7 dB), not the -12/-15 dB that makes
+//     the bed feel like it left the room.
+//   ATTACK fast (immediate on the first syllable), RELEASE slow and musical: the
+//     bed swells back ~600 ms AFTER the last word, not under it — the news tail is
+//     faded so it tapers into the returning music (never a hard stop = an exit).
+//   NEVER TO SILENCE: the bed keeps playing under the voice; releases overlap.
+// Honest limits of @strudel/web 1.0.3: gain is set by re-evaluating the pattern
+// (no master-gain automation, and a re-eval mid-note glitches), so a true ramped
+// or midrange-only (1-4 kHz) sidechain isn't possible here — those, plus on-air
+// processor AGC compensation, await a server-side mix. We do the shallow full-band
+// duck + a faded, delayed release, which is the audible 80%.
+const DUCK={GAIN:0.45, RELEASE_MS:600, NEWS_FADE_MS:500};
+let releaseTimer=null;
 async function playCurrent(){
   if(!currentProg) return;
   const base=currentProg.replace(/\.fadeIn\([0-9.]+\)\s*$/,'');
-  const code=ducked?base+'.gain(0.25)':currentProg;
+  const code=ducked?base+'.gain('+DUCK.GAIN+')':currentProg;
   // evaluate() is async; await it so a rejection is caught here (not "uncaught").
   try{ await evaluate(code); }
   catch(e){ console.error('strudel:',e); statusEl.textContent='music error: '+((e&&e.message)||e); }
 }
 function setDuck(on){ if(started && ducked!==on){ ducked=on; playCurrent(); } }
-newsPlayer.addEventListener('play', ()=>setDuck(true));
-newsPlayer.addEventListener('ended', ()=>setDuck(false));
-newsPlayer.addEventListener('pause', ()=>setDuck(false));
+// Fade the news element's tail over NEWS_FADE_MS so the voice tapers out.
+function fadeNewsOut(){
+  const steps=10, dt=DUCK.NEWS_FADE_MS/steps; let v=newsPlayer.volume;
+  const iv=setInterval(()=>{ v-=1/steps; if(v<=0){ newsPlayer.volume=0; clearInterval(iv); }
+    else newsPlayer.volume=v; }, dt);
+}
+newsPlayer.addEventListener('play', ()=>{
+  if(releaseTimer){ clearTimeout(releaseTimer); releaseTimer=null; }
+  newsPlayer.volume=1; setDuck(true);   // fast attack, full voice
+});
+function scheduleRelease(){
+  // Slow, musical release: hold the (shallow) duck a beat, let the bed swell back.
+  if(releaseTimer) clearTimeout(releaseTimer);
+  releaseTimer=setTimeout(()=>{ setDuck(false); releaseTimer=null; }, DUCK.RELEASE_MS);
+}
+// Near the end, taper the voice; on end/pause, release after the overlap window.
+newsPlayer.addEventListener('timeupdate', ()=>{
+  if(newsPlayer.duration && newsPlayer.duration-newsPlayer.currentTime<=DUCK.NEWS_FADE_MS/1000
+     && newsPlayer.volume>0.99) fadeNewsOut();
+});
+newsPlayer.addEventListener('ended', scheduleRelease);
+newsPlayer.addEventListener('pause', scheduleRelease);
 
 let musicSilenced=false;
 async function pollMusic(){
@@ -854,10 +892,34 @@ async function loadNewsBadge(){
   }catch(e){}
 }
 
-loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews();
+// Running order (rhythm of the day): the hour's news / song / ident cues, with
+// the current position highlighted and past cues dimmed.
+const CUE_LABEL={news:'News bulletin', song:'Song slot', ident:'Station ident'};
+function fmtClock(s){ const m=Math.floor(s/60); return (m<60?m+'m':(Math.floor(m/60)+'h'+(m%60?(m%60+'m'):''))); }
+async function pollSchedule(){
+  const el=document.getElementById('runorder');
+  try{
+    const d=await (await fetch('/schedule')).json();
+    if(!d.live){ el.hidden=true; return; }
+    el.hidden=false; el.innerHTML='';
+    const now=d.elapsed_s%d.window_s;  // position within the repeating hour
+    let curIdx=-1;
+    d.order.forEach((c,i)=>{ if(c.at_s<=now) curIdx=i; });
+    d.order.forEach((c,i)=>{
+      const li=document.createElement('li');
+      li.className = i===curIdx?'now':(i<curIdx?'done':'');
+      const label = c.kind==='news' && c.topic ? ('News · '+c.topic) : CUE_LABEL[c.kind]||c.kind;
+      li.innerHTML='<span class="t">'+esc(fmtClock(c.at_s))+'</span>'+esc(label);
+      el.appendChild(li);
+    });
+  }catch(e){ el.hidden=true; }
+}
+
+loadModels(); loadTunings(); loadQuiet(); loadBroadcast(); loadNewsBadge(); pollSchedule(); pollMusic(); pollNews();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(loadNewsBadge, 30000);
+setInterval(pollSchedule, 20000);
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
 const cv=document.getElementById('viz'), ctx=cv.getContext('2d');
