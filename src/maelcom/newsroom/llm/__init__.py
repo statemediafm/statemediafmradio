@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from .base import DEFAULT_CONFIG_PATH, LLMClient, LLMConfig, llm_config, load_model_config
 from .fake import FakeLLMClient
-from .litellm_client import LiteLLMClient
+from .litellm_client import LiteLLMClient, discover_models, resolve_gateway
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
@@ -18,6 +18,8 @@ __all__ = [
     "LLMClient",
     "LLMConfig",
     "LiteLLMClient",
+    "discover_models",
     "llm_config",
     "load_model_config",
+    "resolve_gateway",
 ]

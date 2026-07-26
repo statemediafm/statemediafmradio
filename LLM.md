@@ -35,11 +35,20 @@ models = ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "ollama/llama3.1"
 
 `maelcom serve --live` runs the LLM as the news writer (the gateway *parses* the
 activity into prose). The **Settings tab** then shows a **News-parsing model**
-picker: choose one of the `[llm] models` above, or type any model string the
-gateway serves. The change applies to the next news cycle — no restart. Without
+picker: choose one of the `[llm] models` above, type any model string the gateway
+serves, or click **↻ Discover from gateway** to auto-populate the list from the
+gateway itself. The change applies to the next news cycle — no restart. Without
 `--live`, news is the deterministic offline copy and the picker is hidden. A
 gateway error during a cycle degrades gracefully to the offline copy so the
 station stays on air.
+
+**Auto-discovery** queries the gateway's OpenAI-compatible catalogue
+(`GET {api_base}/models`) using the `llm-gateway` base URL + key, and merges the
+returned ids into the picker. It's best-effort and on-demand (never at startup),
+so a slow or unreachable gateway never stalls the server — it just adds nothing.
+Providers without a `/models` listing (e.g. the default direct-Anthropic path,
+which has no gateway base URL) return nothing; use `[llm] models` or free text
+there.
 
 ## Per-provider scaffold
 

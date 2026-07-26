@@ -218,6 +218,7 @@ def run(
     if llm is not None:
         _client, base_cfg = llm
         state.news_model = base_cfg.model
+        state.news_cfg = base_cfg  # lets the Settings tab auto-discover gateway models
         options = list(news_models or [])
         if base_cfg.model not in options:
             options.insert(0, base_cfg.model)

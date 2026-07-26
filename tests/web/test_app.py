@@ -96,6 +96,31 @@ def test_news_model_select_when_live():
     assert client.post("/news-model", params={"name": "  "}).status_code == 400
 
 
+def test_news_model_discovery_merges_gateway_models(monkeypatch):
+    import maelcom.newsroom.llm as llm_pkg
+    from maelcom.newsroom.llm import LLMConfig
+
+    # The endpoint imports discover_models from the package namespace — patch there.
+    monkeypatch.setattr(llm_pkg, "discover_models",
+                        lambda cfg, **kw: ["openai/gpt-4o-mini", "openai/o1"])
+
+    state = _State()
+    state.news_model = "openai/gpt-4o-mini"
+    state.news_models = ["openai/gpt-4o-mini"]
+    state.news_cfg = LLMConfig(model="openai/gpt-4o-mini", api_base="https://gw/v1")
+    client = TestClient(create_app(state))
+
+    d = client.post("/news-model/discover").json()
+    assert d["discovered"] == ["openai/gpt-4o-mini", "openai/o1"]
+    # New model merged in without duplicating the one already listed.
+    assert state.news_models == ["openai/gpt-4o-mini", "openai/o1"]
+
+
+def test_news_model_discovery_rejected_when_not_live():
+    client = TestClient(create_app(_State()))
+    assert client.post("/news-model/discover").status_code == 409
+
+
 def test_auth_endpoints_store_and_mask_tokens(monkeypatch, tmp_path):
     import json as _json
 

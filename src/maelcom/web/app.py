@@ -40,6 +40,7 @@ class _State:
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
+        self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -171,6 +172,22 @@ def create_app(state: _State | None = None):
             store.news_models.append(name)  # remember a custom entry
         return {"current": store.news_model, "models": list(store.news_models)}
 
+    @app.post("/news-model/discover")
+    def discover_news_models() -> dict:
+        """Auto-discover models the gateway serves (OpenAI-compatible
+        ``GET {base}/models``) and merge them into the selectable options.
+        Best-effort: an unreachable gateway just adds nothing."""
+        if store.news_model is None:
+            raise HTTPException(status_code=409, detail="news parsing is not live")
+        from ..newsroom.llm import LLMConfig, discover_models
+
+        cfg = store.news_cfg or LLMConfig(model=store.news_model)
+        found = discover_models(cfg)
+        merged = list(store.news_models)
+        merged.extend(m for m in found if m not in merged)
+        store.news_models = merged
+        return {"models": merged, "discovered": found}
+
     @app.get("/auth")
     def auth() -> dict:
         """Per-source endpoints + whether a token is set (tokens are masked)."""
@@ -277,6 +294,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <select id='newsmodel'></select>
       <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
       <button id='newsmodel-save'>Set model</button>
+      <button id='newsmodel-discover'>↻ Discover from gateway</button>
       <span class='muted' id='newsmodel-status'></span>
     </div>
   </div>
@@ -471,6 +489,17 @@ document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
     const r=await fetch('/news-model?name='+encodeURIComponent(name), {method:'POST'});
     if(!r.ok){ st.textContent='error: '+r.status; return; }
     newsModelCustom.value=''; await loadNewsModel();
+  }catch(e){ st.textContent='error'; }
+});
+// Auto-discover the gateway's model catalogue (OpenAI-compatible /models).
+document.getElementById('newsmodel-discover').addEventListener('click', async ()=>{
+  const st=document.getElementById('newsmodel-status'); st.textContent='discovering…';
+  try{
+    const r=await fetch('/news-model/discover', {method:'POST'});
+    if(!r.ok){ st.textContent='error: '+r.status; return; }
+    const d=await r.json(); await loadNewsModel();
+    st.textContent = d.discovered && d.discovered.length
+      ? ('discovered '+d.discovered.length+' models') : 'no models returned by the gateway';
   }catch(e){ st.textContent='error'; }
 });
 async function loadAuth(){
