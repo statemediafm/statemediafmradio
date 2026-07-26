@@ -31,6 +31,14 @@ _PROGRESSIONS = (
     "<Am9 Fmaj7 Dm9 Em7>",
     "<Ebmaj9 Cm9 Abmaj7 Bb7>",
 )
+# Longer, wandering chord cycles for the CHIME (8 chords, one per cycle). Being 8
+# long — coprime with the 9-cycle phrase — the harmony takes ~72 cycles to line
+# back up, so the chime keeps moving over minutes instead of repeating each bar.
+_CHIME_PROG = (
+    "<Cm9 Ebmaj7 Abmaj7 Fm9 Gm7 Cm9 Bbmaj7 Fm11>",
+    "<Am9 Cmaj7 Fmaj7 Dm9 Em7 Am9 Gmaj7 Dm11>",
+    "<Ebmaj9 Gm7 Cm9 Abmaj7 Bb7 Ebmaj9 Fm9 Cm11>",
+)
 # Low, root-heavy note vocabularies (one per progression) the generator draws from
 # when placing pitches on a rhythm. Root repeats so basslines stay anchored.
 _BASS_SCALE = (
@@ -113,6 +121,19 @@ def _place(pattern: str, scale: tuple[str, ...], seed: int) -> str:
     return " ".join(out)
 
 
+def _syncopate(pattern: str, seed: int, amount: float) -> str:
+    """Push off-beat onsets into a rhythm against the steady drum grid. ``amount``
+    (0..1) fills off-beat rests — the 8th-note "&"s first (the strongest
+    syncopation), then 16ths as it climbs. Deterministic (seed-ordered), so more
+    volatile activity syncopates the bass more without ever randomising."""
+    steps = list(pattern)
+    cands = [i for i, c in enumerate(steps) if c == "." and i % 4 != 0]
+    cands.sort(key=lambda i: (0 if i % 4 == 2 else 1, (seed * 31 + i * 17) % 97))
+    for i in cands[: round(amount * len(cands))]:
+        steps[i] = "x"
+    return "".join(steps)
+
+
 def _pick_rhythm(band_density: int, seed: int) -> int:
     """Choose a bass rhythm: calm bands lean dub/reggae, busy bands lean DnB, but
     the seed sometimes reaches across for texture."""
@@ -139,14 +160,18 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
     seed = _seed(signal)
     variant = seed % len(_PROGRESSIONS)
     prog = _PROGRESSIONS[variant]
+    chime_prog = _CHIME_PROG[variant]
     scale = _BASS_SCALE[variant]
     turn, drop = _BASS_TURN[variant], _DROPS[variant]
     stab_a, stab_b = _STAB_A[density], _STAB_B[density]
     loops = max(3, 7 - density)  # calm bands loop longer before turning around
     cut = round(120 + density * 60)  # acid filter base cutoff — darker when calm
 
+    # Syncopation: how hard the bass plays off the steady drum grid. Volatile,
+    # bursty activity syncopates more; a touch more on busier bands.
+    synco = round(clamp01(0.2 + signal.volatility * 0.6 + (density - 1) * 0.04), 2)
     groove_name, groove = _RHYTHMS[_pick_rhythm(density, seed)]
-    loop_seq = _place(groove, scale, seed)
+    loop_seq = _place(_syncopate(groove, seed, synco), scale, seed)
     hat = _HAT_BUSY if density >= 3 else _HAT_SPARSE
 
     # Dub groove: a laid-back 8th-note shuffle that evolves with the band; the
@@ -165,12 +190,16 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
             f'.decay(0.28).sustain(0.2).swingBy({swing}, 2).late({late})'
         )
 
-    def _chime(struct: str) -> str:
-        # The chord chime, tape delay + reverb, locked to the bass swing + lay-back.
+    def _chime(struct: str, swing: float, late: float) -> str:
+        # The chord chime: a wandering 8-chord cycle, tape delay + reverb, locked to
+        # the bass pocket. Filter, pan and gain ride LONG, mutually-prime LFOs
+        # (31/23/29 cycles) sampled from the global clock — so the chime keeps
+        # evolving over minutes/hours and never resets to the same bar.
         return (
-            f'chord("{prog}").voicing().s("sawtooth").struct("{struct}")'
-            f".lpf(sine.range(400, {lpf}).slow(4)).lpq(4).delay(0.5).delaytime(0.375)"
-            f".delayfeedback(0.5).room(0.7).roomsize(6).gain(0.16).swingBy({sw}, 2).late({la})"
+            f'chord("{chime_prog}").voicing().s("sawtooth").struct("{struct}")'
+            f".lpf(sine.range(400, {lpf}).slow(31)).lpq(4).pan(sine.range(0.32, 0.68).slow(23))"
+            ".delay(0.5).delaytime(0.375).delayfeedback(0.5).room(0.7).roomsize(6)"
+            f".gain(sine.range(0.11, 0.18).slow(29)).swingBy({swing}, 2).late({late})"
         )
 
     kick_gain = round(0.15 + intensity * 0.13, 2)
@@ -181,9 +210,12 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
             f'[1, silence], [1, note("{drop}").s("sine").attack(0.005).decay(1.4).sustain(0)'
             ".lpf(110).gain(0.55)]).gain(0.5).slow(2)"
         ),
-        # CHIME rides the SAME shape + pocket, answering in the bass's rests.
+        # CHIME rides the SAME shape + pocket, answering in the bass's rests. In
+        # the loop it alternates stab A/B bar-to-bar; the wandering chords + long
+        # LFOs keep it moving so it never sits still.
         (
-            f'  arrange([{loops}, {_chime(stab_a)}], [1, {_chime(stab_b)}], [1, silence], '
+            f'  arrange([{loops}, {_chime(f"<[{stab_a}] [{stab_b}]>", sw, la)}], '
+            f'[1, {_chime(stab_b, sw_turn, la_turn)}], [1, silence], '
             f'[1, chord("{prog}").voicing().s("sawtooth").struct("x ~ ~ ~").lpf({lpf})'
             ".room(0.9).roomsize(8).delay(0.6).delaytime(0.5).delayfeedback(0.6).gain(0.14)])"
             ".slow(2)"
@@ -203,7 +235,7 @@ def render(signal: ActivitySignal, intensity: float, band: str, fade_ms: int = 2
 
     header = (
         f"// statemediafm space-dub · band={band} · groove={groove_name} · "
-        f"intensity={round(intensity, 3)} · {signal.volume} "
+        f"synco={synco} · intensity={round(intensity, 3)} · {signal.volume} "
         f"change{'s' if signal.volume != 1 else ''}, {signal.participant_count} "
         f"voice{'s' if signal.participant_count != 1 else ''}"
     )

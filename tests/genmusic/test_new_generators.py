@@ -96,3 +96,36 @@ def test_space_dub_reaches_dnb_for_texture_on_calm_bands():
     # Calm bands lean dub/reggae but the seed sometimes reaches into DnB.
     picks = {space_dub._pick_rhythm(1, seed) for seed in range(40)}
     assert picks & set(space_dub._DNB) and picks & set(space_dub._DUB_REGGAE)
+
+
+def test_space_dub_syncopation_adds_offbeat_onsets():
+    # More off-beat onsets as the amount rises; only off-beat rests get filled.
+    pat = space_dub._RHYTHMS[1][1]  # dub-stepper "x.......x......."
+    quiet = space_dub._syncopate(pat, seed=3, amount=0.0)
+    busy = space_dub._syncopate(pat, seed=3, amount=1.0)
+    assert quiet == pat  # amount 0 leaves the groove untouched
+    assert busy.count("x") > pat.count("x")  # more onsets when syncopated
+    # Quarter-note beats (steps 0,4,8,12) are never overwritten — syncopation is
+    # strictly off the beat.
+    assert all(busy[i] == pat[i] for i in (0, 4, 8, 12))
+
+
+def _synco_of(text: str) -> float:
+    return float(text.split("synco=")[1].split(" ")[0])
+
+
+def test_space_dub_syncopation_variable_tracks_volatility():
+    calm = space_dub.render(_signal(10, 3, volatility=0.0), 0.5, "theta")
+    bursty = space_dub.render(_signal(10, 3, volatility=0.9), 0.5, "theta")
+    assert _synco_of(bursty) > _synco_of(calm)
+
+
+def test_space_dub_chime_evolves_over_long_timescales():
+    # The chime must not sit still for hours: long mutually-prime LFOs (sampled
+    # from the global clock) + a wandering 8-chord cycle + bar-to-bar A/B stabs.
+    text = space_dub.render(_signal(14, 3), 0.5, "theta")
+    chime = next(ln for ln in text.splitlines() if "chord(" in ln)
+    assert ".slow(31)" in chime and ".slow(23)" in chime and ".slow(29)" in chime
+    assert chime.count(" ") > 0 and "<[" in chime  # A/B alternation in the loop
+    # eight-chord wandering cycle (longer than the 4-chord bass progression)
+    assert any(chord in chime for chord in ("Bbmaj7", "Gmaj7", "Cm11", "Dm11", "Fm11"))
