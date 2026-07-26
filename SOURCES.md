@@ -65,13 +65,16 @@ every  = "15m"
 topic   = "Engineering"
 source  = "repo"
 repo    = "https://github.com/your-org/your-repo"
-max_age = "7d"   # only air work items updated in the last 7 days (optional)
+max_age = "24h"  # widen the recency window (optional; default 12h)
 every   = "15m"
 ```
 
 For the GitHub/GitLab `repo` source, `repo` may be a project URL **or a pasted
-issue / PR / MR URL** (it's normalized to the project). `max_age` (e.g. `48h`,
-`7d`) limits it to work items updated that recently — leave it off for no limit.
+issue / PR / MR URL** (it's normalized to the project). Like a radio, it airs
+**recent** activity: each poll returns the work items and comments **updated
+since the last poll**, and the first poll (or one after a long gap) reaches back
+no further than `max_age` — **12h by default**. Set `max_age` (e.g. `48h`, `7d`)
+to widen or narrow that window.
 
 ## Adding a new source kind
 

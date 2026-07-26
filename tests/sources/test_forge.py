@@ -51,9 +51,43 @@ def test_forge_max_age_keeps_only_recent_updates():
                       max_age=7 * 86400, now=lambda: now)
     assert [n.title for n in src.poll()] == ["fresh"]  # 30-day-old item filtered out
 
-    # No max_age → nothing is filtered.
-    src2 = ForgeSource("https://github.com/o/r", get=lambda url: issues, now=lambda: now)
+    # max_age=None → the cap is removed and nothing is filtered on the first poll.
+    src2 = ForgeSource("https://github.com/o/r", get=lambda url: issues,
+                       max_age=None, now=lambda: now)
     assert {n.title for n in src2.poll()} == {"fresh", "stale"}
+
+
+def test_forge_default_window_is_12h():
+    now = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+    issues = [
+        {"number": 1, "title": "recent", "user": {"login": "a"}, "comments": 0,
+         "updated_at": (now - timedelta(hours=6)).isoformat(), "state": "open", "html_url": "u1"},
+        {"number": 2, "title": "yesterday", "user": {"login": "b"}, "comments": 0,
+         "updated_at": (now - timedelta(hours=20)).isoformat(), "state": "open", "html_url": "u2"},
+    ]
+    # No max_age given → the 12h radio-recent default; 20h-old item is dropped.
+    src = ForgeSource("https://github.com/o/r", get=lambda url: issues, now=lambda: now)
+    assert [n.title for n in src.poll()] == ["recent"]
+
+
+def test_forge_returns_only_updates_since_last_poll():
+    t0 = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+    state = {"now": t0, "issues": [
+        {"number": 1, "title": "A", "user": {"login": "a"}, "comments": 0,
+         "updated_at": (t0 - timedelta(hours=2)).isoformat(), "state": "open", "html_url": "u1"},
+    ]}
+    src = ForgeSource("https://github.com/o/r",
+                      get=lambda url: state["issues"], now=lambda: state["now"])
+    assert [n.title for n in src.poll()] == ["A"]  # first poll: within the 12h window
+
+    # An hour later A is unchanged (last touched 3h ago) and B was just updated.
+    state["now"] = t0 + timedelta(hours=1)
+    state["issues"] = state["issues"] + [
+        {"number": 2, "title": "B", "user": {"login": "b"}, "comments": 0,
+         "updated_at": (state["now"] - timedelta(minutes=30)).isoformat(),
+         "state": "open", "html_url": "u2"},
+    ]
+    assert [n.title for n in src.poll()] == ["B"]  # only the delta since the last poll
 
 
 def test_open_source_routes_forge_vs_git():
@@ -107,7 +141,9 @@ def test_github_issues_and_prs_with_latest_comment():
         ],
     }
     fake = _FakeGet(routes)
-    items = ForgeSource("https://github.com/acme/widgets", max_count=10, get=fake).poll()
+    # max_age=None here: this exercises comment attachment, not recency filtering.
+    items = ForgeSource("https://github.com/acme/widgets", max_count=10, get=fake,
+                        max_age=None).poll()
 
     assert [i.kind for i in items] == ["issue", "pull_request"]
     issue, pr = items
@@ -139,7 +175,7 @@ def test_github_degrades_when_comments_forbidden():
             }
         ]
 
-    items = ForgeSource("https://github.com/a/b", get=boom_on_comments).poll()
+    items = ForgeSource("https://github.com/a/b", get=boom_on_comments, max_age=None).poll()
     # Comment fetch failed → falls back to the issue's own description, no crash.
     assert items[0].body == "desc"
     assert items[0].actors == ["dev"]

@@ -413,7 +413,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     <select id='src-kind'></select>
     <input id='src-topic' placeholder='topic (optional)'>
     <input id='src-param' placeholder='—'>
-    <input id='src-maxage' placeholder='max age (e.g. 7d — recent updates only)' hidden>
+    <input id='src-maxage' placeholder='max age (default 12h — recent updates only)' hidden>
     <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
     <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
     <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>

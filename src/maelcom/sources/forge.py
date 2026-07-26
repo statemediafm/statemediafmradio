@@ -31,6 +31,11 @@ from .base import Source, register_source
 # Recognized forge hosts → platform key.
 _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
 
+# Default recency window: a radio reports *recent* news, so a forge airs work
+# items updated since the last poll, and — on the first poll or after a long gap
+# — never reaches back further than this (12 hours), not yesterday's activity.
+DEFAULT_MAX_AGE = 12 * 3600.0
+
 
 def detect_forge(repo: str) -> tuple[str, str] | None:
     """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL.
@@ -78,7 +83,7 @@ class ForgeSource(Source):
         max_count: int = 20,
         token: str | None = None,
         get: Callable[[str], Any] | None = None,
-        max_age: float | None = None,
+        max_age: float | None = DEFAULT_MAX_AGE,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         detected = detect_forge(repo)
@@ -88,9 +93,12 @@ class ForgeSource(Source):
         self.platform, self.slug = detected
         self.project = self.slug.split("/")[-1]  # repo name, for on-air attribution
         self.max_count = max_count
-        # Only air items updated within this many seconds; None = no age limit.
+        # The recency cap (seconds); None = no age limit. Combined with the last
+        # poll time so each poll airs only what has changed since — but never
+        # older than max_age. See ``_recent``.
         self.max_age = max_age
         self._now = now or (lambda: datetime.now(UTC))
+        self._last_poll: datetime | None = None
         self.token = token or os.environ.get(
             "GITHUB_TOKEN" if self.platform == "github" else "GITLAB_TOKEN"
         )
@@ -125,16 +133,29 @@ class ForgeSource(Source):
 
     # --- polling ----------------------------------------------------------
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
+        now = self._now()
         items = self._poll_github() if self.platform == "github" else self._poll_gitlab()
-        return self._within_age(items)
+        items = self._recent(items, now, since)
+        self._last_poll = now
+        return items
 
-    def _within_age(self, items: list[NewsItem]) -> list[NewsItem]:
-        """Keep only items updated within ``max_age`` seconds. Items whose update
-        time is unknown are kept (we can't judge their age). No limit → unchanged."""
-        if self.max_age is None:
+    def _recent(
+        self, items: list[NewsItem], now: datetime, since: datetime | None
+    ) -> list[NewsItem]:
+        """Keep only items updated since the effective cutoff — the more recent of
+        the last poll (or an explicit ``since``) and ``now - max_age``. So a busy
+        repo yields just what changed since last time, while the first poll (no
+        prior time) is bounded to the ``max_age`` window. No cutoff → unchanged;
+        items with an unknown update time are dropped once a cutoff applies."""
+        cutoff: float | None = None
+        if self.max_age is not None:
+            cutoff = now.timestamp() - self.max_age
+        prev = since or self._last_poll
+        if prev is not None:
+            cutoff = prev.timestamp() if cutoff is None else max(cutoff, prev.timestamp())
+        if cutoff is None:
             return items
-        cutoff = self._now().timestamp() - self.max_age
-        return [n for n in items if n.timestamp is None or n.timestamp.timestamp() >= cutoff]
+        return [n for n in items if n.timestamp is not None and n.timestamp.timestamp() >= cutoff]
 
     def _poll_github(self) -> list[NewsItem]:
         base = f"https://api.github.com/repos/{self.slug}"

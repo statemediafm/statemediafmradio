@@ -36,6 +36,7 @@ from pathlib import Path
 from .auth import source_token
 from .core.schedule import Cadence, parse_duration
 from .sources import (
+    FORGE_DEFAULT_MAX_AGE,
     HackerNewsSource,
     JiraSource,
     PagerDutySource,
@@ -110,8 +111,9 @@ def _build_repo(topic: str, seg: dict) -> Source:
         forge = detect_forge(repo)  # (platform, slug) | None
         if forge is not None and forge[0] in ("github", "gitlab"):
             token = source_token(forge[0])
-    # Optional max_age (e.g. "7d", "48h"): only air work items updated that recently.
-    max_age = parse_duration(seg["max_age"]) if seg.get("max_age") else None
+    # max_age (e.g. "7d", "48h") caps how far back a forge reaches; omitted →
+    # the 12h radio-recent default (see ForgeSource).
+    max_age = parse_duration(seg["max_age"]) if seg.get("max_age") else FORGE_DEFAULT_MAX_AGE
     return open_source(
         repo, max_count=int(seg.get("max_count", 25)), token=token, max_age=max_age
     )

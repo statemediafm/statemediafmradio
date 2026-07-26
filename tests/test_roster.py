@@ -137,7 +137,7 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
     monkeypatch.setattr(roster, "source_token", lambda src, path=None: "AUTHTOK" if src == "github" else None)
     roster._build_repo("T", {"repo": "https://github.com/o/r"})
     assert captured["token"] == "AUTHTOK"  # pulled from the gitignored auth config
-    assert captured["max_age"] is None  # omitted → no age limit
+    assert captured["max_age"] == 12 * 3600  # omitted → the 12h radio-recent default
 
     # A max_age duration string is parsed to seconds and passed through.
     roster._build_repo("T", {"repo": "https://github.com/o/r", "max_age": "7d"})
