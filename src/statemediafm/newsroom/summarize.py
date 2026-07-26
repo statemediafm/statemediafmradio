@@ -197,7 +197,16 @@ def radio_reads(
     # before the sign-off (headline→other); add one more.
     if order:
         reads.append(Read("pause", "", "1"))
-    reads.append(Read("other", signoff or DEFAULT_SIGNOFF))
+    # Sign-off with a double pause after its first sentence ("And that's the current
+    # state." … "More as things develop.") — a beat to let it land.
+    sign = signoff or DEFAULT_SIGNOFF
+    head, sep, tail = sign.partition(". ")
+    if sep and tail:
+        reads.append(Read("other", head + "."))
+        reads.append(Read("pause", "", "2"))
+        reads.append(Read("other", tail))
+    else:
+        reads.append(Read("other", sign))
     return reads
 
 

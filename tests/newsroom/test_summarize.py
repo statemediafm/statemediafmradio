@@ -206,9 +206,14 @@ def test_radio_reads_uses_persona_ident_and_signoff():
 
 
 def test_radio_reads_defaults_to_firmwide_phrasing():
-    texts = [r.text for r in radio_reads(_items(), "bbc-world")]
+    reads = radio_reads(_items(), "bbc-world")
+    texts = [r.text for r in reads]
     assert "This is the firmwide radio service." in texts
-    assert texts[-1] == "And that's the current state. More as things develop."
+    # the sign-off is split by a double pause after its first sentence
+    assert "And that's the current state." in texts
+    i = texts.index("And that's the current state.")
+    assert reads[i + 1].role == "pause" and reads[i + 1].origin == "2"  # double pause
+    assert reads[i + 2].text == "More as things develop." and texts[-1] == "More as things develop."
 
 
 def test_is_bot_detects_automation_but_not_people():
