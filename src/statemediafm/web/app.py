@@ -1006,8 +1006,8 @@ async function pollNews(){
             ? '<a href="'+esc(h.url)+'" target="_blank" rel="noopener noreferrer">'+esc(h.title)+'</a>'
             : esc(h.title))+'</li>').join('')+'</ul>'
         : '<p>'+esc(s.script||'')+'</p>';
-      html+='<article><h2>'+esc(s.title||'News')+'</h2>'+body+
-            (s.audio_url?'<audio controls src="'+esc(s.audio_url)+'"></audio>':'')+'</article>';
+      // No visible audio control — the bulletin auto-plays over the music (newsPlayer).
+      html+='<article><h2>'+esc(s.title||'News')+'</h2>'+body+'</article>';
     }
     newsEl.innerHTML=html||'<p class="muted">No broadcast yet.</p>';
     const first=segs.find(s=>s.audio_url);
