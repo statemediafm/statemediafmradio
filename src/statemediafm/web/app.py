@@ -1135,6 +1135,7 @@ intensityEl.addEventListener('change', async ()=>{
   }catch(e){}
 });
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
+let playerMode='flow';  // 'flow' (generative) or 'playlist' (Spotify) — the current player mode
 const newsPlayer=new Audio(); let lastNewsUrl='';
 
 // Ducking — the radio-production principles applied within the browser's limits.
@@ -1187,7 +1188,7 @@ let musicSilenced=false;
 async function pollMusic(){
   try{
     // When the user's Spotify playlist is the music, keep the generative bed silent.
-    if(spMode){ if(started && !musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; } viz.on=false; return; }
+    if(spMode || playerMode==='playlist'){ if(started && !musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; } viz.on=false; return; }
     const d=await (await fetch('/genmusic')).json();
     // Gate: silence when the server says not to play (broadcast stopped, or quiet).
     if(started && d.play===false){
@@ -1376,12 +1377,20 @@ newsPlayer.addEventListener('ended', spResumeAfterNews);
 newsPlayer.addEventListener('pause', spResumeAfterNews);
 // Player modes: reveal the Flow State (generative) or Playlist (Spotify) controls.
 function setPlayerMode(m){
+  playerMode=m;
   document.getElementById('flow-panel').hidden = m!=='flow';
   document.getElementById('playlist-panel').hidden = m!=='playlist';
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('active', b.dataset.mode===m));
   try{ localStorage.setItem('smfm-mode', m); }catch(e){}
-  if(m==='flow' && spMode) spStop();   // leaving Playlist → back to the generative bed
-  if(m==='playlist') loadSpotifyBar();  // refresh the Spotify controls
+  if(m==='playlist'){
+    // Switch away from the generative Flow music immediately; ready the Spotify player.
+    if(started){ try{ evaluate('silence'); }catch(e){} musicSilenced=true; }
+    viz.on=false;
+    loadSpotifyBar();
+  }else{
+    // Flow: stop Spotify and bring the generative bed back.
+    if(spMode){ spStop(); } else { lastProgram=''; musicSilenced=false; pollMusic(); }
+  }
 }
 document.querySelectorAll('#modes button').forEach(b=>
   b.addEventListener('click', ()=>setPlayerMode(b.dataset.mode)));
