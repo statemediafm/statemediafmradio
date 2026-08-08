@@ -549,18 +549,18 @@ def test_demo_mode_adds_and_removes_sources():
     assert len(state.roster) == len(state.segments)
 
 
-def test_demo_mode_uses_a_five_minute_cadence():
+def test_demo_mode_re_reads_every_two_minutes_even_when_unchanged():
     from statemediafm.core.models import NewsItem
     from statemediafm.core.schedule import Cadence
     from statemediafm.newsroom.tts import ToneWavTTS
     from statemediafm.serve import refresh_once
 
     state = _State()
-    state.demo_mode = True  # no director passed → demo's 5-min cadence gates news
+    state.demo_mode = True  # no director → demo's 2-min cadence, re-read regardless
     item = NewsItem(id="1", source="hackernews", kind="story", title="Big",
                     origin="Hacker News", actors=["a"])
 
-    class _Src:
+    class _Src:  # the SAME items every poll (front page unchanged)
         def poll(self, since=None):
             return [item]
 
@@ -570,14 +570,12 @@ def test_demo_mode_uses_a_five_minute_cadence():
     refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0)
     first = state.plan
     assert first is not None
-    # Fresh activity 1 minute later, but the 5-min slot isn't due → held.
-    roster[0] = ("HN", type("S", (), {"poll": lambda self, since=None: [
-        NewsItem(id="2", source="hackernews", kind="story", title="New",
-                 origin="Hacker News", actors=["b"])]})(), Cadence(900, 0), 5)
+    # 1 minute later the 2-min slot isn't due → held.
     refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1060.0)
     assert state.plan is first
-    # Past the 5-min slot → the held news airs.
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 5 * 60 + 1)
+    # Past the 2-min slot → RE-READS even though the items are identical (the demo
+    # shows the rhythm; normal mode would hold on unchanged activity).
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 120 + 1)
     assert state.plan is not first
 
 

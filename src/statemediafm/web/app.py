@@ -70,7 +70,7 @@ class _State:
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
-        self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 5 min
+        self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 2 min
         self.demo_topics: list[str] = []  # source topics Demo Mode added (to remove on off)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
@@ -186,7 +186,7 @@ def create_app(state: _State | None = None):
     def set_demo(on: bool) -> dict:
         """Demo Mode: the earlier-milestone feel. Turning it on adds Hacker News
         and a repo's git-issues sources (if not already present) and switches the
-        news to a brisk 5-minute cadence (handled in the refresh loop); music
+        news to a brisk 2-minute cadence (handled in the refresh loop); music
         plays continuously in between. Turning it off removes the sources it added
         and restores the normal rhythm."""
         from ..roster import build_segment
@@ -867,7 +867,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <strong>Demo Mode</strong></label>
     <span class='muted' id='demo-status'></span>
   </div>
-  <p class='muted'>Reads the Hacker News front page and a repo's git issues every 5
+  <p class='muted'>Reads the Hacker News front page and a repo's git issues every 2
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
   <details class='section' open>
@@ -1066,13 +1066,13 @@ quietBox.addEventListener('change', async ()=>{
   try{ await fetch('/quiet?on='+(quietBox.checked?'true':'false'), {method:'POST'}); await pollMusic(); }catch(e){}
 });
 
-// Demo Mode — earlier-milestone feel: HN + git issues every 5 min, music between.
+// Demo Mode — earlier-milestone feel: HN + git issues every 2 min, music between.
 const demoBox=document.getElementById('demo');
 const demoStatus=document.getElementById('demo-status');
 async function loadDemo(){
   try{ const d=await (await fetch('/demo')).json();
     demoBox.checked=!!d.demo_mode;
-    demoStatus.textContent=d.demo_mode?'on · reading every 5 min':'';
+    demoStatus.textContent=d.demo_mode?'on · reading every 2 min':'';
   }catch(e){}
 }
 demoBox.addEventListener('change', async ()=>{
@@ -1080,7 +1080,7 @@ demoBox.addEventListener('change', async ()=>{
   demoStatus.textContent=on?'starting…':'';
   try{
     const d=await (await fetch('/demo?on='+(on?'true':'false'), {method:'POST'})).json();
-    demoStatus.textContent=d.demo_mode?'on · reading every 5 min':'';
+    demoStatus.textContent=d.demo_mode?'on · reading every 2 min':'';
     if(quietBox && d.demo_mode) quietBox.checked=false;  // demo keeps music continuous
     await loadSources();
   }catch(e){ demoStatus.textContent='could not toggle'; }

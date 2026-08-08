@@ -29,7 +29,7 @@ _QUIET_TAIL = 60  # keep the music ~1 minute after the news, then go silent
 # Demo Mode: reproduce the earlier-milestone feel — read Hacker News + a repo's
 # git issues on a brisk 5-minute cadence, music in between. The toggle in
 # Settings flips ``state.demo_mode`` (see the web app) and adds these sources.
-DEMO_NEWS_EVERY_S = 300.0
+DEMO_NEWS_EVERY_S = 120.0  # demo: a fresh reading every 2 minutes
 DEMO_REPO = "https://github.com/meltano/meltano"
 _DEMO_DIRECTOR = None
 
@@ -275,8 +275,10 @@ def refresh_once(
     # Apply the UI's live news-model selection to the wired LLM config.
     eff_llm = _effective_llm(state, llm)
 
-    # Air a bulletin only when there's fresh activity AND a news slot is due.
-    air_news = changed and news_due
+    # Air a bulletin when a news slot is due AND there's fresh activity — except in
+    # Demo Mode, which re-reads the current sources every slot (so the rhythm is
+    # visible even when the front page hasn't changed).
+    air_news = news_due if getattr(state, "demo_mode", False) else (changed and news_due)
 
     if not getattr(state, "quiet_mode", False):
         state.music_on = True
