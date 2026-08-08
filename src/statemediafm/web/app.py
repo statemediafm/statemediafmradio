@@ -828,6 +828,13 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
     .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}
     .switch .track{background:#444}}
+  /* Player modes: Flow State (generative) vs Playlist (Spotify) — a segmented pick. */
+  #modes{display:flex;gap:.4rem;margin:.7rem 0}
+  #modes button{font:inherit;font-size:.95rem;padding:.4rem 1.1rem;border:1px solid #bbb;
+    border-radius:999px;background:transparent;color:inherit;cursor:pointer}
+  #modes button.active{background:#111;color:#fff;border-color:#111}
+  @media(prefers-color-scheme:dark){#modes button{border-color:#555}
+    #modes button.active{background:#eee;color:#111;border-color:#eee}}
   /* Player transport + control bars: coherent rows, not a loose list. */
   #transport,.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem;margin:.5rem 0}
   #transport{padding:.6rem .1rem;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
@@ -849,25 +856,46 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
 <div id='player-view'>
-  <!-- Transport: the one primary control (start, then pause/resume) + status -->
-  <div id='transport'>
-    <button id='play'>▶ Start radio</button>
-    <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
-    <span class='muted grow' id='status'>internal radio · press play to begin</span>
-    <span class='muted' id='newsbadge'></span>
+  <!-- Two modes: generative Flow State vs your Spotify Playlist -->
+  <div id='modes'>
+    <button data-mode='flow' class='active'>🌊 Flow State</button>
+    <button data-mode='playlist'>🎵 Playlist</button>
   </div>
-  <!-- Music source: your Spotify (Premium), when configured -->
-  <div id='spotify-bar' class='bar' hidden>
-    <button id='sp-connect'>Connect Spotify (Premium)</button>
-    <span class='muted' id='sp-who'></span>
-    <select id='sp-playlist' hidden></select>
-    <button id='sp-play' hidden>▶ Play</button>
-    <button id='sp-skip' hidden>⏭ Skip</button>
-    <button id='sp-stop' hidden>■ Stop</button>
-    <button id='sp-logout' hidden>Disconnect</button>
-    <span class='muted grow' id='sp-msg'></span>
+
+  <!-- FLOW STATE: the generative music + its live controls -->
+  <div id='flow-panel'>
+    <div id='transport'>
+      <button id='play'>▶ Start</button>
+      <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
+      <span class='muted grow' id='status'>generative radio · press Start</span>
+    </div>
+    <div class='bar'>
+      <label class='muted' id='modelwrap'>ambient generator <select id='model'></select></label>
+      <label class='muted' id='intensitywrap'>energy
+        <input type='range' id='intensity' min='0' max='1' step='0.05'>
+        <span id='intensity-band'></span></label>
+    </div>
   </div>
-  <!-- Output: visualizer, now-playing, and the news bulletins -->
+
+  <!-- PLAYLIST: your Spotify (Premium) -->
+  <div id='playlist-panel' hidden>
+    <div id='spotify-bar' class='bar' hidden>
+      <button id='sp-connect'>Connect Spotify (Premium)</button>
+      <span class='muted' id='sp-who'></span>
+      <select id='sp-playlist' hidden></select>
+      <button id='sp-play' hidden>▶ Play</button>
+      <button id='sp-skip' hidden>⏭ Skip</button>
+      <button id='sp-stop' hidden>■ Stop</button>
+      <button id='sp-logout' hidden>Disconnect</button>
+      <span class='muted grow' id='sp-msg'></span>
+    </div>
+    <p class='muted' id='playlist-note'>Plays your Spotify playlists in this tab (needs
+    Spotify <strong>Premium</strong>). First set the Client ID / Secret in
+    <em>Settings › Narration › Spotify</em>, then Connect.</p>
+  </div>
+
+  <!-- Shared output: news badge, visualizer, now-playing, bulletins -->
+  <span class='muted' id='newsbadge'></span>
   <canvas id='viz'></canvas>
   <section id='song'></section>
   <section id='news'><p class='muted'>Loading…</p></section>
@@ -885,15 +913,8 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   <details class='section' open>
     <summary>Narration</summary>
     <div class='authrow'>
-      <label class='muted' id='modelwrap'>ambient generator
-        <select id='model'></select>
-      </label>
       <label class='muted' id='tuningwrap'>tuning A=
         <select id='tuning'></select>
-      </label>
-      <label class='muted' id='intensitywrap'>energy
-        <input type='range' id='intensity' min='0' max='1' step='0.05'>
-        <span id='intensity-band'></span>
       </label>
     </div>
     <h3>Mix</h3>
@@ -1021,7 +1042,7 @@ const modelSel=document.getElementById('model');
 // line carries that now.
 let broadcasting=true;
 function updateTransport(){
-  btn.textContent = !started ? '▶ Start radio' : (broadcasting ? '⏸ Pause' : '▶ Resume');
+  btn.textContent = !started ? '▶ Start' : (broadcasting ? '⏸ Pause' : '▶ Resume');
 }
 async function loadBroadcast(){
   try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; }catch(e){}
@@ -1203,7 +1224,7 @@ async function pollNews(){
     }
     newsEl.innerHTML=html||'<p class="muted">No broadcast yet.</p>';
     const first=segs.find(s=>s.audio_url);
-    if(started && first && first.audio_url!==lastNewsUrl){
+    if((started || spMode) && first && first.audio_url!==lastNewsUrl){
       lastNewsUrl=first.audio_url; newsPlayer.src=first.audio_url;
       newsPlayer.play().catch(e=>console.warn('news play:',e));
     }
@@ -1349,6 +1370,17 @@ function spResumeAfterNews(){ if(spDuckedForNews){ spDuckedForNews=false;
   setTimeout(()=>{ try{ spPlayer.resume(); }catch(e){}; spFade(0.8, 700); }, 600); } }
 newsPlayer.addEventListener('ended', spResumeAfterNews);
 newsPlayer.addEventListener('pause', spResumeAfterNews);
+// Player modes: reveal the Flow State (generative) or Playlist (Spotify) controls.
+function setPlayerMode(m){
+  document.getElementById('flow-panel').hidden = m!=='flow';
+  document.getElementById('playlist-panel').hidden = m!=='playlist';
+  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('active', b.dataset.mode===m));
+  try{ localStorage.setItem('smfm-mode', m); }catch(e){}
+  if(m==='flow' && spMode) spStop();   // leaving Playlist → back to the generative bed
+  if(m==='playlist') loadSpotifyBar();  // refresh the Spotify controls
+}
+document.querySelectorAll('#modes button').forEach(b=>
+  b.addEventListener('click', ()=>setPlayerMode(b.dataset.mode)));
 btn.addEventListener('click', async ()=>{
   if(!started){
     started=true; btn.disabled=true; statusEl.textContent='starting…';
@@ -1708,6 +1740,7 @@ async function loadNewsBadge(){
 }
 
 loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
+setPlayerMode((function(){ try{ return localStorage.getItem('smfm-mode')||'flow'; }catch(e){ return 'flow'; } })());
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(pollSong, 15000);
