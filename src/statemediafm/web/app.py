@@ -913,7 +913,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
   <details class='section' open>
-    <summary>Narration</summary>
+    <summary>Mix</summary>
     <div class='authrow'>
       <label class='muted' id='modelwrap'>ambient generator
         <select id='model'></select>
@@ -922,7 +922,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
         <select id='tuning'></select>
       </label>
     </div>
-    <h3>Mix</h3>
     <p class='muted'>Mix ambient generator <em>types</em> instead of a single one — the
     station rotates through the selected generators (~6&nbsp;min each). Optionally mix
     Spotify songs into the song slots.</p>
@@ -980,7 +979,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   </details>
 
   <details class='section'>
-    <summary>Sources</summary>
+    <summary>News Update Sources</summary>
     <p class='muted'>Which activity State Media FM airs. Changes apply to the running
     session (not written to the config file).</p>
     <div id='sourcelist'></div>
