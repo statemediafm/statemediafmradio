@@ -828,6 +828,13 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     .authrow{border-color:#333} .authrow input{background:#111;color:#eee;border-color:#444}
     .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}
     .switch .track{background:#444}}
+  /* Player transport + control bars: coherent rows, not a loose list. */
+  #transport,.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem;margin:.5rem 0}
+  #transport{padding:.6rem .1rem;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
+  #transport #play{font-size:1rem;padding:.35rem .9rem}
+  .bar{font-size:.9rem}
+  .grow{flex:1;min-width:8rem}
+  @media(prefers-color-scheme:dark){#transport{border-color:#333}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   .newslist{margin:.4rem 0;padding-left:1.2rem}
@@ -842,23 +849,28 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
 <div id='player-view'>
-<p class='muted' id='status'>internal radio · press play to begin</p>
-<button id='play'>▶ Start radio</button>
-<button id='stopbtn'>■ Stop broadcast</button>
-<label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
-<span class='muted' id='newsbadge'></span>
-<div id='spotify-bar' class='muted' hidden>
-  <button id='sp-connect'>Connect Spotify (Premium)</button>
-  <span id='sp-who'></span>
-  <select id='sp-playlist' hidden></select>
-  <button id='sp-play' hidden>▶ Play playlist</button>
-  <button id='sp-stop' hidden>■ Stop</button>
-  <button id='sp-logout' hidden>Disconnect</button>
-  <span id='sp-msg'></span>
-</div>
-<canvas id='viz'></canvas>
-<section id='song'></section>
-<section id='news'><p class='muted'>Loading…</p></section>
+  <!-- Transport: the one primary control (start, then pause/resume) + status -->
+  <div id='transport'>
+    <button id='play'>▶ Start radio</button>
+    <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
+    <span class='muted grow' id='status'>internal radio · press play to begin</span>
+    <span class='muted' id='newsbadge'></span>
+  </div>
+  <!-- Music source: your Spotify (Premium), when configured -->
+  <div id='spotify-bar' class='bar' hidden>
+    <button id='sp-connect'>Connect Spotify (Premium)</button>
+    <span class='muted' id='sp-who'></span>
+    <select id='sp-playlist' hidden></select>
+    <button id='sp-play' hidden>▶ Play</button>
+    <button id='sp-skip' hidden>⏭ Skip</button>
+    <button id='sp-stop' hidden>■ Stop</button>
+    <button id='sp-logout' hidden>Disconnect</button>
+    <span class='muted grow' id='sp-msg'></span>
+  </div>
+  <!-- Output: visualizer, now-playing, and the news bulletins -->
+  <canvas id='viz'></canvas>
+  <section id='song'></section>
+  <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
   <!-- Demo Mode: always at the very top -->
@@ -871,47 +883,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
   <details class='section' open>
-    <summary>Sources</summary>
-    <p class='muted'>Which activity State Media FM airs. Changes apply to the running
-    session (not written to the config file).</p>
-    <div id='sourcelist'></div>
-    <div class='authrow'>
-      <select id='src-kind'></select>
-      <input id='src-topic' placeholder='topic (optional)'>
-      <input id='src-param' placeholder='—'>
-      <input id='src-maxage' placeholder='max age (default 12h — recent updates only)' hidden>
-      <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
-      <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
-      <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
-      <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
-      <button id='src-add'>Add source</button>
-      <span class='muted' id='src-status'></span>
-    </div>
-  </details>
-
-  <details class='section'>
-    <summary>Auth</summary>
-    <p class='muted'>Personal endpoints and tokens for the activity sources State Media
-    FM polls (GitHub, GitLab, Jira, Slack, PagerDuty). Stored locally in a gitignored
-    file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and
-    never committed or sent anywhere but your own server.</p>
-    <div id='authform'></div>
-  </details>
-
-  <details class='section'>
-    <summary>Gateways</summary>
-    <p class='muted'>Model/LLM gateways used for news parsing — each has a slot for its
-    <strong>URL</strong> (base endpoint) and <strong>auth token</strong> (API key).
-    Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted vLLM/Ollama/
-    NIM, etc. Stored in the same gitignored auth file; tokens masked, never sent
-    anywhere but your own server.</p>
-    <div id='gatewayform'></div>
-    <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and
-    suggests a news model — you still enter the API key in the token slot):</p>
-    <div id='presets'></div>
-  </details>
-
-  <details class='section'>
     <summary>Narration</summary>
     <div class='authrow'>
       <label class='muted' id='modelwrap'>ambient generator
@@ -983,6 +954,47 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   </details>
 
   <details class='section'>
+    <summary>Sources</summary>
+    <p class='muted'>Which activity State Media FM airs. Changes apply to the running
+    session (not written to the config file).</p>
+    <div id='sourcelist'></div>
+    <div class='authrow'>
+      <select id='src-kind'></select>
+      <input id='src-topic' placeholder='topic (optional)'>
+      <input id='src-param' placeholder='—'>
+      <input id='src-maxage' placeholder='max age (default 12h — recent updates only)' hidden>
+      <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
+      <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
+      <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
+      <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
+      <button id='src-add'>Add source</button>
+      <span class='muted' id='src-status'></span>
+    </div>
+  </details>
+
+  <details class='section'>
+    <summary>Auth</summary>
+    <p class='muted'>Personal endpoints and tokens for the activity sources State Media
+    FM polls (GitHub, GitLab, Jira, Slack, PagerDuty). Stored locally in a gitignored
+    file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and
+    never committed or sent anywhere but your own server.</p>
+    <div id='authform'></div>
+  </details>
+
+  <details class='section'>
+    <summary>Gateways</summary>
+    <p class='muted'>Model/LLM gateways used for news parsing — each has a slot for its
+    <strong>URL</strong> (base endpoint) and <strong>auth token</strong> (API key).
+    Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted vLLM/Ollama/
+    NIM, etc. Stored in the same gitignored auth file; tokens masked, never sent
+    anywhere but your own server.</p>
+    <div id='gatewayform'></div>
+    <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and
+    suggests a news model — you still enter the API key in the token slot):</p>
+    <div id='presets'></div>
+  </details>
+
+  <details class='section'>
     <summary>Commercial Features</summary>
     <p class='muted'>Commercial modules (e.g. themed voice personas) unlock with a
     license key — stored locally in a gitignored file, owner-only, never sent
@@ -1002,20 +1014,19 @@ const statusEl=document.getElementById('status');
 const newsEl=document.getElementById('news');
 const btn=document.getElementById('play');
 const modelSel=document.getElementById('model');
-const stopBtn=document.getElementById('stopbtn');
 
-// Stop/resume the whole broadcast — pauses the server refresh loop (no polling/
-// TTS/LLM) and silences the audio; resuming restores both.
+// One transport control. First click starts the audio (browsers require a user
+// gesture); after that the SAME button pauses/resumes the broadcast (which stops/
+// restarts the server loop + audio). "On air" was a dead status label — the status
+// line carries that now.
 let broadcasting=true;
-function updateStopBtn(){ stopBtn.textContent = broadcasting ? '■ Stop broadcast' : '▶ Resume broadcast'; }
-async function loadBroadcast(){
-  try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; updateStopBtn(); }catch(e){}
+function updateTransport(){
+  btn.textContent = !started ? '▶ Start radio' : (broadcasting ? '⏸ Pause' : '▶ Resume');
 }
-stopBtn.addEventListener('click', async ()=>{
-  broadcasting=!broadcasting; updateStopBtn();
-  try{ await fetch('/broadcast?on='+(broadcasting?'true':'false'), {method:'POST'}); }catch(e){}
-  await pollMusic();
-});
+async function loadBroadcast(){
+  try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; }catch(e){}
+  updateTransport();
+}
 
 // Populate the ambient-generator dropdown and switch models on change.
 async function loadModels(){
@@ -1222,7 +1233,10 @@ let spPlayer=null, spDevice=null, spMode=false, spDuckedForNews=false, spConnect
 window.onSpotifyWebPlaybackSDKReady=()=>{ window._spSdk=true; if(spConnected) initSpotifySDK(); };
 async function spTok(){ try{ return (await (await fetch('/spotify/token')).json()).access_token; }catch(e){ return null; } }
 function spMsg(t){ document.getElementById('sp-msg').textContent=t; }
-function spSetReady(ready){ document.getElementById('sp-play').disabled=!ready; }
+function spSetReady(ready){
+  document.getElementById('sp-play').disabled=!ready;
+  document.getElementById('sp-skip').disabled=!ready;
+}
 async function loadSpotifyBar(){
   const bar=document.getElementById('spotify-bar');
   try{
@@ -1233,6 +1247,7 @@ async function loadSpotifyBar(){
     document.getElementById('sp-logout').hidden=!spConnected;
     document.getElementById('sp-playlist').hidden=!spConnected;
     document.getElementById('sp-play').hidden=!spConnected;
+    document.getElementById('sp-skip').hidden=!spConnected;
     document.getElementById('sp-who').textContent = spConnected
       ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
     if(spConnected){ spSetReady(false); await loadPlaylists(); initSpotifySDK(); }
@@ -1314,6 +1329,13 @@ document.getElementById('sp-logout').addEventListener('click', async ()=>{
   spPlayer=null; spMode=false; loadSpotifyBar(); });
 document.getElementById('sp-play').addEventListener('click', spPlay);
 document.getElementById('sp-stop').addEventListener('click', spStop);
+document.getElementById('sp-skip').addEventListener('click', async ()=>{
+  if(!spDevice) return;
+  const t=await spTok();
+  try{ await fetch('https://api.spotify.com/v1/me/player/next?device_id='+encodeURIComponent(spDevice),
+    {method:'POST', headers:{'Authorization':'Bearer '+t}}); spMsg('⏭ skipped'); }
+  catch(e){ spMsg('skip failed'); }
+});
 // Fade the Spotify music down and pause it for the news, then resume + fade up.
 function spFade(to, ms, then){
   if(!spPlayer){ if(then) then(); return; }
@@ -1328,23 +1350,29 @@ function spResumeAfterNews(){ if(spDuckedForNews){ spDuckedForNews=false;
 newsPlayer.addEventListener('ended', spResumeAfterNews);
 newsPlayer.addEventListener('pause', spResumeAfterNews);
 btn.addEventListener('click', async ()=>{
-  if(started) return; started=true; btn.disabled=true; btn.textContent='● On air';
-  statusEl.textContent='starting…';
-  try{ await initStrudel(); }
-  catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return; }
-  // Warm up: the first evaluate can reject with "setcps is not defined" until
-  // Strudel finishes registering its runtime. Retry a tiny silent pattern until
-  // it succeeds, THEN play the real program.
-  statusEl.textContent='warming up…';
-  for(let i=0;i<80;i++){
-    try{ await evaluate('setcps(0.5)\ns("~")'); break; }
-    catch(e){ await new Promise(r=>setTimeout(r,80)); }
+  if(!started){
+    started=true; btn.disabled=true; statusEl.textContent='starting…';
+    try{ await initStrudel(); }
+    catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e);
+      started=false; btn.disabled=false; updateTransport(); return; }
+    // Warm up: the first evaluate can reject until Strudel registers its runtime.
+    statusEl.textContent='warming up…';
+    for(let i=0;i<80;i++){
+      try{ await evaluate('setcps(0.5)\ns("~")'); break; }
+      catch(e){ await new Promise(r=>setTimeout(r,80)); }
+    }
+    if(typeof window.samples==='function'){
+      samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
+    }
+    if(!broadcasting){ broadcasting=true; try{ await fetch('/broadcast?on=true',{method:'POST'}); }catch(e){} }
+    btn.disabled=false; updateTransport();
+    await pollMusic(); pollNews(); pollSong();
+    return;
   }
-  if(typeof window.samples==='function'){
-    samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
-  }
+  // Already started → pause/resume the broadcast.
+  broadcasting=!broadcasting; updateTransport();
+  try{ await fetch('/broadcast?on='+(broadcasting?'true':'false'), {method:'POST'}); }catch(e){}
   await pollMusic();
-  pollNews();
 });
 // Tabs: Player / Settings.
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

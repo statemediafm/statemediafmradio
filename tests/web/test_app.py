@@ -31,7 +31,7 @@ def test_index_serves_strudel_player():
     assert "/models" in html and 'id=\'model\'' in html  # the ambient-generator dropdown
     assert "/tuning" in html and 'id=\'tuning\'' in html  # the concert-A tuning dropdown
     assert "/auth" in html and "data-tab='settings'" in html  # the Settings tab
-    assert "/broadcast" in html and 'id=\'stopbtn\'' in html  # the stop-broadcast control
+    assert "/broadcast" in html and 'id=\'play\'' in html  # the transport (start/pause) control
 
 
 def test_genmusic_empty_then_published():
