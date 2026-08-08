@@ -34,6 +34,37 @@ DEMO_REPO = "https://github.com/meltano/meltano"
 _DEMO_DIRECTOR = None
 
 
+def _default_song_resolver(title: str, artist: str):
+    """Resolve a song to a Spotify track from the gitignored credentials; None if
+    Spotify isn't connected or the lookup fails (a flaky network can't break air)."""
+    try:
+        from .spotify import from_auth
+
+        conn = from_auth()
+        return conn.resolve(title, artist) if conn.configured else None
+    except Exception:  # noqa: BLE001 — resolution is best-effort
+        return None
+
+
+def publish_song(state, song_resolver=None) -> None:
+    """Fill the next song slot: pick the next playlist track, resolve it to a
+    streamable Spotify track when possible, and publish it to ``state.song``."""
+    from .songs import pick
+
+    i = getattr(state, "song_i", 0)
+    title, artist = pick(i)
+    state.song_i = i + 1
+    track = (song_resolver or _default_song_resolver)(title, artist)
+    state.song = {
+        "title": getattr(track, "name", None) or title,
+        "artist": getattr(track, "artist", None) or artist,
+        "url": getattr(track, "url", None),
+        "uri": getattr(track, "uri", None),
+        "preview_url": getattr(track, "preview_url", None),
+        "source": "spotify" if track is not None else None,
+    }
+
+
 MIX_EVERY_S = 360.0  # rotate the ambient generator every ~6 minutes in mix mode
 
 
@@ -158,6 +189,7 @@ def refresh_once(
     llm=None,
     director=None,
     now: float | None = None,
+    song_resolver=None,
 ) -> None:
     """One refresh: recompute the music program, and the news plan if changed.
 
@@ -191,6 +223,14 @@ def refresh_once(
         if active_director is not None
         else True
     )
+    # Song slots: a familiar song drops between bulletins when the user opts to mix
+    # Spotify in (and Spotify is connected). Gated by the director's song cadence.
+    if (
+        active_director is not None
+        and getattr(state, "mix_spotify", False)
+        and active_director.song_due(cache["last_elapsed"], elapsed)
+    ):
+        publish_song(state, song_resolver)
     cache["last_elapsed"] = elapsed
     style = getattr(state, "style", None) or style  # live-selectable writing style
     per_topic: list[tuple] = []

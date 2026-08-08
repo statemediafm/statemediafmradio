@@ -121,3 +121,7 @@ class Director:
     def news_due(self, since_s: float, now_s: float) -> bool:
         """Whether a news bulletin's slot fell due in ``(since_s, now_s]``."""
         return bool(_slots_after(self.news, since_s, now_s))
+
+    def song_due(self, since_s: float, now_s: float) -> bool:
+        """Whether a song slot fell due in ``(since_s, now_s]``."""
+        return bool(_slots_after(self.song, since_s, now_s))

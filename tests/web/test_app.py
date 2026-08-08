@@ -306,6 +306,20 @@ def test_mix_settings_roundtrip():
     assert state.mix_generators is True and state.mix_models == ["Space Dub", "Entrainment 0.1"]
 
 
+def test_song_endpoint_and_immediate_publish_on_mix_toggle():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/song").json() == {}  # nothing playing
+
+    # Turning on "mix Spotify" surfaces a song right away (unresolved without creds).
+    client.post("/mix", json={"mix_spotify": True})
+    d = client.get("/song").json()
+    assert d.get("title") and d.get("artist")  # named from the playlist
+    # Turning it off clears the song slot.
+    client.post("/mix", json={"mix_spotify": False})
+    assert client.get("/song").json() == {}
+
+
 def test_spotify_credentials_saved_and_masked(tmp_path, monkeypatch):
     import json as _json
 

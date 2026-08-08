@@ -54,6 +54,8 @@ class _State:
         self.mix_generators: bool = False  # rotate through several ambient generators over time
         self.mix_models: list[str] = []  # which generators are in the mix (empty → all)
         self.mix_spotify: bool = False  # mix Spotify songs into the song slots (needs Spotify + M5)
+        self.song: dict | None = None  # the current song slot's track (resolved via Spotify)
+        self.song_i: int = 0  # song-slot rotation index through the playlist
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
@@ -257,11 +259,24 @@ def create_app(state: _State | None = None):
         if "mix_generators" in payload:
             store.mix_generators = bool(payload["mix_generators"])
         if "mix_spotify" in payload:
+            was = store.mix_spotify
             store.mix_spotify = bool(payload["mix_spotify"])
+            if store.mix_spotify and not was:
+                from ..serve import publish_song
+
+                publish_song(store)  # surface a song now, don't wait for the slot
+            elif not store.mix_spotify:
+                store.song = None
         if isinstance(payload.get("selected"), list):
             valid = [m for m in payload["selected"] if m in AMBIENT_MODELS]
             store.mix_models = valid
         return _mix_status()
+
+    @app.get("/song")
+    def song() -> dict:
+        """The current song slot's track (title/artist + Spotify uri/url/preview),
+        or empty when no song is playing."""
+        return store.song or {}
 
     @app.get("/tuning")
     def tuning() -> dict:
@@ -679,6 +694,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <span class='muted' id='newsbadge'></span>
 <canvas id='viz'></canvas>
+<section id='song'></section>
 <section id='news'><p class='muted'>Loading…</p></section>
 </div>
 <div id='settings-view' hidden>
@@ -1015,6 +1031,21 @@ async function pollNews(){
       lastNewsUrl=first.audio_url; newsPlayer.src=first.audio_url;
       newsPlayer.play().catch(e=>console.warn('news play:',e));
     }
+  }catch(e){}
+}
+// Song slot (M5): the current familiar song, embedded from Spotify when connected.
+async function pollSong(){
+  try{
+    const d=await (await fetch('/song')).json();
+    const el=document.getElementById('song');
+    if(!d || !d.title){ el.innerHTML=''; return; }
+    const id=(d.uri||'').split(':').pop();
+    const body = (d.source==='spotify' && id)
+      ? '<iframe style="border-radius:12px;border:0" src="https://open.spotify.com/embed/track/'+
+        encodeURIComponent(id)+'" width="100%" height="152" allow="autoplay; encrypted-media" loading="lazy"></iframe>'
+      : (d.url ? '<a href="'+esc(d.url)+'" target="_blank" rel="noopener noreferrer">Open in Spotify</a>'
+               : '<span class="muted">connect Spotify (Settings › Narration) to play this slot</span>');
+    el.innerHTML='<article><h2>♪ '+esc(d.title)+' — '+esc(d.artist)+'</h2>'+body+'</article>';
   }catch(e){}
 }
 btn.addEventListener('click', async ()=>{
@@ -1369,9 +1400,10 @@ async function loadNewsBadge(){
   }catch(e){}
 }
 
-loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews(); pollSong();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
+setInterval(pollSong, 15000);
 setInterval(loadNewsBadge, 30000);
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
