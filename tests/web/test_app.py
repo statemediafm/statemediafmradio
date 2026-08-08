@@ -306,6 +306,41 @@ def test_mix_settings_roundtrip():
     assert state.mix_generators is True and state.mix_models == ["Space Dub", "Entrainment 0.1"]
 
 
+def test_spotify_oauth_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv("STATEMEDIAFM_AUTH", str(tmp_path / "auth.toml"))
+    state = _State()
+    client = TestClient(create_app(state))
+
+    # Not connected yet.
+    assert client.get("/spotify/me").json() == {"connected": False}
+    assert client.get("/spotify/token").status_code == 401
+    assert client.get("/spotify/playlists").status_code == 401
+
+    # Login needs credentials first.
+    client.post("/spotify", json={"client_id": "CID", "client_secret": "SEC"})
+    resp = client.get("/spotify/login", follow_redirects=False)
+    assert resp.status_code in (302, 307)
+    loc = resp.headers["location"]
+    assert "accounts.spotify.com/authorize" in loc and "client_id=CID" in loc
+    assert state.sp_oauth_state and state.sp_oauth_state in loc  # CSRF state carried
+
+    # Callback with a bad state is rejected (→ redirect to an error, no tokens).
+    bad = client.get("/spotify/callback", params={"code": "x", "state": "wrong"},
+                     follow_redirects=False)
+    assert bad.status_code in (302, 307) and "spotify=state" in bad.headers["location"]
+    assert state.sp_access_token is None
+
+    # A logged-in session (set directly) surfaces via /me and clears on logout.
+    import time as _t
+    state.sp_access_token = "A"
+    state.sp_expires_at = _t.time() + 3600
+    state.sp_user = {"id": "u", "name": "Jamie", "premium": True}
+    assert client.get("/spotify/me").json() == {"connected": True, "id": "u", "name": "Jamie", "premium": True}
+    assert client.get("/spotify/token").json()["access_token"] == "A"
+    client.post("/spotify/logout")
+    assert client.get("/spotify/me").json() == {"connected": False}
+
+
 def test_song_endpoint_and_immediate_publish_on_mix_toggle():
     state = _State()
     client = TestClient(create_app(state))

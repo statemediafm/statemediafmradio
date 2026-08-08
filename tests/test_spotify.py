@@ -79,3 +79,40 @@ def test_unconfigured_connector_refuses():
     assert not conn.configured
     with pytest.raises(ValueError):
         conn.token()
+
+
+def test_authorize_url_has_scopes_and_state():
+    from statemediafm.spotify import SCOPES, authorize_url
+
+    url = authorize_url("CID", "http://127.0.0.1:8150/spotify/callback", "xyz")
+    assert url.startswith("https://accounts.spotify.com/authorize?")
+    assert "client_id=CID" in url and "response_type=code" in url and "state=xyz" in url
+    assert "streaming" in url and "playlist-read-private" in url  # scopes present
+    assert SCOPES  # non-empty
+
+
+def test_exchange_and_refresh_and_playlists():
+    from statemediafm.spotify import (
+        current_user,
+        exchange_code,
+        refresh_access_token,
+        user_playlists,
+    )
+
+    http = _fake_http(lambda method, url, headers, form=None: (
+        {"access_token": "A", "refresh_token": "R", "expires_in": 3600}
+        if "api/token" in url and form and form.get("grant_type") == "authorization_code"
+        else {"access_token": "A2", "expires_in": 3600}
+        if "api/token" in url
+        else {"id": "u1", "display_name": "Jamie", "product": "premium"}
+        if url.endswith("/me")
+        else {"items": [{"id": "p1", "name": "Focus", "uri": "spotify:playlist:p1",
+                         "tracks": {"total": 42}}]}
+    ))
+    tok = exchange_code("c", "s", "code123", "http://cb", http=http)
+    assert tok["access_token"] == "A" and tok["refresh_token"] == "R"
+    assert refresh_access_token("c", "s", "R", http=http)["access_token"] == "A2"
+    me = current_user("A", http=http)
+    assert me == {"id": "u1", "name": "Jamie", "premium": True}
+    pls = user_playlists("A", http=http)
+    assert pls == [{"id": "p1", "name": "Focus", "uri": "spotify:playlist:p1", "tracks": 42}]

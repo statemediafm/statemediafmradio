@@ -8,6 +8,8 @@ CLI/tests) work without the web dependency installed.
 
 from __future__ import annotations
 
+import sys as _sys
+
 from ..core.models import AudioRef, BroadcastPlan, StrudelProgram
 from ..core.plan import plan_to_dict
 
@@ -56,6 +58,12 @@ class _State:
         self.mix_spotify: bool = False  # mix Spotify songs into the song slots (needs Spotify + M5)
         self.song: dict | None = None  # the current song slot's track (resolved via Spotify)
         self.song_i: int = 0  # song-slot rotation index through the playlist
+        # Spotify user OAuth session (Premium in-tab playback + playlists), in-memory.
+        self.sp_access_token: str | None = None
+        self.sp_refresh_token: str | None = None
+        self.sp_expires_at: float = 0.0  # epoch seconds when the access token expires
+        self.sp_user: dict | None = None  # {id, name, premium}
+        self.sp_oauth_state: str | None = None  # CSRF state for the auth redirect
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
@@ -91,8 +99,13 @@ class _State:
 def create_app(state: _State | None = None):
     """Build the FastAPI application. Call ``app.state.store.set_plan(...)`` to
     publish a plan for the page and API to serve."""
-    from fastapi import Body, FastAPI, HTTPException, Response
-    from fastapi.responses import HTMLResponse
+    from fastapi import Body, FastAPI, HTTPException, Request, Response
+    from fastapi.responses import HTMLResponse, RedirectResponse
+
+    # `from __future__ import annotations` stringifies the `request: Request`
+    # annotation; expose Request in module globals so FastAPI resolves it (else it
+    # treats `request` as a missing query param → 422).
+    globals()["Request"] = Request
 
     store = state or _State()
     app = FastAPI(title="State Media FM", version="0.1.0")
@@ -589,6 +602,109 @@ def create_app(state: _State | None = None):
             return {"ok": False, "detail": str(exc)}
         return {"ok": True}
 
+    # ── Spotify user OAuth (Premium in-tab playback + playlists) ──────────────
+    def _sp_creds() -> tuple[str | None, str | None]:
+        from ..auth import source_endpoint, source_token
+
+        return source_endpoint("spotify"), source_token("spotify")
+
+    def _sp_redirect_uri(request: Request) -> str:
+        return str(request.base_url).rstrip("/") + "/spotify/callback"
+
+    def _sp_valid_token(store) -> str | None:
+        """A live user access token, refreshing it if it's within 30s of expiry."""
+        import time
+
+        if not store.sp_access_token:
+            return None
+        if time.time() < store.sp_expires_at - 30:
+            return store.sp_access_token
+        cid, sec = _sp_creds()
+        if cid and sec and store.sp_refresh_token:
+            try:
+                from ..spotify import refresh_access_token
+
+                d = refresh_access_token(cid, sec, store.sp_refresh_token)
+                store.sp_access_token = d.get("access_token") or store.sp_access_token
+                store.sp_expires_at = time.time() + int(d.get("expires_in", 3600))
+                if d.get("refresh_token"):
+                    store.sp_refresh_token = d["refresh_token"]
+            except Exception as exc:  # noqa: BLE001 — keep the old token; the SDK re-asks
+                print(f"spotify token refresh failed: {exc}", file=_sys.stderr)
+        return store.sp_access_token
+
+    @app.get("/spotify/login")
+    def spotify_login(request: Request):
+        """Start the Authorization Code flow — redirect the user to Spotify consent."""
+        import secrets
+
+        from ..spotify import authorize_url
+
+        cid, sec = _sp_creds()
+        if not (cid and sec):
+            raise HTTPException(status_code=400, detail="set the Spotify Client ID + Secret first")
+        store.sp_oauth_state = secrets.token_urlsafe(16)
+        return RedirectResponse(authorize_url(cid, _sp_redirect_uri(request), store.sp_oauth_state))
+
+    @app.get("/spotify/callback")
+    def spotify_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+        """Spotify redirects back here with a code; swap it for tokens + who's logged in."""
+        import time
+
+        from ..spotify import current_user, exchange_code
+
+        if error or not code:
+            return RedirectResponse("/?spotify=error")
+        if not state or state != store.sp_oauth_state:
+            return RedirectResponse("/?spotify=state")
+        store.sp_oauth_state = None
+        cid, sec = _sp_creds()
+        try:
+            d = exchange_code(cid, sec, code, _sp_redirect_uri(request))
+            store.sp_access_token = d.get("access_token")
+            store.sp_refresh_token = d.get("refresh_token")
+            store.sp_expires_at = time.time() + int(d.get("expires_in", 3600))
+            store.sp_user = current_user(store.sp_access_token)
+        except Exception:  # noqa: BLE001
+            return RedirectResponse("/?spotify=error")
+        return RedirectResponse("/?spotify=connected")
+
+    @app.get("/spotify/me")
+    def spotify_me() -> dict:
+        """Connection status + who's logged in (name, whether Premium)."""
+        if not _sp_valid_token(store) or not store.sp_user:
+            return {"connected": False}
+        return {"connected": True, **store.sp_user}
+
+    @app.get("/spotify/token")
+    def spotify_web_token() -> dict:
+        """A fresh access token for the Web Playback SDK's getOAuthToken callback."""
+        import time
+
+        tok = _sp_valid_token(store)
+        if not tok:
+            raise HTTPException(status_code=401, detail="not connected")
+        return {"access_token": tok, "expires_in": max(0, int(store.sp_expires_at - time.time()))}
+
+    @app.get("/spotify/playlists")
+    def spotify_playlists() -> dict:
+        """The logged-in user's playlists."""
+        tok = _sp_valid_token(store)
+        if not tok:
+            raise HTTPException(status_code=401, detail="not connected")
+        from ..spotify import user_playlists
+
+        try:
+            return {"playlists": user_playlists(tok)}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/spotify/logout")
+    def spotify_logout() -> dict:
+        store.sp_access_token = store.sp_refresh_token = store.sp_user = None
+        store.sp_expires_at = 0.0
+        return {"connected": False}
+
     @app.get("/audio/{clip_id}")
     def audio(clip_id: str) -> Response:
         clip = store.audio.get(clip_id)
@@ -693,6 +809,15 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <button id='stopbtn'>■ Stop broadcast</button>
 <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
 <span class='muted' id='newsbadge'></span>
+<div id='spotify-bar' class='muted' hidden>
+  <button id='sp-connect'>Connect Spotify (Premium)</button>
+  <span id='sp-who'></span>
+  <select id='sp-playlist' hidden></select>
+  <button id='sp-play' hidden>▶ Play playlist</button>
+  <button id='sp-stop' hidden>■ Stop</button>
+  <button id='sp-logout' hidden>Disconnect</button>
+  <span id='sp-msg'></span>
+</div>
 <canvas id='viz'></canvas>
 <section id='song'></section>
 <section id='news'><p class='muted'>Loading…</p></section>
@@ -987,6 +1112,8 @@ newsPlayer.addEventListener('pause', scheduleRelease);
 let musicSilenced=false;
 async function pollMusic(){
   try{
+    // When the user's Spotify playlist is the music, keep the generative bed silent.
+    if(spMode){ if(started && !musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; } viz.on=false; return; }
     const d=await (await fetch('/genmusic')).json();
     // Gate: silence when the server says not to play (broadcast stopped, or quiet).
     if(started && d.play===false){
@@ -1048,6 +1175,81 @@ async function pollSong(){
     el.innerHTML='<article><h2>♪ '+esc(d.title)+' — '+esc(d.artist)+'</h2>'+body+'</article>';
   }catch(e){}
 }
+// ── Spotify Web Playback SDK (Premium): play the user's playlists in this tab,
+//    and fade/pause them for the news, then resume. Needs an OAuth login + Premium.
+let spPlayer=null, spDevice=null, spMode=false, spDuckedForNews=false;
+window.onSpotifyWebPlaybackSDKReady=()=>{ window._spSdk=true; if(window._spWantInit) initSpotifySDK(); };
+async function spTok(){ try{ return (await (await fetch('/spotify/token')).json()).access_token; }catch(e){ return null; } }
+function spMsg(t){ document.getElementById('sp-msg').textContent=t; }
+async function loadSpotifyBar(){
+  const bar=document.getElementById('spotify-bar');
+  try{
+    if(!(await (await fetch('/spotify')).json()).configured){ bar.hidden=true; return; }
+    bar.hidden=false;
+    const me=await (await fetch('/spotify/me')).json(); const on=!!me.connected;
+    document.getElementById('sp-connect').hidden=on;
+    document.getElementById('sp-logout').hidden=!on;
+    document.getElementById('sp-playlist').hidden=!on;
+    document.getElementById('sp-play').hidden=!on;
+    document.getElementById('sp-who').textContent = on
+      ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
+    if(on){ await loadPlaylists(); initSpotifySDK(); }
+  }catch(e){ bar.hidden=true; }
+}
+async function loadPlaylists(){
+  try{ const d=await (await fetch('/spotify/playlists')).json();
+    const sel=document.getElementById('sp-playlist'); sel.innerHTML='';
+    for(const p of (d.playlists||[])){ const o=document.createElement('option');
+      o.value=p.uri; o.textContent=p.name+' ('+p.tracks+')'; sel.appendChild(o); }
+  }catch(e){}
+}
+function initSpotifySDK(){
+  if(spPlayer) return;
+  if(!window.Spotify){ window._spWantInit=true; return; }
+  spPlayer=new Spotify.Player({name:'State Media FM', volume:0.8,
+    getOAuthToken: cb=>{ spTok().then(t=>cb(t)); }});
+  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spMsg('player ready'); });
+  spPlayer.addListener('not_ready', ()=>spMsg('device offline'));
+  spPlayer.addListener('account_error', ()=>spMsg('Premium required for in-tab playback'));
+  spPlayer.addListener('authentication_error', ()=>spMsg('auth error — reconnect'));
+  spPlayer.connect();
+}
+async function spPlay(){
+  const uri=document.getElementById('sp-playlist').value;
+  if(!uri||!spDevice){ spMsg('player not ready yet'); return; }
+  const t=await spTok();
+  try{
+    await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(spDevice),
+      {method:'PUT', headers:{'Authorization':'Bearer '+t,'Content-Type':'application/json'},
+       body:JSON.stringify({context_uri:uri})});
+    spMode=true; try{ if(started) await evaluate('silence'); }catch(e){}  // Spotify is the music now
+    document.getElementById('sp-stop').hidden=false; spMsg('playing your playlist');
+  }catch(e){ spMsg('play failed'); }
+}
+async function spStop(){
+  spMode=false; try{ if(spPlayer) await spPlayer.pause(); }catch(e){}
+  document.getElementById('sp-stop').hidden=true; spMsg('stopped — back to the generative bed');
+  lastProgram=''; pollMusic();  // bring the generative bed back
+}
+document.getElementById('sp-connect').addEventListener('click', ()=>{ window.location='/spotify/login'; });
+document.getElementById('sp-logout').addEventListener('click', async ()=>{
+  await fetch('/spotify/logout',{method:'POST'}); try{ if(spPlayer) spPlayer.disconnect(); }catch(e){}
+  spPlayer=null; spMode=false; loadSpotifyBar(); });
+document.getElementById('sp-play').addEventListener('click', spPlay);
+document.getElementById('sp-stop').addEventListener('click', spStop);
+// Fade the Spotify music down and pause it for the news, then resume + fade up.
+function spFade(to, ms, then){
+  if(!spPlayer){ if(then) then(); return; }
+  spPlayer.getVolume().then(v0=>{ const steps=8, dt=Math.max(20, ms/steps); let i=0;
+    const iv=setInterval(()=>{ i++; spPlayer.setVolume(Math.max(0, Math.min(1, v0+(to-v0)*(i/steps))));
+      if(i>=steps){ clearInterval(iv); if(then) then(); } }, dt); });
+}
+newsPlayer.addEventListener('play', ()=>{ if(spMode){ spDuckedForNews=true;
+  spFade(0.0, 500, ()=>{ try{ spPlayer.pause(); }catch(e){} }); } });
+function spResumeAfterNews(){ if(spDuckedForNews){ spDuckedForNews=false;
+  setTimeout(()=>{ try{ spPlayer.resume(); }catch(e){}; spFade(0.8, 700); }, 600); } }
+newsPlayer.addEventListener('ended', spResumeAfterNews);
+newsPlayer.addEventListener('pause', spResumeAfterNews);
 btn.addEventListener('click', async ()=>{
   if(started) return; started=true; btn.disabled=true; btn.textContent='● On air';
   statusEl.textContent='starting…';
@@ -1400,7 +1602,7 @@ async function loadNewsBadge(){
   }catch(e){}
 }
 
-loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews(); pollSong();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(pollSong, 15000);
@@ -1427,4 +1629,5 @@ function draw(){
 }
 draw();
 </script>
+<script src='https://sdk.scdn.co/spotify-player.js'></script>
 """

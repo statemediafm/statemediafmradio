@@ -20,7 +20,17 @@ import urllib.request
 from dataclasses import dataclass
 
 _TOKEN_URL = "https://accounts.spotify.com/api/token"
-_SEARCH_URL = "https://api.spotify.com/v1/search"
+_AUTH_URL = "https://accounts.spotify.com/authorize"
+_API = "https://api.spotify.com/v1"
+_SEARCH_URL = _API + "/search"
+
+# Scopes for the full experience: stream in the tab (Web Playback SDK, Premium),
+# read/control playback, and read the user's playlists.
+SCOPES = (
+    "streaming user-read-email user-read-private "
+    "user-read-playback-state user-modify-playback-state "
+    "playlist-read-private playlist-read-collaborative"
+)
 
 
 @dataclass(frozen=True)
@@ -99,6 +109,71 @@ class SpotifyConnector:
     def resolve(self, title: str, artist: str | None = None) -> SpotifyTrack | None:
         """Resolve a song title (+ artist) to a Spotify track, or None."""
         return search_track(self.token(), title, artist, http=self._http)
+
+
+# ── User OAuth (Authorization Code) — for playlists + in-tab playback ─────────
+def authorize_url(client_id: str, redirect_uri: str, state: str, scopes: str = SCOPES) -> str:
+    """The Spotify consent URL to send the user to (Authorization Code flow)."""
+    return _AUTH_URL + "?" + urllib.parse.urlencode({
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "scope": scopes,
+        "state": state,
+        "show_dialog": "false",
+    })
+
+
+def _token_request(client_id: str, client_secret: str, form: dict, *, http) -> dict:
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    return http(
+        "POST", _TOKEN_URL,
+        {"Authorization": f"Basic {basic}", "Content-Type": "application/x-www-form-urlencoded"},
+        form,
+    )
+
+
+def exchange_code(client_id: str, client_secret: str, code: str, redirect_uri: str, *, http=_default_http) -> dict:
+    """Swap the callback ``code`` for ``{access_token, refresh_token, expires_in}``."""
+    return _token_request(
+        client_id, client_secret,
+        {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
+        http=http,
+    )
+
+
+def refresh_access_token(client_id: str, client_secret: str, refresh_token: str, *, http=_default_http) -> dict:
+    """Get a fresh ``{access_token, expires_in, [refresh_token]}`` from the refresh token."""
+    return _token_request(
+        client_id, client_secret,
+        {"grant_type": "refresh_token", "refresh_token": refresh_token},
+        http=http,
+    )
+
+
+def api_get(access_token: str, path: str, *, http=_default_http) -> dict:
+    """GET a Spotify Web API path (e.g. ``/me``) with a user access token."""
+    return http("GET", _API + path, {"Authorization": f"Bearer {access_token}"})
+
+
+def current_user(access_token: str, *, http=_default_http) -> dict:
+    """The logged-in user's ``{id, name, premium}``."""
+    d = api_get(access_token, "/me", http=http)
+    return {
+        "id": d.get("id", ""),
+        "name": d.get("display_name") or d.get("id", ""),
+        "premium": d.get("product") == "premium",  # Web Playback SDK needs Premium
+    }
+
+
+def user_playlists(access_token: str, *, http=_default_http) -> list[dict]:
+    """The user's playlists as ``[{id, name, uri, tracks}]`` (first 50)."""
+    d = api_get(access_token, "/me/playlists?limit=50", http=http)
+    return [
+        {"id": p.get("id", ""), "name": p.get("name", ""), "uri": p.get("uri", ""),
+         "tracks": ((p.get("tracks") or {}).get("total", 0))}
+        for p in (d.get("items") or [])
+    ]
 
 
 def from_auth(path=None, *, http=_default_http) -> SpotifyConnector:
