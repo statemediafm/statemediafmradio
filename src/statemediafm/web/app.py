@@ -794,6 +794,9 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   .authrow{margin:.4rem 0;padding:.6rem 0;border-top:1px solid #eee}
   .authrow input{font:inherit;font-size:.9rem;display:block;width:100%;max-width:26rem;margin:.2rem 0;
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
+  /* Checkboxes sit inline with their label, not as full-width block inputs. */
+  .authrow input[type=checkbox]{display:inline-block;width:auto;max-width:none;margin:0 .35rem 0 0;
+                 padding:0;border:0;vertical-align:middle}
   .authrow button{margin-top:.2rem}
   .authrow select{margin-left:0}
   /* Collapsible Settings sections. */
@@ -870,7 +873,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <span class='muted grow' id='status'>generative radio · press Start</span>
     </div>
     <div class='bar'>
-      <label class='muted' id='modelwrap'>ambient generator <select id='model'></select></label>
       <label class='muted' id='intensitywrap'>energy
         <input type='range' id='intensity' min='0' max='1' step='0.05'>
         <span id='intensity-band'></span></label>
@@ -913,6 +915,9 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   <details class='section' open>
     <summary>Narration</summary>
     <div class='authrow'>
+      <label class='muted' id='modelwrap'>ambient generator
+        <select id='model'></select>
+      </label>
       <label class='muted' id='tuningwrap'>tuning A=
         <select id='tuning'></select>
       </label>
