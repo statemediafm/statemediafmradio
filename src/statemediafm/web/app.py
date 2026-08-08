@@ -1200,6 +1200,9 @@ async function pollNews(){
 }
 // Song slot (M5): the current familiar song, embedded from Spotify when connected.
 async function pollSong(){
+  // When Spotify is connected, the SDK owns the "now playing" card (the real
+  // current track); don't overlay the curated song-slot embeds.
+  if(spConnected) return;
   try{
     const d=await (await fetch('/song')).json();
     const el=document.getElementById('song');
@@ -1269,6 +1272,17 @@ function initSpotifySDK(){
   spPlayer.addListener('authentication_error', err('auth error — Disconnect then Connect'));
   spPlayer.addListener('account_error', err('account error (Premium required)'));
   spPlayer.addListener('playback_error', err('playback error'));
+  // Show the ACTUAL current track (real album art), not a disconnected pick.
+  spPlayer.addListener('player_state_changed', s=>{
+    const el=document.getElementById('song');
+    if(!el) return;
+    const t = s && s.track_window && s.track_window.current_track;
+    if(!t){ el.innerHTML=''; return; }
+    const img=(t.album&&t.album.images&&t.album.images[0])?t.album.images[0].url:'';
+    const art=(t.artists||[]).map(a=>a.name).join(', ');
+    el.innerHTML='<article><h2>'+(s.paused?'⏸ ':'♪ ')+esc(t.name)+' — '+esc(art)+'</h2>'+
+      (img?'<img src="'+esc(img)+'" alt="" style="width:128px;height:128px;border-radius:8px">':'')+'</article>';
+  });
   spPlayer.connect().then(ok=>{ if(!ok){ spErrShown=true; spMsg('player.connect() was rejected'); } });
   setTimeout(()=>{ if(!spDevice && !spErrShown) spMsg('never became ready — in Brave this is almost always Widevine/Shields; enable Widevine or try Chrome'); }, 12000);
 }
