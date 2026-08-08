@@ -64,6 +64,7 @@ class _State:
         self.sp_expires_at: float = 0.0  # epoch seconds when the access token expires
         self.sp_user: dict | None = None  # {id, name, premium}
         self.sp_oauth_state: str | None = None  # CSRF state for the auth redirect
+        self.sp_restored: bool = False  # attempted refresh-token restore this process?
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
@@ -609,12 +610,41 @@ def create_app(state: _State | None = None):
         return source_endpoint("spotify"), source_token("spotify")
 
     def _sp_redirect_uri(request: Request) -> str:
-        return str(request.base_url).rstrip("/") + "/spotify/callback"
+        # Spotify's loopback rule requires 127.0.0.1 (not localhost); normalize so
+        # the redirect matches the registered URI however the user reached the app.
+        base = str(request.base_url).rstrip("/").replace("://localhost", "://127.0.0.1")
+        return base + "/spotify/callback"
+
+    def _sp_restore(store) -> None:
+        """Restore a Spotify session from the persisted refresh token (survives
+        restarts); attempted once per process."""
+        import time
+
+        if store.sp_access_token or store.sp_restored:
+            return
+        store.sp_restored = True
+        from ..auth import source_token
+
+        rt = source_token("spotify-user")
+        cid, sec = _sp_creds()
+        if not (rt and cid and sec):
+            return
+        try:
+            from ..spotify import current_user, refresh_access_token
+
+            d = refresh_access_token(cid, sec, rt)
+            store.sp_access_token = d.get("access_token")
+            store.sp_refresh_token = d.get("refresh_token") or rt
+            store.sp_expires_at = time.time() + int(d.get("expires_in", 3600))
+            store.sp_user = current_user(store.sp_access_token)
+        except Exception as exc:  # noqa: BLE001 — stay logged out on failure
+            print(f"spotify session restore failed: {exc}", file=_sys.stderr)
 
     def _sp_valid_token(store) -> str | None:
         """A live user access token, refreshing it if it's within 30s of expiry."""
         import time
 
+        _sp_restore(store)
         if not store.sp_access_token:
             return None
         if time.time() < store.sp_expires_at - 30:
@@ -665,6 +695,10 @@ def create_app(state: _State | None = None):
             store.sp_refresh_token = d.get("refresh_token")
             store.sp_expires_at = time.time() + int(d.get("expires_in", 3600))
             store.sp_user = current_user(store.sp_access_token)
+            if store.sp_refresh_token:  # persist so the session survives restarts
+                from ..auth import save_auth_entry
+
+                save_auth_entry("spotify-user", token=store.sp_refresh_token)
         except Exception:  # noqa: BLE001
             return RedirectResponse("/?spotify=error")
         return RedirectResponse("/?spotify=connected")
@@ -701,8 +735,12 @@ def create_app(state: _State | None = None):
 
     @app.post("/spotify/logout")
     def spotify_logout() -> dict:
+        from ..auth import clear_auth_entry
+
         store.sp_access_token = store.sp_refresh_token = store.sp_user = None
         store.sp_expires_at = 0.0
+        store.sp_restored = True  # don't auto-restore after an explicit logout
+        clear_auth_entry("spotify-user")  # forget the persisted refresh token too
         return {"connected": False}
 
     @app.get("/audio/{clip_id}")
@@ -1177,54 +1215,66 @@ async function pollSong(){
 }
 // ── Spotify Web Playback SDK (Premium): play the user's playlists in this tab,
 //    and fade/pause them for the news, then resume. Needs an OAuth login + Premium.
-let spPlayer=null, spDevice=null, spMode=false, spDuckedForNews=false;
-window.onSpotifyWebPlaybackSDKReady=()=>{ window._spSdk=true; if(window._spWantInit) initSpotifySDK(); };
+let spPlayer=null, spDevice=null, spMode=false, spDuckedForNews=false, spConnected=false;
+window.onSpotifyWebPlaybackSDKReady=()=>{ window._spSdk=true; if(spConnected) initSpotifySDK(); };
 async function spTok(){ try{ return (await (await fetch('/spotify/token')).json()).access_token; }catch(e){ return null; } }
 function spMsg(t){ document.getElementById('sp-msg').textContent=t; }
+function spSetReady(ready){ document.getElementById('sp-play').disabled=!ready; }
 async function loadSpotifyBar(){
   const bar=document.getElementById('spotify-bar');
   try{
     if(!(await (await fetch('/spotify')).json()).configured){ bar.hidden=true; return; }
     bar.hidden=false;
-    const me=await (await fetch('/spotify/me')).json(); const on=!!me.connected;
-    document.getElementById('sp-connect').hidden=on;
-    document.getElementById('sp-logout').hidden=!on;
-    document.getElementById('sp-playlist').hidden=!on;
-    document.getElementById('sp-play').hidden=!on;
-    document.getElementById('sp-who').textContent = on
+    const me=await (await fetch('/spotify/me')).json(); spConnected=!!me.connected;
+    document.getElementById('sp-connect').hidden=spConnected;
+    document.getElementById('sp-logout').hidden=!spConnected;
+    document.getElementById('sp-playlist').hidden=!spConnected;
+    document.getElementById('sp-play').hidden=!spConnected;
+    document.getElementById('sp-who').textContent = spConnected
       ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
-    if(on){ await loadPlaylists(); initSpotifySDK(); }
+    if(spConnected){ spSetReady(false); await loadPlaylists(); initSpotifySDK(); }
   }catch(e){ bar.hidden=true; }
 }
 async function loadPlaylists(){
   try{ const d=await (await fetch('/spotify/playlists')).json();
     const sel=document.getElementById('sp-playlist'); sel.innerHTML='';
     for(const p of (d.playlists||[])){ const o=document.createElement('option');
-      o.value=p.uri; o.textContent=p.name+' ('+p.tracks+')'; sel.appendChild(o); }
+      o.value=p.uri; o.textContent=p.name+(p.tracks?(' ('+p.tracks+')'):''); sel.appendChild(o); }
   }catch(e){}
 }
 function initSpotifySDK(){
   if(spPlayer) return;
-  if(!window.Spotify){ window._spWantInit=true; return; }
+  if(!window.Spotify){ spMsg('loading Spotify player…');
+    setTimeout(()=>{ if(!window.Spotify) spMsg('Spotify player SDK did not load — check network/ad-blocker'); }, 9000);
+    return; }
+  spMsg('connecting the player…');
   spPlayer=new Spotify.Player({name:'State Media FM', volume:0.8,
-    getOAuthToken: cb=>{ spTok().then(t=>cb(t)); }});
-  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spMsg('player ready'); });
-  spPlayer.addListener('not_ready', ()=>spMsg('device offline'));
-  spPlayer.addListener('account_error', ()=>spMsg('Premium required for in-tab playback'));
-  spPlayer.addListener('authentication_error', ()=>spMsg('auth error — reconnect'));
-  spPlayer.connect();
+    getOAuthToken: cb=>{ spTok().then(t=>cb(t||'')); }});
+  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spSetReady(true); spMsg('● player ready — press Play playlist'); });
+  spPlayer.addListener('not_ready', ()=>{ spDevice=null; spSetReady(false); spMsg('device went offline'); });
+  spPlayer.addListener('initialization_error', ({message})=>spMsg('init error: '+message));
+  spPlayer.addListener('authentication_error', ({message})=>spMsg('auth error: '+message+' — try Disconnect then Connect'));
+  spPlayer.addListener('account_error', ({message})=>spMsg('account error: '+(message||'Premium required')));
+  spPlayer.addListener('playback_error', ({message})=>spMsg('playback error: '+message));
+  spPlayer.connect().then(ok=>{ if(!ok) spMsg('player.connect() was rejected'); });
+  setTimeout(()=>{ if(!spDevice && spPlayer) spMsg('still waiting for the player to become ready…'); }, 12000);
 }
 async function spPlay(){
   const uri=document.getElementById('sp-playlist').value;
-  if(!uri||!spDevice){ spMsg('player not ready yet'); return; }
+  if(!uri){ spMsg('pick a playlist first'); return; }
+  if(!spDevice){ spMsg('player not ready yet — see status'); initSpotifySDK(); return; }
   const t=await spTok();
+  const H={'Authorization':'Bearer '+t,'Content-Type':'application/json'};
   try{
-    await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(spDevice),
-      {method:'PUT', headers:{'Authorization':'Bearer '+t,'Content-Type':'application/json'},
-       body:JSON.stringify({context_uri:uri})});
+    // Make this tab the active device, then start the playlist on it.
+    await fetch('https://api.spotify.com/v1/me/player',
+      {method:'PUT', headers:H, body:JSON.stringify({device_ids:[spDevice], play:false})});
+    const r=await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(spDevice),
+      {method:'PUT', headers:H, body:JSON.stringify({context_uri:uri})});
+    if(!r.ok){ const b=await r.text(); spMsg('play failed ('+r.status+') '+b.slice(0,140)); return; }
     spMode=true; try{ if(started) await evaluate('silence'); }catch(e){}  // Spotify is the music now
-    document.getElementById('sp-stop').hidden=false; spMsg('playing your playlist');
-  }catch(e){ spMsg('play failed'); }
+    document.getElementById('sp-stop').hidden=false; spMsg('▶ playing your playlist');
+  }catch(e){ spMsg('play error: '+((e&&e.message)||e)); }
 }
 async function spStop(){
   spMode=false; try{ if(spPlayer) await spPlayer.pause(); }catch(e){}

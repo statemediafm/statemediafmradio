@@ -84,6 +84,15 @@ def save_auth_entry(
         pass
 
 
+def clear_auth_entry(source: str, path: str | Path | None = None) -> None:
+    """Remove a source's entry from the auth file (e.g. on Spotify logout)."""
+    p = Path(path) if path else auth_path()
+    data = load_auth(p)
+    if source in data:
+        del data[source]
+        p.write_text(_dump_toml(data), encoding="utf-8")
+
+
 def _hint(token: object) -> str:
     if not token:
         return ""
