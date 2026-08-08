@@ -1242,22 +1242,35 @@ async function loadPlaylists(){
       o.value=p.uri; o.textContent=p.name+(p.tracks?(' ('+p.tracks+')'):''); sel.appendChild(o); }
   }catch(e){}
 }
+let spErrShown=false;
+async function spCheckDRM(){
+  try{
+    if(!navigator.requestMediaKeySystemAccess) return 'no EME/DRM support in this browser';
+    await navigator.requestMediaKeySystemAccess('com.widevine.alpha',
+      [{initDataTypes:['cenc'], audioCapabilities:[{contentType:'audio/mp4;codecs="mp4a.40.2"'}]}]);
+    return null;  // Widevine available
+  }catch(e){ return 'Widevine DRM is not available/enabled'; }
+}
 function initSpotifySDK(){
   if(spPlayer) return;
   if(!window.Spotify){ spMsg('loading Spotify player…');
-    setTimeout(()=>{ if(!window.Spotify) spMsg('Spotify player SDK did not load — check network/ad-blocker'); }, 9000);
+    setTimeout(()=>{ if(!window.Spotify) spMsg('Spotify player SDK did not load — check network / ad-blocker / Brave Shields'); }, 9000);
     return; }
+  spErrShown=false;
+  spCheckDRM().then(p=>{ if(p){ spErrShown=true;
+    spMsg('⚠ '+p+'. Spotify playback needs Widevine. In Brave: brave://settings/extensions → enable Widevine, and drop Shields for this site + spotify.com; or use Chrome.'); } });
   spMsg('connecting the player…');
   spPlayer=new Spotify.Player({name:'State Media FM', volume:0.8,
     getOAuthToken: cb=>{ spTok().then(t=>cb(t||'')); }});
-  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spSetReady(true); spMsg('● player ready — press Play playlist'); });
+  const err=(label)=>({message})=>{ spErrShown=true; spMsg(label+': '+(message||'')); };
+  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spSetReady(true); spErrShown=true; spMsg('● player ready — press Play playlist'); });
   spPlayer.addListener('not_ready', ()=>{ spDevice=null; spSetReady(false); spMsg('device went offline'); });
-  spPlayer.addListener('initialization_error', ({message})=>spMsg('init error: '+message));
-  spPlayer.addListener('authentication_error', ({message})=>spMsg('auth error: '+message+' — try Disconnect then Connect'));
-  spPlayer.addListener('account_error', ({message})=>spMsg('account error: '+(message||'Premium required')));
-  spPlayer.addListener('playback_error', ({message})=>spMsg('playback error: '+message));
-  spPlayer.connect().then(ok=>{ if(!ok) spMsg('player.connect() was rejected'); });
-  setTimeout(()=>{ if(!spDevice && spPlayer) spMsg('still waiting for the player to become ready…'); }, 12000);
+  spPlayer.addListener('initialization_error', err('init error (usually Widevine/DRM in Brave)'));
+  spPlayer.addListener('authentication_error', err('auth error — Disconnect then Connect'));
+  spPlayer.addListener('account_error', err('account error (Premium required)'));
+  spPlayer.addListener('playback_error', err('playback error'));
+  spPlayer.connect().then(ok=>{ if(!ok){ spErrShown=true; spMsg('player.connect() was rejected'); } });
+  setTimeout(()=>{ if(!spDevice && !spErrShown) spMsg('never became ready — in Brave this is almost always Widevine/Shields; enable Widevine or try Chrome'); }, 12000);
 }
 async function spPlay(){
   const uri=document.getElementById('sp-playlist').value;
