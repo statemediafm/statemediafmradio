@@ -896,8 +896,12 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     <em>Settings › Narration › Spotify</em>, then Connect.</p>
   </div>
 
-  <!-- Shared output: news badge, visualizer, now-playing, bulletins -->
-  <span class='muted' id='newsbadge'></span>
+  <!-- Shared output: news-voice level, badge, visualizer, now-playing, bulletins -->
+  <div class='bar'>
+    <label class='muted' id='voicewrap'>news voice
+      <input type='range' id='voicevol' min='0' max='1' step='0.05'></label>
+    <span class='muted grow' id='newsbadge'></span>
+  </div>
   <canvas id='viz'></canvas>
   <section id='song'></section>
   <section id='news'><p class='muted'>Loading…</p></section>
@@ -1137,6 +1141,9 @@ intensityEl.addEventListener('change', async ()=>{
 let started=false, lastProgram='', currentProg='', ducked=false, viz={intensity:0, band:'theta', on:false};
 let playerMode='flow';  // 'flow' (generative) or 'playlist' (Spotify) — the current player mode
 const newsPlayer=new Audio(); let lastNewsUrl='';
+// User-settable news-voice level (relative to the music), persisted.
+let newsVolume=1, newsFading=false;
+try{ const v=parseFloat(localStorage.getItem('smfm-newsvol')); if(!isNaN(v)) newsVolume=Math.max(0,Math.min(1,v)); }catch(e){}
 
 // Ducking — the radio-production principles applied within the browser's limits.
 //   DEPTH: shallow, ~6-9 dB (gain 0.45 ≈ -7 dB), not the -12/-15 dB that makes
@@ -1161,15 +1168,17 @@ async function playCurrent(){
   catch(e){ console.error('strudel:',e); statusEl.textContent='music error: '+((e&&e.message)||e); }
 }
 function setDuck(on){ if(started && ducked!==on){ ducked=on; playCurrent(); } }
-// Fade the news element's tail over NEWS_FADE_MS so the voice tapers out.
+// Fade the news element's tail over NEWS_FADE_MS so the voice tapers out — from
+// wherever the user set the level, proportionally to zero.
 function fadeNewsOut(){
-  const steps=10, dt=DUCK.NEWS_FADE_MS/steps; let v=newsPlayer.volume;
-  const iv=setInterval(()=>{ v-=1/steps; if(v<=0){ newsPlayer.volume=0; clearInterval(iv); }
-    else newsPlayer.volume=v; }, dt);
+  newsFading=true;
+  const steps=10, dt=DUCK.NEWS_FADE_MS/steps, start=newsPlayer.volume; let i=0;
+  const iv=setInterval(()=>{ i++; newsPlayer.volume=Math.max(0, start*(1-i/steps));
+    if(i>=steps) clearInterval(iv); }, dt);
 }
 newsPlayer.addEventListener('play', ()=>{
   if(releaseTimer){ clearTimeout(releaseTimer); releaseTimer=null; }
-  newsPlayer.volume=1; setDuck(true);   // fast attack, full voice
+  newsFading=false; newsPlayer.volume=newsVolume; setDuck(true);   // fast attack, at the user's voice level
 });
 function scheduleRelease(){
   // Slow, musical release: hold the (shallow) duck a beat, let the bed swell back.
@@ -1179,7 +1188,15 @@ function scheduleRelease(){
 // Near the end, taper the voice; on end/pause, release after the overlap window.
 newsPlayer.addEventListener('timeupdate', ()=>{
   if(newsPlayer.duration && newsPlayer.duration-newsPlayer.currentTime<=DUCK.NEWS_FADE_MS/1000
-     && newsPlayer.volume>0.99) fadeNewsOut();
+     && !newsFading) fadeNewsOut();
+});
+// The news-voice level slider — live while a bulletin plays, and remembered.
+const voiceVol=document.getElementById('voicevol');
+voiceVol.value=newsVolume;
+voiceVol.addEventListener('input', ()=>{
+  newsVolume=parseFloat(voiceVol.value);
+  try{ localStorage.setItem('smfm-newsvol', newsVolume); }catch(e){}
+  if(!newsFading && !newsPlayer.paused) newsPlayer.volume=newsVolume;
 });
 newsPlayer.addEventListener('ended', scheduleRelease);
 newsPlayer.addEventListener('pause', scheduleRelease);
