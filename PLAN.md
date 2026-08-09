@@ -392,7 +392,7 @@ adding breadth.
 - **Demo:** ✅ `statemediafm rundown` prints a full "hour of radio" — news
   bulletins on the 17-min cadence, song slots and station idents between, music
   under, with the 2–5 min felt cadence proven. The live player renders the same
-  running order from `/schedule`.
+  running order from the background `serve` loop (`/plan`, `/genmusic`, `/song`).
 
 ### M5 — Music streaming integration (optional pillar)
 - Spotify OAuth + playlist read; private cross-user similarity mixer; song cues.

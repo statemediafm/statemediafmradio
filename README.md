@@ -4,11 +4,14 @@ Internal streaming radio built on a team's collaboration, project, and
 version-control data. It turns activity (git, Slack, Jira, Grafana, …) into a
 voiced news broadcast, with generative music that tracks project activity.
 
-See [PLAN.md](PLAN.md) for the architecture and roadmap. This repo currently
-implements the **M1 vertical slice**: a repository's recent activity (a
-GitHub/GitLab project's issues and merge/pull requests with their latest
-comments, or a local repo's commits) → summarized radio script → voiced audio
-→ a one-segment broadcast plan.
+See [PLAN.md](PLAN.md) for the architecture and roadmap, and
+[SECURITY_MODEL.md](SECURITY_MODEL.md) for the trust model. Milestones **M0–M3**
+are in place and **M4** is partly shipped: a live station that turns a team's
+recent activity (GitHub/GitLab issues and merge/pull requests with their latest
+comments, a local repo's commits, or the Hacker News front page) into a
+summarized, **voiced news broadcast**, with **generative
+[Strudel](https://strudel.cc) music** that tracks project activity, a **browser
+player**, and **optional Spotify** playback between bulletins.
 
 ## Quick start
 
@@ -200,15 +203,42 @@ uv pip install -e ".[dev]"
 pytest
 ```
 
+## Security & trust
+
+State Media FM is meant to be **read before it's run**. The full trust model is in
+[SECURITY_MODEL.md](SECURITY_MODEL.md); the honest limitations and hardening
+backlog are in [HARDENING_PLAN.md](HARDENING_PLAN.md). In short:
+
+- **Loopback, single-operator.** It binds to `127.0.0.1` and the control API is
+  **currently unauthenticated** — built for the person running it on their own
+  machine. Do **not** bind it to `0.0.0.0` or a shared host without adding auth
+  (tracked in the hardening plan).
+- **Offline by default, no telemetry.** There is no phone-home. Every network call
+  is a functional, operator-configured one: the news sources you add, the LLM
+  gateway you point it at, Spotify (only if you connect it), a one-time
+  voice-model download, and two CDN `<script>` loads on the player page.
+- **Secrets stay on disk, gitignored.** News-source tokens and Spotify credentials
+  live in `statemediafm.auth.toml` (written `0600`, gitignored, masked in the UI) —
+  treat it as account-equivalent and never commit it. Scope every token
+  **read-only / least-privilege**; the Auth panel documents the minimum per provider.
+- **Untrusted input is never executed.** Source text is voiced and displayed, never
+  run; it is delimited/length-capped before the news prompt and reduced to a numeric
+  hash before the music. Prompt-injection defense relies on your chosen gateway/model.
+
 ## Layout
 
 ```
 src/statemediafm/
-  core/       data model (§6 contracts) + plan assembly + schedule (cadences)
-  sources/    forge issues/MRs, git commits, Hacker News front page → NewsItem
-  newsroom/   summarize (LLMClient) + voice (TTSProvider)
-  genmusic/   activity → ActivitySignal → compose → StrudelProgram (lofi)
-  web/        FastAPI: /health, /plan, /audio/{id}, /genmusic, Tufte page
-  pipeline.py NewsItems → summarize → voice → BroadcastPlan
-  cli.py      `statemediafm demo`, `statemediafm genmusic`, `statemediafm broadcast`
+  core/        data model (§6 contracts) + plan assembly + schedule + director
+  sources/     forge issues/MRs, git commits, Hacker News front page → NewsItem
+  newsroom/    summarize (LLMClient) + voice (TTSProvider) + themed personas
+  genmusic/    activity → ActivitySignal → compose → Strudel (IR + generators)
+  web/         FastAPI control API + browser player (news, music, Spotify)
+  serve.py     live loop: refresh sources, re-voice, compose, fill song slots
+  spotify.py   Spotify connector: catalogue search + user OAuth + playback wiring
+  songs.py     between-news song slots (generic mood/genre search seeds)
+  auth.py      gitignored token/endpoint store (statemediafm.auth.toml)
+  licensing.py open-core entitlements (commercial modules; verification stubbed)
+  pipeline.py  NewsItems → summarize → voice → BroadcastPlan
+  cli.py       demo / genmusic / broadcast / serve / rundown
 ```

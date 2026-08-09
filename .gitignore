@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
-# Intermediate zipapp staging (dist/statemediafm.pyz is the shippable artifact).
+# Build output — the zipapp is a build artifact, not source. Build it with
+# ./scripts/build_standalone.sh (and in CI); don't commit it.
 build/standalone/
+dist/
 
 # Downloaded Piper voice models (large; fetched on first --speak)
 voices/
