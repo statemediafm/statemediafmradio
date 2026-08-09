@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Internal streaming radio built on team collaboration, project, and version-control data."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ email = "jamie.f.reid@gmail.com" }]
 
 # The base install has NO third-party dependencies: the offline demo

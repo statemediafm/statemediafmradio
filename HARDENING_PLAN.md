@@ -109,7 +109,7 @@ The core pillars (sources → newsroom → genmusic → core contracts) are clea
 
 Strong trust story that the docs don't yet tell: **offline, no telemetry, secrets `0600`/gitignored, loopback-only default.** Gaps:
 
-- **C1 — No `LICENSE` file (HIGH).** `pyproject.toml:11` declares MIT but there's no `LICENSE`. Add it; also state the open-core boundary (PLAN §7/§8) so readers understand the `licensing.py` gate.
+- **C1 — No `LICENSE` file (HIGH).** `pyproject.toml:11` declares Apache-2.0 but there's no `LICENSE`. Add it; also state the open-core boundary (PLAN §7/§8) so readers understand the `licensing.py` gate.
 - **C2 — README stale + no trust section (HIGH).** README:8 still says "M1 vertical slice" (reality ≈ M4/M5); the Layout block omits `serve.py`, `spotify.py`, `roster.py`, `licensing.py`, `auth.py`, `core/director.py`, `core/schedule.py`, `personas.py`. Add a **"Security & trust"** section: no-auth loopback control API, offline/no-telemetry, where secrets live on disk, and the two runtime CDN script loads (`@strudel` pinned, Spotify SDK unpinned, only in Playlist mode).
 - **C3 — Tracked prebuilt binary (MEDIUM).** `dist/statemediafm.pyz` (257 KB) is committed — an opaque, un-diffable artifact in a repo people audit. Untrack it, gitignore `dist/`, build in CI/releases (`scripts/build_standalone.sh` reproduces it).
 - **C4 — Contributor ergonomics (MEDIUM).** PLAN M0 promised CI + pre-commit; none exist (no `.github/`, `.pre-commit-config.yaml`, `CONTRIBUTING.md`). README documents only `pytest`, not `ruff`/`mypy`. Add a minimal GitHub Actions ruff+mypy+pytest workflow and a dev section.
@@ -121,7 +121,7 @@ Strong trust story that the docs don't yet tell: **offline, no telemetry, secret
 ## 5. Prioritized, ordered execution plan
 
 **Do first — public-repo blockers (HIGH value / LOW effort):**
-1. Add `LICENSE` (MIT). _(§4 C1)_
+1. Add `LICENSE` (Apache-2.0). _(§4 C1)_
 2. Rewrite README scope + add "Security & trust" section (loopback + no-auth API, offline/no-telemetry, secrets-on-disk, CDN loads); fix the "M1 slice" line + Layout. _(§4 C2)_
 3. Delete dead `/style` + `/schedule` + `_STYLE_SUGGESTIONS` + `session_start` + their tests; correct PLAN §7 M4. Delete `maelcom-demo.wav`. _(§2)_
 
