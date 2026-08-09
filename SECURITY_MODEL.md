@@ -52,9 +52,11 @@ The model is only sound if these hold:
    defense against prompt injection is the gateway/model's own guardrails. Critically,
    **the app never executes model output** — it is spoken (TTS) and displayed as text,
    never run as code.
-3. **The control API is not exposed to untrusted parties.** It is loopback-only by
-   default and currently **unauthenticated** (see §7). Do not bind it to `0.0.0.0` or
-   a shared host without the mitigations in the hardening plan.
+3. **The control API is loopback-first.** It binds to `127.0.0.1` by default and is
+   protected by a **per-session token plus a Host/Origin allowlist** (§6). A
+   non-loopback bind is **refused** unless you explicitly opt in
+   (`STATEMEDIAFM_ALLOW_NONLOOPBACK=1`), and auth stays enforced even then. Prefer
+   not to expose it to untrusted networks regardless.
 
 ## 4. Secret & token storage
 
@@ -99,6 +101,14 @@ Verified controls (kept under test so they can't silently regress):
   primitive whitelist.
 - **No secrets in version control:** `.gitignore` covers `*.auth.toml`, `*.license`,
   `voices/`, model/audio artifacts; the tree is verified clean.
+- **Control-API authentication:** every route except a small public set (the page,
+  `/health`, audio clips, the Spotify OAuth redirects) requires a **per-session
+  token** embedded in the served page. A cross-origin page cannot read that page's
+  body, so it cannot learn the token; the custom `X-SMFM-Token` header also forces a
+  CORS preflight cross-origin, which is denied.
+- **Host/Origin allowlist:** requests whose `Host` (DNS-rebinding defense) or
+  `Origin` (cross-site defense) is not a known loopback/bind host are rejected. A
+  non-loopback bind is refused without an explicit opt-in.
 - **Least-surprise networking:** offline by default, no telemetry, loopback bind.
 
 ## 7. Known limitations (operator responsibilities)
@@ -106,15 +116,12 @@ Verified controls (kept under test so they can't silently regress):
 Be honest with a read-before-run reader — these are **not yet mitigated in code** and
 are tracked in [`HARDENING_PLAN.md`](./HARDENING_PLAN.md):
 
-- **The control API is unauthenticated.** Anyone who can reach the port can change
-  settings, save tokens, and (if Spotify is connected) obtain a session token. Safe on
-  a single-user loopback install; **do not expose it** without adding auth.
 - **Outbound-request (SSRF) trust:** endpoints you configure (LLM gateway, Jira/Slack/
   PagerDuty, repo URLs) are fetched by the server without private-range blocking. Only
-  point them at hosts you trust.
-- **No CSP / SRI** on the two CDN scripts yet; **CSRF/DNS-rebinding** protections are
-  not in place. These matter only if the machine runs untrusted web content against the
-  local port.
+  point them at hosts you trust. *(Tracked as the next hardening item.)*
+- **No CSP / SRI** on the two CDN scripts yet — a compromised CDN could serve altered
+  Strudel/Spotify-SDK JS into the page. (Control-API auth and Host/Origin
+  CSRF/DNS-rebinding protections **are** now in place — see §6.)
 - **Licensing verification is stubbed** (the forgeable HMAC scaffold was removed). No
   license key unlocks anything until an **asymmetric** verifier (a baked-in public key,
   vendor-signed keys) is implemented; until then the open-core base is fully free and

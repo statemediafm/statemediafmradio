@@ -8,10 +8,82 @@ CLI/tests) work without the web dependency installed.
 
 from __future__ import annotations
 
+import json as _json
+import secrets as _secrets
 import sys as _sys
+from dataclasses import dataclass
 
 from ..core.models import AudioRef, BroadcastPlan, StrudelProgram
 from ..core.plan import plan_to_dict
+
+# ── Control-API access policy (loopback, single-operator; see SECURITY_MODEL.md) ──
+#
+# The server binds to loopback and is meant for one operator — but "loopback" does
+# not stop a malicious web page the operator visits from firing requests at the
+# port (CSRF / DNS rebinding). A :class:`SecurityPolicy` closes that gap:
+#   * a per-session token, embedded in the served page, is required on every route
+#     except a small public set — a cross-origin page cannot read the page body
+#     (same-origin policy), so it cannot learn the token;
+#   * the token rides in a custom ``X-SMFM-Token`` header, which also forces a CORS
+#     preflight cross-origin — denied, since we send no permissive CORS headers;
+#   * a Host/Origin allowlist rejects DNS-rebinding and cross-site requests outright.
+# Passing a policy to ``create_app`` turns enforcement on; ``None`` (default) leaves
+# the app open for tests/embedders. ``serve.run`` always builds one.
+
+# Loopback hostnames the control API always answers to (the default posture).
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+# Routes that need no token: the page bootstrap, health, audio clips (loaded by
+# <audio>, which cannot send a header), and the Spotify OAuth redirects (top-level
+# browser navigations / Spotify's own callback — no header possible; guarded by the
+# OAuth ``state`` parameter instead).
+_PUBLIC_EXACT = frozenset({"/", "/health", "/spotify/login", "/spotify/callback"})
+
+
+@dataclass(frozen=True)
+class SecurityPolicy:
+    """Per-instance control-API policy: a session ``token`` + the ``allowed_hosts``
+    (lowercased, port-stripped) the server answers to."""
+
+    token: str
+    allowed_hosts: frozenset[str]
+
+
+def _host_only(value: str) -> str:
+    """The hostname from a ``Host``/``netloc`` value, minus any port. Handles IPv6
+    literals (``[::1]:80`` → ``::1``)."""
+    v = (value or "").strip().lower()
+    if v.startswith("["):
+        return v[1 : v.index("]")] if "]" in v else v.strip("[]")
+    return v.rsplit(":", 1)[0] if ":" in v else v
+
+
+def new_security_policy(*, host: str, extra_hosts=()) -> SecurityPolicy:
+    """A fresh policy: a random session token + the loopback hosts, plus the bind
+    host and any explicitly-allowed hosts (a wildcard ``0.0.0.0`` bind is dropped —
+    it is not itself a valid ``Host`` value)."""
+    hosts = set(LOOPBACK_HOSTS) | {_host_only(host)} | {_host_only(h) for h in extra_hosts}
+    hosts.discard("")
+    hosts.discard("0.0.0.0")
+    return SecurityPolicy(token=_secrets.token_urlsafe(32), allowed_hosts=frozenset(hosts))
+
+
+def _bearer(auth_header: str) -> str:
+    """The token from an ``Authorization: Bearer <token>`` header, or ``""``."""
+    h = auth_header or ""
+    return h[7:].strip() if h[:7].lower() == "bearer " else ""
+
+
+def _token_ok(supplied: str, token: str) -> bool:
+    try:
+        return _secrets.compare_digest(supplied or "", token)
+    except TypeError:
+        return False
+
+
+def _is_public_path(path: str) -> bool:
+    """Routes reachable without the session token."""
+    return path in _PUBLIC_EXACT or path.startswith("/audio/")
 
 
 def _recompose(store) -> None:
@@ -96,11 +168,15 @@ class _State:
         self.program = program
 
 
-def create_app(state: _State | None = None):
+def create_app(state: _State | None = None, *, security: SecurityPolicy | None = None):
     """Build the FastAPI application. Call ``app.state.store.set_plan(...)`` to
-    publish a plan for the page and API to serve."""
+    publish a plan for the page and API to serve.
+
+    Pass a :class:`SecurityPolicy` to enforce control-API auth + a Host/Origin
+    allowlist (what ``serve.run`` does). ``None`` (default) leaves the app open —
+    intended only for tests and in-process embedding on a trusted loopback."""
     from fastapi import Body, FastAPI, HTTPException, Request, Response
-    from fastapi.responses import HTMLResponse, RedirectResponse
+    from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
     # `from __future__ import annotations` stringifies the `request: Request`
     # annotation; expose Request in module globals so FastAPI resolves it (else it
@@ -110,6 +186,30 @@ def create_app(state: _State | None = None):
     store = state or _State()
     app = FastAPI(title="State Media FM", version="0.1.0")
     app.state.store = store
+    app.state.security = security
+
+    if security is not None:
+        from urllib.parse import urlsplit
+
+        @app.middleware("http")
+        async def _enforce_security(request: Request, call_next):
+            # 1. DNS-rebinding defense: only answer to known Host names.
+            if _host_only(request.headers.get("host", "")) not in security.allowed_hosts:
+                return JSONResponse({"detail": "host not allowed"}, status_code=403)
+            # 2. Cross-site defense: a present Origin must be one of our own hosts.
+            origin = request.headers.get("origin")
+            if origin and _host_only(urlsplit(origin).netloc) not in security.allowed_hosts:
+                return JSONResponse({"detail": "cross-origin request blocked"}, status_code=403)
+            # 3. Session token on everything but the small public set. The custom
+            # header also forces a CORS preflight cross-origin — which the Origin
+            # lock (2) denies — so no API request can be forged from another page.
+            if not _is_public_path(request.url.path):
+                supplied = request.headers.get("x-smfm-token") or _bearer(
+                    request.headers.get("authorization", "")
+                )
+                if not _token_ok(supplied, security.token):
+                    return JSONResponse({"detail": "unauthorized"}, status_code=401)
+            return await call_next(request)
 
     @app.get("/health")
     def health() -> dict:
@@ -716,17 +816,19 @@ def create_app(state: _State | None = None):
         # no-store so a running session always gets the latest UI (new controls
         # like Demo Mode) on refresh, never a cached older page.
         return HTMLResponse(
-            _render_page(store),
+            _render_page(store, security.token if security else None),
             headers={"Cache-Control": "no-store, must-revalidate"},
         )
 
     return app
 
 
-def _render_page(store: _State) -> str:
+def _render_page(store: _State, token: str | None = None) -> str:
     """The Tufte player page. Static: the browser polls /genmusic and /plan and
-    plays the generative music with Strudel, crossfading as programs change."""
-    return _PLAYER_HTML
+    plays the generative music with Strudel, crossfading as programs change. When
+    the instance is secured, the per-session ``token`` is embedded so same-origin
+    API calls carry it automatically (see the bootstrap script in the page)."""
+    return _PLAYER_HTML.replace("__SMFM_TOKEN_JSON__", _json.dumps(token or ""))
 
 
 # Loaded once. The page fetches /plan (news) and /genmusic (Strudel program text)
@@ -736,6 +838,13 @@ def _render_page(store: _State) -> str:
 _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 <title>State Media FM</title>
+<script>/* Control-API auth: attach the per-session token to same-origin (/…) API
+   calls. A cross-origin page can't read this page's body, so it can't learn the
+   token; absolute-URL fetches (Strudel CDN, samples) are left untouched. */
+(function(){var T=__SMFM_TOKEN_JSON__;if(!T)return;var of=window.fetch.bind(window);
+window.fetch=function(u,o){o=o||{};var url=(typeof u==='string')?u:(u&&u.url)||'';
+if(url&&url.charAt(0)==='/'){var h=new Headers(o.headers||{});h.set('X-SMFM-Token',T);o.headers=h;}
+return of(u,o);};})();</script>
 <style>
   body{max-width:44rem;margin:6vh auto;padding:0 1.25rem;
        font:16px/1.55 Georgia,'Times New Roman',serif;color:#111;background:#fffff8}

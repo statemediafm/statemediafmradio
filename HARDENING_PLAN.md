@@ -126,10 +126,13 @@ Strong trust story that the docs don't yet tell: **offline, no telemetry, secret
 3. Delete dead `/style` + `/schedule` + `_STYLE_SUGGESTIONS` + `session_start` + their tests; correct PLAN §7 M4. Delete `maelcom-demo.wav`. _(§2)_
 
 **Security must-dos before any non-loopback / shared use (HIGH):**
-4. Add control-API auth + refuse non-loopback without it. _(§1 C1)_
-5. Validate `Host`, lock CORS, JSON-body POSTs. _(§1 H2)_
-6. Auth-gate + scope-minimize `/spotify/token`. _(§1 C2)_
-7. SSRF allowlisting on all outbound fetches; no unvalidated `git clone`. _(§1 H1)_
+4. ✅ Control-API auth (per-session token) + refuse non-loopback without opt-in. _(§1 C1)_
+5. ✅ Validate `Host`, lock cross-origin via an Origin allowlist; the mandatory
+   `X-SMFM-Token` header forces a preflight (denied cross-origin) in place of
+   per-endpoint JSON bodies. _(§1 H2)_
+6. ✅ Auth-gate `/spotify/token` (now behind the session token) + scope-minimize:
+   dropped the unused `user-read-playback-state` OAuth scope. _(§1 C2)_
+7. SSRF allowlisting on all outbound fetches; no unvalidated `git clone`. _(§1 H1)_ ← **next**
 
 **Structural (HIGH value / MEDIUM effort):**
 8. Untrack `dist/*.pyz`; gitignore `dist/`; build in CI. _(§4 C3)_

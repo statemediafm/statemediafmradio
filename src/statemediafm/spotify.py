@@ -24,11 +24,15 @@ _AUTH_URL = "https://accounts.spotify.com/authorize"
 _API = "https://api.spotify.com/v1"
 _SEARCH_URL = _API + "/search"
 
-# Scopes for the full experience: stream in the tab (Web Playback SDK, Premium),
-# read/control playback, and read the user's playlists.
+# Least-privilege scopes for the feature set: stream in the tab (Web Playback SDK
+# needs `streaming` + `user-read-email` + `user-read-private`), control playback
+# (transfer / play / skip via `PUT /me/player…` need `user-modify-playback-state`),
+# and read the user's playlists. Note: no `user-read-playback-state` — the app
+# never *reads* playback via the Web API (the SDK's own events drive the now-playing
+# card), so that read scope is intentionally omitted.
 SCOPES = (
     "streaming user-read-email user-read-private "
-    "user-read-playback-state user-modify-playback-state "
+    "user-modify-playback-state "
     "playlist-read-private playlist-read-collaborative"
 )
 

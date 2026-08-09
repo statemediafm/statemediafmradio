@@ -12,6 +12,7 @@ offline; ``run`` wires it into a uvicorn server via an async task.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from dataclasses import replace
@@ -348,9 +349,29 @@ def run(
 
         from .genmusic.generators import load_generators, register_generators
         from .genmusic.styles import STYLES
-        from .web.app import _State, create_app
+        from .web.app import _State, create_app, new_security_policy
     except ImportError as exc:
         raise SystemExit("serve needs the [web] extra: pip install -e '.[web]'") from exc
+
+    # Control-API security: refuse to expose an unauthenticated API off loopback.
+    # Auth + a Host/Origin lock are always enforced; a non-loopback bind (where the
+    # port is network-reachable) additionally requires an explicit opt-in so it
+    # can't happen by accident. See SECURITY_MODEL.md.
+    from .web.app import _host_only
+
+    if _host_only(host) not in {"127.0.0.1", "::1", "localhost"}:
+        if os.environ.get("STATEMEDIAFM_ALLOW_NONLOOPBACK") != "1":
+            raise SystemExit(
+                f"refusing to bind non-loopback host {host!r}: the control API would be "
+                "network-reachable. Set STATEMEDIAFM_ALLOW_NONLOOPBACK=1 to proceed "
+                "(session-token auth + a Host/Origin lock stay enforced)."
+            )
+        print(
+            f"WARNING: binding {host!r} — the control API is network-reachable. It "
+            "stays token-protected and host-locked; open the UI from the served page "
+            "to obtain the session token.",
+            file=sys.stderr,
+        )
 
     if generators_dir:  # register user/contributor generators before serving
         register_generators(load_generators(generators_dir))
@@ -388,7 +409,8 @@ def run(
     director = Director(news=Cadence(news_every_s)) if news_every_s else Director()
     state.director = director
     start = time.monotonic()
-    app = create_app(state)
+    security = new_security_policy(host=host)
+    app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}
 
     async def _loop() -> None:
