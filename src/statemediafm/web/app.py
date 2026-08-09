@@ -78,7 +78,7 @@ class _State:
         self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
         self.news_temperature: float | None = None  # live [llm] sampling override
         self.news_max_tokens: int | None = None  # live [llm] length override
-        self.style: str = "bbc-world"  # live-selectable writing style for the news
+        self.style: str = "newsroom"  # live-selectable writing style for the news
         self.voice: str = "alan"  # live-selectable narration voice (Piper)
         self.persona: str | None = None  # selected themed persona (None → Custom)
         self.ident: str | None = None  # persona station-ident line (None → default)
@@ -87,7 +87,6 @@ class _State:
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
         self.director = None  # rhythm-of-the-day clock (Director), set by serve.run
-        self.session_start: float | None = None  # monotonic session start, for /schedule
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -122,30 +121,6 @@ def create_app(state: _State | None = None):
             return {"segments": []}
         return plan_to_dict(store.plan)
 
-    @app.get("/schedule")
-    def schedule() -> dict:
-        """The rhythm-of-the-day running order: the hour's news bulletins, song
-        slots and station idents (relative offsets), plus where 'now' sits and
-        the next foreground cue. ``live`` is False until ``serve`` sets a director."""
-        director = store.director
-        if director is None:
-            return {"live": False, "order": [], "elapsed_s": 0.0}
-        import time
-
-        elapsed = (time.monotonic() - store.session_start) if store.session_start else 0.0
-        order = [
-            {"kind": c.kind, "at_s": c.at_s, "topic": c.topic,
-             "song": (c.cue.title if c.cue else None)}
-            for c in director.running_order(3600.0)
-        ]
-        nxt = director.next_cue(elapsed)
-        return {
-            "live": True,
-            "elapsed_s": elapsed,
-            "window_s": 3600.0,
-            "order": order,
-            "next": ({"kind": nxt.kind, "at_s": nxt.at_s} if nxt else None),
-        }
 
     @app.get("/genmusic")
     def genmusic() -> dict:
@@ -331,23 +306,6 @@ def create_app(state: _State | None = None):
         store.base_intensity = level
         _recompose(store)
         return {"current": store.base_intensity, "band": band_for_intensity(level)}
-
-    # A few writing-style suggestions for the UI; the field accepts any string.
-    _STYLE_SUGGESTIONS = ["bbc-world", "npr", "sports-desk", "tech-brief", "noir"]
-
-    @app.get("/style")
-    def style() -> dict:
-        """The current news writing style and a few suggestions (free-form)."""
-        return {"current": store.style, "suggestions": _STYLE_SUGGESTIONS}
-
-    @app.post("/style")
-    def set_style(name: str) -> dict:
-        """Set the news writing style (a free-form prompt hint). Next cycle."""
-        name = name.strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="empty style")
-        store.style = name
-        return {"current": store.style}
 
     @app.get("/voice")
     def voice() -> dict:
@@ -948,14 +906,7 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <label class='muted'><input type='checkbox' id='mix-spotify'> Mix in Spotify songs</label>
       <span class='muted' id='mix-spotify-hint'></span>
     </div>
-    <p class='muted'>Pick a themed <strong>persona</strong> (a writing-style + voice +
-    station-phrasing bundle), or <em>Custom</em> to set the style and voice yourself.
-    Applies to the next news cycle.</p>
-    <div class='authrow'>
-      <label class='muted'>persona <select id='persona-sel'></select></label>
-      <span class='muted' id='persona-lock'></span>
-    </div>
-    <div class='authrow'>
+    <div class='authrow' id='voice-row' hidden>
       <label class='muted'>voice <select id='voice-sel'></select></label>
       <button id='narration-save'>Apply</button>
       <span class='muted' id='narration-status'></span>
@@ -1478,41 +1429,21 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
-// ── Narration: persona (style+voice+phrasing) or Custom style + voice ─────────
-const personaSel=document.getElementById('persona-sel');
+// ── Voice selection (feature-flagged off for now) ─────────────────────────────
+// Themed persona selection has been removed from Settings; voice selection is
+// hidden behind this flag until it's ready to surface again. Flip to re-enable.
+const FEATURE_VOICE_SELECT=false;
 async function loadNarration(){
+  const row=document.getElementById('voice-row');
+  if(row) row.hidden=!FEATURE_VOICE_SELECT;
+  if(!FEATURE_VOICE_SELECT) return;
   try{
-    const p=await (await fetch('/persona')).json();
-    const licensed = !!p.licensed;
-    personaSel.innerHTML='';
-    for(const x of ['Custom', ...(p.personas||[])]){
-      const o=document.createElement('option'); o.value=x; o.textContent=x;
-      // Personas are a commercial module: lock them until licensed.
-      if(x!=='Custom' && !licensed){ o.disabled=true; o.textContent=x+' 🔒'; }
-      if(x===p.current) o.selected=true; personaSel.appendChild(o);
-    }
-    document.getElementById('persona-lock').textContent =
-      licensed ? '' : '· commercial module — unlock under Commercial Features';
-    const custom = (p.current||'Custom')==='Custom';
-    // Custom → the voice field is yours to set; a persona drives it.
-    document.getElementById('voice-sel').disabled = !custom;
     const v=await (await fetch('/voice')).json();
     const sel=document.getElementById('voice-sel'); sel.innerHTML='';
     for(const x of (v.voices||[])){ const o=document.createElement('option'); o.value=x; o.textContent=x;
       if(x===v.current) o.selected=true; sel.appendChild(o); }
   }catch(e){}
 }
-personaSel.addEventListener('change', async ()=>{
-  const st=document.getElementById('narration-status'); st.textContent='saving…';
-  try{
-    const r=await fetch('/persona?name='+encodeURIComponent(personaSel.value), {method:'POST'});
-    if(!r.ok){ const e=await r.json().catch(()=>({}));
-      st.textContent = r.status===402 ? 'locked — add a license key' : ('error: '+(e.detail||r.status));
-      return; }
-    await loadNarration(); loadNewsBadge();
-    st.textContent = personaSel.value==='Custom' ? 'custom' : ('persona: '+personaSel.value+' (next cycle)');
-  }catch(e){ st.textContent='error'; }
-});
 document.getElementById('license-save').addEventListener('click', async ()=>{
   const st=document.getElementById('license-status'); st.textContent='checking…';
   const key=document.getElementById('license-key').value.trim(); if(!key) return;

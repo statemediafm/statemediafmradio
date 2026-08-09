@@ -8,8 +8,8 @@ from statemediafm.spotify import SpotifyConnector, client_credentials_token, sea
 
 _TRACK = {
     "tracks": {"items": [{
-        "name": "Teardrop",
-        "artists": [{"name": "Massive Attack"}],
+        "name": "Ambient Piece",
+        "artists": [{"name": "Test Artist"}],
         "uri": "spotify:track:67Hna13dNDkZvBpTXRIaOJ",
         "external_urls": {"spotify": "https://open.spotify.com/track/67Hna13dNDkZvBpTXRIaOJ"},
         "preview_url": "https://p.scdn.co/mp3-preview/abc",
@@ -46,13 +46,22 @@ def test_client_credentials_token_errors_without_token():
 
 def test_search_track_resolves_a_match():
     http = _fake_http(lambda *a: _TRACK)
-    t = search_track("tok", "Teardrop", "Massive Attack", http=http)
-    assert t.name == "Teardrop" and t.artist == "Massive Attack"
+    t = search_track("tok", "Ambient Piece", "Test Artist", http=http)
+    assert t.name == "Ambient Piece" and t.artist == "Test Artist"
     assert t.uri.startswith("spotify:track:") and "open.spotify.com" in t.url
     assert t.preview_url and t.preview_url.startswith("https://")
     # the query used both the title and the artist filter (urlencode → spaces as +)
     _, url, _, _ = http.calls[0]
-    assert "Teardrop" in url and "Massive+Attack" in url
+    assert "Ambient+Piece" in url and "Test+Artist" in url
+
+
+def test_search_track_free_text_query_without_artist():
+    # A mood/genre seed (no artist) is a free-text search — no track:/artist: filter.
+    http = _fake_http(lambda *a: _TRACK)
+    t = search_track("tok", "ambient instrumental", http=http)
+    assert t.name == "Ambient Piece"
+    _, url, _, _ = http.calls[0]
+    assert "ambient+instrumental" in url and "track%3A" not in url
 
 
 def test_search_track_returns_none_when_no_items():
@@ -67,9 +76,9 @@ def test_connector_caches_the_token_and_resolves():
     http = _fake_http(script)
     conn = SpotifyConnector("cid", "secret", http=http)
     assert conn.configured
-    track = conn.resolve("Teardrop", "Massive Attack")
-    assert track.name == "Teardrop"
-    conn.resolve("Teardrop")  # second call reuses the cached token
+    track = conn.resolve("Ambient Piece", "Test Artist")
+    assert track.name == "Ambient Piece"
+    conn.resolve("ambient instrumental")  # second call reuses the cached token
     token_calls = [c for c in http.calls if "token" in c[1]]
     assert len(token_calls) == 1  # only fetched the app token once
 

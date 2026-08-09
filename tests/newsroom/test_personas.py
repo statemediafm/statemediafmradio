@@ -8,7 +8,7 @@ from statemediafm.newsroom.tts import voice_names
 
 def test_curated_personas_present():
     names = persona_names()
-    assert {"BBC World", "John Peel", "Public Radio"} <= set(names)
+    assert {"Newsroom", "Late Night", "Community"} <= set(names)
 
 
 def test_get_persona_returns_none_for_custom_or_unknown():

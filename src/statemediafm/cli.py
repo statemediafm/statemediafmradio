@@ -400,7 +400,7 @@ def _add_source_args(p: argparse.ArgumentParser) -> None:
 
 
 def _add_voice_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--style", default="bbc-world", help="Voice/writing style.")
+    p.add_argument("--style", default="newsroom", help="Voice/writing style.")
     p.add_argument(
         "--tone",
         action="store_true",

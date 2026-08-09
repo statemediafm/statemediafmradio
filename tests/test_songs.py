@@ -32,25 +32,32 @@ def test_song_due_tracks_the_song_cadence():
 
 def test_publish_song_resolves_via_spotify_and_advances():
     state = _State()
+    calls = []
 
-    def resolver(title, artist):
-        return SpotifyTrack(name=title, artist=artist, uri="spotify:track:ID42",
+    def resolver(query, artist):
+        calls.append((query, artist))
+        return SpotifyTrack(name="Resolved Track", artist="Resolved Artist",
+                            uri="spotify:track:ID42",
                             url="https://open.spotify.com/track/ID42",
                             preview_url="https://p/preview")
 
     publish_song(state, resolver)
     assert state.song["source"] == "spotify" and state.song["uri"] == "spotify:track:ID42"
-    assert (state.song["title"], state.song["artist"]) == DEFAULT_PLAYLIST[0]
+    # The generic query (not a named track) is what's searched; the resolved
+    # track's real name/artist are shown.
+    assert calls[0] == (DEFAULT_PLAYLIST[0][1], "")
+    assert (state.song["title"], state.song["artist"]) == ("Resolved Track", "Resolved Artist")
     assert state.song_i == 1
     publish_song(state, resolver)  # next slot advances the playlist
-    assert (state.song["title"], state.song["artist"]) == DEFAULT_PLAYLIST[1]
+    assert calls[1] == (DEFAULT_PLAYLIST[1][1], "")
 
 
 def test_publish_song_degrades_when_unresolved():
     state = _State()
-    publish_song(state, lambda t, a: None)  # Spotify not connected / no match
+    publish_song(state, lambda q, a: None)  # Spotify not connected / no match
     assert state.song["source"] is None and state.song["uri"] is None
-    assert state.song["title"] == DEFAULT_PLAYLIST[0][0]  # still names the track
+    assert state.song["title"] == DEFAULT_PLAYLIST[0][0]  # falls back to the mood label
+    assert state.song["artist"] == ""  # no named artist when unresolved
 
 
 def test_refresh_once_fills_a_song_slot_when_mixing_spotify():
@@ -68,7 +75,7 @@ def test_refresh_once_fills_a_song_slot_when_mixing_spotify():
     refresh_once(state, roster, ToneWavTTS(), cache={}, director=director,
                  now=1000.0, song_resolver=resolver)
     assert state.song and state.song["uri"] == "spotify:track:Z"
-    assert hits["called"] == DEFAULT_PLAYLIST[0]
+    assert hits["called"] == (DEFAULT_PLAYLIST[0][1], "")
 
 
 def test_refresh_once_no_song_when_mix_off():

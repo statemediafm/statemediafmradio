@@ -52,12 +52,13 @@ def publish_song(state, song_resolver=None) -> None:
     from .songs import pick
 
     i = getattr(state, "song_i", 0)
-    title, artist = pick(i)
+    label, query = pick(i)
     state.song_i = i + 1
-    track = (song_resolver or _default_song_resolver)(title, artist)
+    # Resolve the generic mood/genre query via free-text search (no named artist).
+    track = (song_resolver or _default_song_resolver)(query, "")
     state.song = {
-        "title": getattr(track, "name", None) or title,
-        "artist": getattr(track, "artist", None) or artist,
+        "title": getattr(track, "name", None) or label,
+        "artist": getattr(track, "artist", None) or "",
         "url": getattr(track, "url", None),
         "uri": getattr(track, "uri", None),
         "preview_url": getattr(track, "preview_url", None),
@@ -185,7 +186,7 @@ def refresh_once(
     tts: TTSProvider,
     *,
     cache: dict,
-    style: str = "bbc-world",
+    style: str = "newsroom",
     headline_pause_ms: int = 1000,
     llm=None,
     director=None,
@@ -314,7 +315,7 @@ def run(
     port: int = 8000,
     refresh: float = 60.0,
     headline_pause_ms: int = 1000,
-    style: str = "bbc-world",
+    style: str = "newsroom",
     generator: str = "Entrainment 0.1",
     show_selector: bool = False,
     generators_dir: str | None = None,
@@ -387,7 +388,6 @@ def run(
     director = Director(news=Cadence(news_every_s)) if news_every_s else Director()
     state.director = director
     start = time.monotonic()
-    state.session_start = start
     app = create_app(state)
     cache: dict = {"t0": start, "last_elapsed": -1.0}
 

@@ -173,14 +173,9 @@ def test_sources_add_honours_headlines_and_max_count():
     assert listed["headlines"] == 3 and listed["max_count"] == 7
 
 
-def test_style_and_voice_endpoints():
+def test_voice_endpoint():
     state = _State()
     client = TestClient(create_app(state))
-    assert "bbc-world" in client.get("/style").json()["suggestions"]
-    assert client.post("/style", params={"name": "noir"}).json()["current"] == "noir"
-    assert state.style == "noir"
-    assert client.post("/style", params={"name": "  "}).status_code == 400
-
     voices = client.get("/voice").json()["voices"]
     assert "alan" in voices and "alba" in voices
     assert client.post("/voice", params={"name": "alba"}).json()["current"] == "alba"
@@ -196,10 +191,10 @@ def test_personas_are_locked_without_a_license(monkeypatch):
 
     d = client.get("/persona").json()
     assert d["current"] == "Custom" and d["licensed"] is False
-    assert "BBC World" in d["personas"]  # listed, but locked
+    assert "Newsroom" in d["personas"]  # listed, but locked
 
     # Selecting a persona without the license is rejected (402), Custom is free.
-    assert client.post("/persona", params={"name": "BBC World"}).status_code == 402
+    assert client.post("/persona", params={"name": "Newsroom"}).status_code == 402
     assert state.persona is None
     assert client.post("/persona", params={"name": "Custom"}).status_code == 200
 
@@ -235,16 +230,16 @@ def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
     client = TestClient(create_app(state))
 
     assert client.get("/persona").json()["licensed"] is True
-    resp = client.post("/persona", params={"name": "BBC World"}).json()
-    assert resp["current"] == "BBC World"
-    assert state.persona == "BBC World"
-    assert state.style == "bbc-world" and state.voice == "alan"
+    resp = client.post("/persona", params={"name": "Newsroom"}).json()
+    assert resp["current"] == "Newsroom"
+    assert state.persona == "Newsroom"
+    assert state.style == "newsroom" and state.voice == "alan"
     assert state.ident and state.signoff  # station phrasing set
 
     # Custom clears the persona and its phrasing (back to defaults).
     client.post("/persona", params={"name": "Custom"})
     assert state.persona is None and state.ident is None and state.signoff is None
-    assert state.style == "bbc-world"  # keeps the last style/voice
+    assert state.style == "newsroom"  # keeps the last style/voice
 
     assert client.post("/persona", params={"name": "Nope"}).status_code == 400
 
@@ -274,21 +269,6 @@ def test_news_model_temperature_and_max_tokens():
     # Out-of-range values are rejected.
     assert client.post("/news-model", params={"name": "m", "temperature": 5}).status_code == 400
     assert client.post("/news-model", params={"name": "m", "max_tokens": 0}).status_code == 400
-
-
-def test_schedule_endpoint():
-    from statemediafm.core.director import Director
-
-    state = _State()
-    client = TestClient(create_app(state))
-    assert client.get("/schedule").json()["live"] is False  # no director until serve runs
-
-    state.director = Director()
-    d = client.get("/schedule").json()
-    assert d["live"] is True
-    kinds = {c["kind"] for c in d["order"]}
-    assert {"news", "song", "ident"} <= kinds
-    assert d["order"][0]["kind"] == "news" and d["order"][0]["at_s"] == 0.0
 
 
 def test_mix_settings_roundtrip():

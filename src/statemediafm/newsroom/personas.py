@@ -3,9 +3,10 @@
 A **persona** ties together the three levers that give a broadcast its character
 — the writing *style* (a prompt hint for the summarizer), the speaking *voice* (a
 Piper voice), and the *phrasing* (the station ident and sign-off lines). Selecting
-one in the Settings tab sets all three at once, so the news sounds like a station
-rather than a generic feed (plan §5.2 / M4). ``Custom`` keeps the free-form
-style/voice controls and the default phrasing.
+one sets all three at once, so the news sounds like a station rather than a generic
+feed (plan §5.2 / M4). ``Custom`` keeps the free-form style/voice controls and the
+default phrasing. (The selection UI is currently withdrawn from Settings; the
+``/persona`` endpoints and this registry remain for a future iteration.)
 """
 
 from __future__ import annotations
@@ -21,8 +22,7 @@ MODULE = "voice-personas"
 register_module(
     MODULE,
     "Themed voice personas",
-    "Curated on-air identities (BBC World, John Peel, Public Radio) bundling a "
-    "writing style, voice and station phrasing.",
+    "Curated on-air identities bundling a writing style, voice and station phrasing.",
 )
 
 # The default (Custom) phrasing — the firmwide-radio wording used when no persona
@@ -46,23 +46,23 @@ class Persona:
 # Curated starting set (plan M4). Each pairs a distinct writing style with a
 # distinct voice and its own ident/sign-off cadence.
 PERSONAS: dict[str, Persona] = {
-    "BBC World": Persona(
-        name="BBC World",
-        style="bbc-world",
+    "Newsroom": Persona(
+        name="Newsroom",
+        style="newsroom",
         voice="alan",
-        ident="This is the world service.",
-        signoff="That is the latest from the newsroom. Do stay with us.",
+        ident="This is the newsroom.",
+        signoff="That is the latest. Do stay with us.",
     ),
-    "John Peel": Persona(
-        name="John Peel",
-        style="john-peel late-night, wry and warm",
+    "Late Night": Persona(
+        name="Late Night",
+        style="late-night, wry and warm",
         voice="northern_english_male",
         ident="You're listening to the graveyard shift.",
-        signoff="That's your lot for now. Keep it Peel.",
+        signoff="That's your lot for now.",
     ),
-    "Public Radio": Persona(
-        name="Public Radio",
-        style="npr public-radio, measured and considered",
+    "Community": Persona(
+        name="Community",
+        style="community radio, measured and considered",
         voice="southern_english_female",
         ident="This is your community radio service.",
         signoff="And that's where we'll leave it. More as it develops.",

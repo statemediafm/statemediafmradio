@@ -21,7 +21,7 @@ def run(
     llm_client: LLMClient,
     llm_cfg: LLMConfig,
     tts: TTSProvider,
-    style: str = "bbc-world",
+    style: str = "newsroom",
     voice: str | None = None,
     tenant: str | None = None,
 ) -> BroadcastPlan:

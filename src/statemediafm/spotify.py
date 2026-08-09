@@ -67,8 +67,12 @@ def client_credentials_token(client_id: str, client_secret: str, *, http=_defaul
 
 
 def search_track(token: str, title: str, artist: str | None = None, *, http=_default_http) -> SpotifyTrack | None:
-    """Find the best track for ``title`` (+ optional ``artist``); None if no match."""
-    q = f'track:"{title}"' + (f' artist:"{artist}"' if artist else "")
+    """Find the best track for ``title``; None if no match.
+
+    With an ``artist`` this is an exact ``track:``/``artist:`` field lookup. Without
+    one, ``title`` is treated as a **free-text** query (a mood/genre seed like
+    ``"ambient instrumental"``) and the top result is returned."""
+    q = f'track:"{title}" artist:"{artist}"' if artist else title
     url = _SEARCH_URL + "?" + urllib.parse.urlencode({"q": q, "type": "track", "limit": 1})
     data = http("GET", url, {"Authorization": f"Bearer {token}"})
     items = (((data or {}).get("tracks") or {}).get("items")) or []

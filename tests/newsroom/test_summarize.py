@@ -46,8 +46,8 @@ def _items() -> list[NewsItem]:
 
 
 def test_build_prompt_includes_items_and_style():
-    prompt = build_prompt(_items(), style="bbc-world", target_seconds=90)
-    assert "bbc-world" in prompt
+    prompt = build_prompt(_items(), style="newsroom", target_seconds=90)
+    assert "newsroom" in prompt
     # who/what/where/when/why/how brief is present
     assert "who, what, where, when, why, and how" in prompt
     # each item's source, title, and actors are rendered
@@ -67,9 +67,9 @@ def test_target_seconds_scales_word_budget():
 
 
 def test_summarize_returns_script_via_fake_client():
-    script = summarize(_items(), style="bbc-world", client=FakeLLMClient(), cfg=CFG)
+    script = summarize(_items(), style="newsroom", client=FakeLLMClient(), cfg=CFG)
     assert isinstance(script, Script)
-    assert script.style == "bbc-world"
+    assert script.style == "newsroom"
     assert script.voice is None
     assert script.segments == []
     # FakeLLMClient tags output with the configured model → proves it was used
@@ -89,8 +89,8 @@ def test_summarize_rejects_empty_window():
 
 
 def test_naive_radio_script_reflects_real_items():
-    text = naive_radio_script(_items(), style="bbc-world")
-    # Firmwide framing, not a "bbc-world desk".
+    text = naive_radio_script(_items(), style="newsroom")
+    # Firmwide framing, not a "newsroom desk".
     assert "firmwide radio service" in text
     assert "desk" not in text
     assert "2 items" in text
@@ -108,13 +108,13 @@ def test_naive_radio_script_names_issue_and_mr_kinds():
         NewsItem(id="i1", source="forge", kind="issue", title="Scheduler hangs", actors=["a"]),
         NewsItem(id="p1", source="forge", kind="pull_request", title="Fix the hang", actors=["b"]),
     ]
-    text = naive_radio_script(items, style="bbc-world")
+    text = naive_radio_script(items, style="newsroom")
     assert "issues" in text and "pull requests" in text
 
 
 def test_naive_radio_script_pluralizes_hn_stories():
     items = [NewsItem(id="hn:1", source="hackernews", kind="story", title="Big news", actors=["a"])]
-    assert "stories" in naive_radio_script(items, style="bbc-world")
+    assert "stories" in naive_radio_script(items, style="newsroom")
 
 
 def test_headlines_attributed_to_a_single_origin():
@@ -124,7 +124,7 @@ def test_headlines_attributed_to_a_single_origin():
         NewsItem(id="hn:2", source="hackernews", kind="story", title="Postgres scales",
                  origin="Hacker News", actors=["b"]),
     ]
-    text = naive_radio_script(items, style="bbc-world")
+    text = naive_radio_script(items, style="newsroom")
     assert "Here are the headlines from Hacker News." in text
     assert "Claude Opus 5." in text
 
@@ -136,7 +136,7 @@ def test_headlines_attributed_per_source_when_mixed():
         NewsItem(id="c1", source="git", kind="commit", title="Fix the bug",
                  origin="meltano", actors=["b"]),
     ]
-    text = naive_radio_script(items, style="bbc-world")
+    text = naive_radio_script(items, style="newsroom")
     assert "From Hacker News, Opus 5." in text
     assert "From meltano, Fix the bug." in text
 
@@ -147,8 +147,8 @@ def test_max_headlines_caps_per_source():
                  origin="Hacker News", actors=["a"])
         for i in range(12)
     ]
-    five = [r for r in radio_reads(items, "bbc-world") if r.role == "headline"]
-    ten = [r for r in radio_reads(items, "bbc-world", max_headlines=10) if r.role == "headline"]
+    five = [r for r in radio_reads(items, "newsroom") if r.role == "headline"]
+    ten = [r for r in radio_reads(items, "newsroom", max_headlines=10) if r.role == "headline"]
     assert len(five) == 5  # default
     assert len(ten) == 10
 
@@ -163,7 +163,7 @@ def test_multi_source_headlines_are_grouped_depth_first():
                  origin="Hacker News", actors=["c"]),
         NewsItem(id="r2", source="git", kind="commit", title="Repo two", origin="proj", actors=["d"]),
     ]
-    headlines = [(r.text, r.origin) for r in radio_reads(items, "bbc-world") if r.role == "headline"]
+    headlines = [(r.text, r.origin) for r in radio_reads(items, "newsroom") if r.role == "headline"]
     # All Hacker News headlines precede all repo headlines (no interleaving).
     assert [o for _, o in headlines] == ["Hacker News", "Hacker News", "proj", "proj"]
     # Each source is announced at the top of its run.
@@ -178,13 +178,13 @@ def test_time_greeting_states_hour_and_minute():
 
 def test_radio_reads_join_equals_script():
     items = _items()
-    reads = radio_reads(items, "bbc-world")
+    reads = radio_reads(items, "newsroom")
     voiced = " ".join(r.text for r in reads if r.role != "pause")  # pauses carry no text
-    assert voiced == naive_radio_script(items, "bbc-world")
+    assert voiced == naive_radio_script(items, "newsroom")
 
 
 def test_radio_reads_marks_headlines_and_greeting():
-    reads = radio_reads(_items(), "bbc-world", greeting="Good day. It is 09:00.")
+    reads = radio_reads(_items(), "newsroom", greeting="Good day. It is 09:00.")
     # The greeting is the first read.
     assert reads[0].role == "other"
     assert reads[0].text == "Good day. It is 09:00."
@@ -195,18 +195,18 @@ def test_radio_reads_marks_headlines_and_greeting():
 
 
 def test_radio_reads_uses_persona_ident_and_signoff():
-    reads = radio_reads(_items(), "bbc-world",
-                        ident="This is the world service.",
+    reads = radio_reads(_items(), "newsroom",
+                        ident="This is the newsroom.",
                         signoff="Do stay with us.")
     texts = [r.text for r in reads]
-    assert "This is the world service." in texts
+    assert "This is the newsroom." in texts
     assert texts[-1] == "Do stay with us."
     # The default firmwide phrasing is replaced, not appended.
     assert "This is the firmwide radio service." not in texts
 
 
 def test_radio_reads_defaults_to_firmwide_phrasing():
-    reads = radio_reads(_items(), "bbc-world")
+    reads = radio_reads(_items(), "newsroom")
     texts = [r.text for r in reads]
     assert "This is the firmwide radio service." in texts
     # the sign-off is split by a double pause after its first sentence
@@ -233,7 +233,7 @@ def test_contributors_line_excludes_bots():
         NewsItem(id="3", source="forge", kind="pull_request", title="real fix",
                  actors=["alice"]),
     ]
-    text = naive_radio_script(items, "bbc-world")
+    text = naive_radio_script(items, "newsroom")
     assert "dependabot" not in text
     assert "codecov" not in text
     assert "Most of the activity came from alice." in text
@@ -244,7 +244,7 @@ def test_contributors_line_dropped_when_only_bots():
         NewsItem(id="1", source="forge", kind="pull_request", title="bump",
                  actors=["dependabot[bot]"]),
     ]
-    text = naive_radio_script(items, "bbc-world")
+    text = naive_radio_script(items, "newsroom")
     assert "Most of the activity came from" not in text  # no humans → no credit line
 
 
@@ -255,7 +255,7 @@ def test_bot_authored_headlines_are_suppressed():
         NewsItem(id="2", source="forge", kind="pull_request", title="Add real feature",
                  actors=["alice"]),
     ]
-    headlines = [r.text for r in radio_reads(items, "bbc-world") if r.role == "headline"]
+    headlines = [r.text for r in radio_reads(items, "newsroom") if r.role == "headline"]
     assert any("Add real feature" in h for h in headlines)
     assert not any("bump nox" in h for h in headlines)
 
@@ -265,7 +265,7 @@ def test_all_bot_authored_reports_no_headlines():
         NewsItem(id="1", source="forge", kind="pull_request", title="bump x",
                  actors=["renovate[bot]"]),
     ]
-    text = naive_radio_script(items, "bbc-world")
+    text = naive_radio_script(items, "newsroom")
     assert "No standout headlines to report." in text
     assert "bump x" not in text
 
@@ -277,13 +277,13 @@ def test_radio_reads_headlines_carry_origin():
         NewsItem(id="c1", source="git", kind="commit", title="Fix the bug",
                  origin="meltano", actors=["b"]),
     ]
-    reads = radio_reads(items, "bbc-world")
+    reads = radio_reads(items, "newsroom")
     by_origin = {r.origin for r in reads if r.role == "headline"}
     assert by_origin == {"Hacker News", "meltano"}
 
 
 def test_naive_radio_script_greeting_is_prepended():
-    text = naive_radio_script(_items(), "bbc-world", greeting="Good day. It is 09:00.")
+    text = naive_radio_script(_items(), "newsroom", greeting="Good day. It is 09:00.")
     assert text.startswith("Good day. It is 09:00. This is the firmwide radio service.")
 
 

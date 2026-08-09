@@ -119,11 +119,11 @@ statemediafm/
 │   │   │   └── stubs.py      #   other proxies/harnesses (raise NotImplementedError)
 │   │   ├── model_config.yaml # LiteLLM params; dev profile = local Claude client
 │   │   ├── tts.py            # TTS provider ABC + offline default + adapters
-│   │   └── voices/           # themed voice modules (bbc, john-peel, rasta, ...)
+│   │   └── voices/           # themed voice modules (newsroom, late-night, community, ...)
 │   ├── genmusic/             # PILLAR: generative Strudel music
 │   │   ├── activity.py       # NewsItem stream → ActivitySignal (volatility, etc.)
 │   │   ├── brainwave.py      # intensity ↔ theta/alpha/beta/gamma mapping
-│   │   ├── styles/           # tintinnabuli, lofi, space-dub, bleep, aphex-fugue
+│   │   ├── styles/           # tintinnabuli, lofi, space-dub, bleep, fugue-state
 │   │   └── compose.py        # ActivitySignal + style → Strudel program text
 │   ├── music/                # PILLAR: streaming-service integration (optional)
 │   │   ├── base.py           # music provider ABC
@@ -164,9 +164,9 @@ consumes/produces), and an **MVP → full** split.
   **LiteLLM** (`litellm.completion(**model_config, messages=...)`). A
   deterministic **fake** client backs the tests. Offline TTS (Piper) produces a
   WAV/OGG served by the API.
-- **Full:** themed voice modules (BBC world 70s–80s, John Peel, BBC pidgin,
-  rastafarian, public/student/alternative radio), each a prompt+voice preset;
-  cloud TTS adapters; multi-voice segments (per-participant voices).
+- **Full:** themed voice modules (newsroom, late-night, community/student/
+  alternative radio), each a prompt+voice preset; cloud TTS adapters; multi-voice
+  segments (per-participant voices).
 
 #### 5.2.1 LLM integration (LiteLLM)
 The summarizer never calls a provider SDK directly — it depends only on:
@@ -225,7 +225,7 @@ profiles:
 - **MVP:** one style (lofi), signal from message/commit counts, fixed theta
   start with a simple intensity ramp; program text delivered to client.
 - **Full:** all styles (tintinnabuli piano/quartet, space-dub, modular bleep,
-  aphex fugue-state on close data match), user base-intensity setting,
+  fugue-state on close data match), user base-intensity setting,
   brainwave-band adaptation, participant→voice/theme mapping.
 
 ### 5.4 Music / streaming integration (optional)
@@ -384,7 +384,7 @@ adding breadth.
 ### M4 — Rhythm of the day + voices + styles breadth
 - Scheduler: news every n-min (default 15, −9 offset), song slots (stubbed),
   music between; 2–5 min felt cadence.
-- Themed voice **personas** (start: BBC World, John Peel, Public Radio) — the
+- Themed voice **personas** (start: Newsroom, Late Night, Community) — the
   first **commercial module** (`voice-personas`, license-gated; see §5.9). The
   free Custom style/voice controls remain open-core.
 - More music styles (space-dub, modular bleep) + full brainwave-band mapping +
@@ -427,7 +427,7 @@ music modules, SSO/identity (§5.7 / M6) for enterprise modules, and the schedul
 
 ### 8.1 Content & voice modules
 - **`voice-personas` — Themed voice personas.** *Shipped (M4-C).* Curated on-air
-  identities (BBC World, John Peel, Public Radio) = writing-style + voice +
+  identities (Newsroom, Late Night, Community) = writing-style + voice +
   station-phrasing bundles. Free tier = the Custom style/voice controls.
 - **`premium-voices` — Commercially licensed voices.** High-quality / licensed TTS
   voices beyond the free Piper set, slotting into the `TTSProvider` abstraction

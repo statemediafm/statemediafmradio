@@ -24,7 +24,7 @@ def test_run_produces_single_news_segment():
         llm_client=FakeLLMClient(),
         llm_cfg=LLMConfig(model="fake/offline"),
         tts=ToneWavTTS(),
-        style="bbc-world",
+        style="newsroom",
     )
     assert len(plan.segments) == 1
     seg = plan.segments[0]
@@ -32,7 +32,7 @@ def test_run_produces_single_news_segment():
     assert seg.start_s == 0.0
     assert seg.duration_s > 0
     assert seg.audio is not None and seg.audio.data[:4] == b"RIFF"
-    assert seg.script is not None and seg.script.style == "bbc-world"
+    assert seg.script is not None and seg.script.style == "newsroom"
 
 
 def test_plan_to_dict_references_audio_by_url():
