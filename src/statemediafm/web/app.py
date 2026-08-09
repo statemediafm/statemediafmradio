@@ -945,10 +945,6 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
       <span class='muted' id='persona-lock'></span>
     </div>
     <div class='authrow'>
-      <label class='muted'>style
-        <input id='style-input' list='style-list' placeholder='e.g. bbc-world'>
-        <datalist id='style-list'></datalist>
-      </label>
       <label class='muted'>voice <select id='voice-sel'></select></label>
       <button id='narration-save'>Apply</button>
       <span class='muted' id='narration-status'></span>
@@ -1462,13 +1458,8 @@ async function loadNarration(){
     document.getElementById('persona-lock').textContent =
       licensed ? '' : '· commercial module — unlock under Commercial Features';
     const custom = (p.current||'Custom')==='Custom';
-    // Custom → the style/voice fields are yours to set; a persona drives them.
-    document.getElementById('style-input').disabled = !custom;
+    // Custom → the voice field is yours to set; a persona drives it.
     document.getElementById('voice-sel').disabled = !custom;
-    const s=await (await fetch('/style')).json();
-    const inp=document.getElementById('style-input'); inp.value=s.current||'';
-    const dl=document.getElementById('style-list'); dl.innerHTML='';
-    for(const x of (s.suggestions||[])){ const o=document.createElement('option'); o.value=x; dl.appendChild(o); }
     const v=await (await fetch('/voice')).json();
     const sel=document.getElementById('voice-sel'); sel.innerHTML='';
     for(const x of (v.voices||[])){ const o=document.createElement('option'); o.value=x; o.textContent=x;
@@ -1567,11 +1558,8 @@ async function loadLicense(){
 }
 document.getElementById('narration-save').addEventListener('click', async ()=>{
   const st=document.getElementById('narration-status'); st.textContent='saving…';
-  const style=document.getElementById('style-input').value.trim();
   const voice=document.getElementById('voice-sel').value;
   try{
-    if(style){ const r=await fetch('/style?name='+encodeURIComponent(style),{method:'POST'});
-      if(!r.ok){ st.textContent='style error'; return; } }
     if(voice){ const r=await fetch('/voice?name='+encodeURIComponent(voice),{method:'POST'});
       if(!r.ok){ st.textContent='voice error'; return; } }
     st.textContent='applied (next cycle)';
