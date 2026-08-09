@@ -271,7 +271,10 @@ def create_app(state: _State | None = None):
         from ..genmusic.styles import AMBIENT_MODELS
 
         if "mix_generators" in payload:
+            was = store.mix_generators
             store.mix_generators = bool(payload["mix_generators"])
+            if was and not store.mix_generators:
+                _recompose(store)  # rotation held a mixed generator — restore the selected one
         if "mix_spotify" in payload:
             was = store.mix_spotify
             store.mix_spotify = bool(payload["mix_spotify"])

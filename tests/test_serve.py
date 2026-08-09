@@ -158,12 +158,14 @@ def test_mix_mode_rotates_the_ambient_generator():
     cache: dict = {}
     from statemediafm.serve import MIX_EVERY_S
 
+    state.model = "ScratchPad"  # the user's OWN selection — rotation must not clobber it
     # First tick → first generator in the pool.
     refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0)
     assert state.program.style == "Entrainment 0.1"
     # One MIX window later → the next generator (the bed changes).
     refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + MIX_EVERY_S + 1)
     assert state.program.style == "Space Dub"
+    assert state.model == "ScratchPad"  # rotation left the selection untouched
     # Off (single generator) holds the chosen model.
     state.mix_generators = False
     state.model = "Entrainment 0.1"

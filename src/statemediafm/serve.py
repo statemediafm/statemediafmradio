@@ -73,6 +73,7 @@ def _mix_generator(state, elapsed: float, cache: dict) -> str | None:
     the MIX cadence. Returns the generator only when it just CHANGED (so the caller
     recomposes then, not every tick); ``None`` when mix is off or unchanged."""
     if not getattr(state, "mix_generators", False):
+        cache.pop("mix_gen", None)  # forget so re-enabling rotates cleanly
         return None
     from .genmusic.styles import AMBIENT_MODELS
 
@@ -83,8 +84,8 @@ def _mix_generator(state, elapsed: float, cache: dict) -> str | None:
     if gen == cache.get("mix_gen"):
         return None
     cache["mix_gen"] = gen
-    state.model = gen  # reflect the live generator in the UI/state
-    return gen
+    return gen  # the rotated generator to compose with — state.model (the user's
+    # own selection) is left untouched, so turning mixing off restores it
 
 
 def _demo_director():
