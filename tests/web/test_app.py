@@ -224,10 +224,13 @@ def test_intensity_endpoint_sets_base_energy():
 
 
 def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
-    from statemediafm.licensing import sign_license
+    import statemediafm.licensing as lic
     from statemediafm.newsroom.personas import MODULE
 
-    monkeypatch.setenv("STATEMEDIAFM_LICENSE", sign_license([MODULE]))
+    # Verification is stubbed, so simulate a future valid (asymmetric) license that
+    # unlocks the module — exercises the licensed persona-selection path.
+    monkeypatch.setattr(lic, "_verify", lambda key, now=None: frozenset([MODULE]))
+    monkeypatch.setenv("STATEMEDIAFM_LICENSE", "valid-key")
     state = _State()
     client = TestClient(create_app(state))
 
@@ -246,22 +249,18 @@ def test_persona_selection_sets_style_voice_and_phrasing(monkeypatch):
     assert client.post("/persona", params={"name": "Nope"}).status_code == 400
 
 
-def test_license_endpoint_saves_key_and_unlocks(monkeypatch, tmp_path):
-    from statemediafm.licensing import sign_license
-    from statemediafm.newsroom.personas import MODULE
-
+def test_license_endpoint_saves_key_but_unlocks_nothing_while_stubbed(monkeypatch, tmp_path):
     monkeypatch.delenv("STATEMEDIAFM_LICENSE", raising=False)
     monkeypatch.setenv("STATEMEDIAFM_LICENSE_FILE", str(tmp_path / "statemediafm.license"))
     client = TestClient(create_app(_State()))
 
     assert client.get("/license").json()["has_key"] is False
-    # An invalid key saves but unlocks nothing.
-    bad = client.post("/license", json={"key": "not-a-real-key"}).json()
-    assert all(not m["entitled"] for m in bad["modules"])
-    # A valid key unlocks the voice-personas module.
-    good = client.post("/license", json={"key": sign_license([MODULE])}).json()
-    assert any(m["slug"] == MODULE and m["entitled"] for m in good["modules"])
-    assert client.get("/persona").json()["licensed"] is True
+    # A key is stored (has_key flips), but verification is stubbed so it unlocks
+    # nothing and personas stay locked — the safe default until asymmetric signing.
+    d = client.post("/license", json={"key": "a-key-the-user-pasted"}).json()
+    assert client.get("/license").json()["has_key"] is True
+    assert all(not m["entitled"] for m in d["modules"])
+    assert client.get("/persona").json()["licensed"] is False
 
 
 def test_news_model_temperature_and_max_tokens():

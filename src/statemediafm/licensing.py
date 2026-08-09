@@ -3,33 +3,25 @@
 State Media FM is **open-core**. The base station — sources, the deterministic news
 copy, the generative music, the browser player — is free and fully offline and
 requires no key. A **commercial distribution** adds *modules* (e.g. themed voice
-personas) that are unlocked by a **license key**.
+personas) that would be unlocked by a **license key**.
 
-Design goals for a self-hostable product:
+**Verification is STUBBED.** The earlier HMAC scaffold was removed: a shared
+signing secret baked into the verifying binary is trivially extractable and lets
+anyone forge a key. Until an **asymmetric** verifier is wired (an Ed25519/RSA
+*public* key compiled into the build, keys signed by a vendor-held private key —
+still fully offline, no phone-home), :func:`_verify` unlocks nothing, so every
+commercial module stays locked (the safe default) and the whole open-core base
+remains free. The registry + enforcement surface (:func:`register_module`,
+:func:`require`, :func:`entitled`) and the key storage below are kept intact so a
+future iteration only has to drop in the real verifier. See SECURITY_MODEL.md and
+PLAN.md §5.9.
 
-- **Offline verification, no phone-home.** A key is a signed token verified
-  locally; nothing is sent to a server.
-- **Stdlib only** (``hmac``/``hashlib``/``base64``/``json``), so this still works
-  inside the zero-dependency zipapp.
-- **One enforcement pattern.** A commercial feature registers a module slug and
-  wraps its enable-points with :func:`require` / :func:`entitled`. Everything else
-  stays free.
-
-The default verifier here is an **HMAC-signed token** — adequate to *scaffold*
-the gate and issue dev keys, but a shipped product must swap ``_secret`` for
-asymmetric verification (an Ed25519/RSA **public** key baked in, private key held
-by the vendor) or a signing license server, because a shared HMAC secret lives in
-the verifying binary and can be extracted. See PLAN.md §5.9.
+Stdlib only, so this works inside the zero-dependency zipapp.
 """
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-import json
 import os
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,61 +75,36 @@ def license_key(path: str | os.PathLike | None = None) -> str | None:
 
 
 def save_license(key: str, path: str | os.PathLike | None = None) -> Path:
-    """Persist a license key to the gitignored license file, owner-only."""
+    """Persist a license key to the gitignored license file, owner-only. (The key
+    is stored but does not unlock anything until asymmetric verification lands.)"""
     p = license_path(path)
     p.write_text(key.strip() + "\n", encoding="utf-8")
     p.chmod(0o600)
     return p
 
 
-# ── Verification (scaffold: HMAC-signed token — see module docstring) ─────────
-
-
-def _secret() -> bytes:
-    """The signing secret. Overridable via ``$STATEMEDIAFM_LICENSE_SECRET`` for dev /
-    tests. **A shipped product must replace this with asymmetric verification.**"""
-    return os.environ.get("STATEMEDIAFM_LICENSE_SECRET", "STATEMEDIAFM-DEV-SECRET-CHANGE-ME").encode()
-
-
-def _b64url(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
-
-
-def _unb64url(s: str) -> bytes:
-    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
-
-
-def sign_license(modules, *, exp: float | None = None, sub: str = "statemediafm") -> str:
-    """Issue a signed key unlocking ``modules`` (``["*"]`` for all). **Vendor-side
-    tooling** — the scaffold uses it for dev keys and tests. ``exp`` is an epoch
-    expiry (``None`` = perpetual)."""
-    payload = {"modules": sorted(modules), "exp": exp, "sub": sub}
-    body = _b64url(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
-    sig = _b64url(hmac.new(_secret(), body.encode(), hashlib.sha256).digest())
-    return f"{body}.{sig}"
+# ── Verification (STUBBED — see module docstring / SECURITY_MODEL.md) ─────────
 
 
 def _verify(key: str, *, now: float | None = None) -> frozenset[str]:
-    """The module slugs a key unlocks, or empty on a bad/expired/forged key."""
-    try:
-        body, sig = key.strip().split(".", 1)
-        expected = _b64url(hmac.new(_secret(), body.encode(), hashlib.sha256).digest())
-        if not hmac.compare_digest(sig, expected):
-            return frozenset()
-        payload = json.loads(_unb64url(body))
-    except (ValueError, TypeError, json.JSONDecodeError):
-        return frozenset()
-    exp = payload.get("exp")
-    if exp is not None and (now if now is not None else time.time()) > exp:
-        return frozenset()
-    return frozenset(payload.get("modules") or [])
+    """The module slugs a license key unlocks — currently **none**.
+
+    The prior HMAC scaffold (a shared secret in the verifying binary, forgeable)
+    was removed. A future iteration wires ASYMMETRIC verification here — an
+    Ed25519/RSA *public* key compiled into the build verifies keys signed by a
+    vendor-held private key, still fully offline. Until then no key verifies, so
+    every commercial module stays locked (the safe default).
+    """
+    _ = (key, now)  # accepted for API stability; ignored until real verification lands
+    return frozenset()
 
 
 # ── Entitlements (the enforcement surface) ───────────────────────────────────
 
 
 def entitlements(key: str | None = None) -> frozenset[str]:
-    """The unlocked module slugs for ``key`` (defaults to the active license)."""
+    """The unlocked module slugs for ``key`` (defaults to the active license).
+    Empty while verification is stubbed."""
     key = key if key is not None else license_key()
     return _verify(key) if key else frozenset()
 

@@ -797,6 +797,14 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   .authrow{margin:.4rem 0;padding:.6rem 0;border-top:1px solid #eee}
   .authrow input{font:inherit;font-size:.9rem;display:block;width:100%;max-width:26rem;margin:.2rem 0;
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
+  /* Warning line + revealable info hint (least-privilege scopes). */
+  .warn{font-size:.85rem;color:#7a5200;background:#fff8e6;border:1px solid #e8d59a;
+        border-radius:4px;padding:.4rem .6rem;margin:.4rem 0}
+  details.hint{margin:.3rem 0 .5rem}
+  details.hint>summary{cursor:pointer;font-size:.85rem;color:#555;user-select:none}
+  details.hint ul{margin:.3rem 0;padding-left:1.2rem;font-size:.85rem;line-height:1.5}
+  @media(prefers-color-scheme:dark){.warn{color:#f0d38a;background:#2a2410;border-color:#5c4f1f}
+    details.hint>summary{color:#aaa}}
   /* Checkboxes sit inline with their label, not as full-width block inputs. */
   .authrow input[type=checkbox]{display:inline-block;width:auto;max-width:none;margin:0 .35rem 0 0;
                  padding:0;border:0;vertical-align:middle}
@@ -984,7 +992,9 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
   <details class='section'>
     <summary>News Update Sources</summary>
     <p class='muted'>Which activity State Media FM airs. Changes apply to the running
-    session (not written to the config file).</p>
+    session (not written to the config file). Each source authenticates with a token
+    you set under <em>Auth</em> — grant it a <strong>read-only, least-privilege scope</strong>
+    (see the recommended scopes there).</p>
     <div id='sourcelist'></div>
     <div class='authrow'>
       <select id='src-kind'></select>
@@ -1006,6 +1016,29 @@ _PLAYER_HTML = r"""<!doctype html><meta charset='utf-8'>
     FM polls (GitHub, GitLab, Jira, Slack, PagerDuty). Stored locally in a gitignored
     file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and
     never committed or sent anywhere but your own server.</p>
+    <p class='warn'>⚠ State Media FM only <strong>reads</strong> activity. Grant each token
+    the <strong>narrowest, read-only scope</strong> the provider allows — never write or
+    admin. A leaked token can do only what you scoped it for.</p>
+    <details class='hint'>
+      <summary>ⓘ Recommended token scopes (least privilege)</summary>
+      <ul class='muted'>
+        <li><strong>GitHub</strong> — a fine-grained PAT limited to the repos you add, with
+          <em>read-only</em> Contents + Issues + Pull&nbsp;requests (classic: <code>public_repo</code>
+          for public repos, or <code>repo</code> read-only). No write, no admin, no org scopes.</li>
+        <li><strong>GitLab</strong> — a personal/project token with only <code>read_api</code>
+          (or <code>read_repository</code>). Nothing write.</li>
+        <li><strong>Jira</strong> — an API token on a <em>least-privileged account</em> that can only
+          <em>Browse projects</em> (read). The token inherits the account's permissions, so scope the
+          account, not just the token.</li>
+        <li><strong>Slack</strong> — a bot/user token with <code>channels:read</code> +
+          <code>channels:history</code> (read-only) for the channels you add; no write/post scopes.</li>
+        <li><strong>PagerDuty</strong> — a <em>read-only</em> REST API key.</li>
+        <li><strong>llm-gateway</strong> — an API key scoped to only the model(s) you use, and (if the
+          gateway supports it) a spend cap. See <em>Gateways</em>.</li>
+      </ul>
+      <p class='muted'>If a token leaks, revoke it at the provider — this app can't. Storage and the
+      full trust model are in <code>SECURITY_MODEL.md</code>.</p>
+    </details>
     <div id='authform'></div>
   </details>
 
