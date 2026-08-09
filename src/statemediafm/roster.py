@@ -33,7 +33,7 @@ import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
-from .auth import source_token
+from .auth import source_endpoint, source_token
 from .core.schedule import Cadence, parse_duration
 from .sources import (
     FORGE_DEFAULT_MAX_AGE,
@@ -105,18 +105,26 @@ def _build_repo(topic: str, seg: dict) -> Source:
     repo = seg.get("repo")
     if not repo:
         raise ValueError(f"segment {topic!r}: source='repo' needs a 'repo' URL or path")
+    # Self-hosted GitLab: the configured instance base URL ([gitlab] endpoint),
+    # so its URLs are recognized as GitLab and polled via its API. A per-segment
+    # 'gitlab_base' overrides it (rare); blank → gitlab.com.
+    gitlab_base = seg.get("gitlab_base") or source_endpoint("gitlab") or None
     # Token precedence: an explicit token, then token_env, else the gitignored
     # auth config for the detected forge (github/gitlab), else none.
     token = seg.get("token") or (os.environ.get(seg["token_env"]) if seg.get("token_env") else None)
     if token is None:
-        forge = detect_forge(repo)  # (platform, slug) | None
+        forge = detect_forge(repo, gitlab_base=gitlab_base)  # (platform, slug) | None
         if forge is not None and forge[0] in ("github", "gitlab"):
             token = source_token(forge[0])
     # max_age (e.g. "7d", "48h") caps how far back a forge reaches; omitted →
     # the 12h radio-recent default (see ForgeSource).
     max_age = parse_duration(seg["max_age"]) if seg.get("max_age") else FORGE_DEFAULT_MAX_AGE
     return open_source(
-        repo, max_count=int(seg.get("max_count", 25)), token=token, max_age=max_age
+        repo,
+        max_count=int(seg.get("max_count", 25)),
+        token=token,
+        max_age=max_age,
+        gitlab_base=gitlab_base,
     )
 
 

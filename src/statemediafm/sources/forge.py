@@ -28,8 +28,13 @@ from typing import Any
 from ..core.models import NewsItem
 from .base import Source, register_source
 
-# Recognized forge hosts → platform key.
+# Recognized public forge hosts → platform key. A **self-hosted GitLab** instance
+# is recognized too, by passing its host via ``gitlab_base`` (from the Settings
+# ``[gitlab] endpoint`` config) — see ``detect_forge``.
 _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
+
+# Default GitLab API base when no self-hosted instance is configured.
+GITLAB_DEFAULT_BASE = "https://gitlab.com"
 
 # Default recency window: a radio reports *recent* news, so a forge airs work
 # items updated since the last poll, and — on the first poll or after a long gap
@@ -37,17 +42,48 @@ _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
 DEFAULT_MAX_AGE = 12 * 3600.0
 
 
-def detect_forge(repo: str) -> tuple[str, str] | None:
+def _host_of(url: str) -> str:
+    """The bare hostname of a URL/repo — https, scp-like (``git@host:owner/repo``),
+    or bare (``host/owner/repo``) — minus any scheme, credentials, or port. ``""``
+    for a local path (no host)."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    if "://" not in u:
+        u = "//" + u  # let urlsplit treat the leading token as a netloc
+    netloc = urllib.parse.urlsplit(u).netloc
+    return netloc.split("@")[-1].split(":")[0].lower()
+
+
+def normalize_gitlab_base(url: str | None) -> str:
+    """A GitLab API base URL: default to gitlab.com; add ``https://`` if the
+    configured instance is given bare; drop any trailing slash."""
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return GITLAB_DEFAULT_BASE
+    return u if "://" in u else "https://" + u
+
+
+def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str] | None:
     """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL.
 
-    Recognizes github.com / gitlab.com in https or scp-like form and normalizes
-    to the project root, so a pasted **work-item URL** (an issue / PR / MR link)
-    resolves to its project too — e.g. ``github.com/o/r/issues/12`` →
-    ``o/r`` and ``gitlab.com/g/p/-/merge_requests/3`` → ``g/p``. Returns ``None``
-    for anything else (e.g. a local path), so callers fall back to the git source.
+    Recognizes github.com / gitlab.com — and, when ``gitlab_base`` names a
+    **self-hosted GitLab** instance, that host too — in https or scp-like form,
+    normalizing a pasted **work-item URL** (an issue / PR / MR link) to its project
+    root: e.g. ``github.com/o/r/issues/12`` → ``o/r`` and
+    ``gitlab.mycorp.com/g/p/-/merge_requests/3`` → ``g/p``. Matches on the exact
+    host (not a substring, so ``gitlab.company.com`` is not mistaken for
+    gitlab.com). Returns ``None`` for anything else (e.g. a local path), so callers
+    fall back to the git source.
     """
-    host = next((h for h in _HOSTS if h in repo), None)
-    if host is None:
+    hosts = dict(_HOSTS)
+    if gitlab_base:
+        gh = _host_of(gitlab_base)
+        if gh:
+            hosts[gh] = "gitlab"
+    host = _host_of(repo)
+    platform = hosts.get(host)
+    if platform is None:
         return None
     # The path after the host, for https or scp-like (git@host:owner/repo) forms.
     path = repo.split(host, 1)[1].lstrip(":/").split("#", 1)[0].split("?", 1)[0]
@@ -58,8 +94,8 @@ def detect_forge(repo: str) -> tuple[str, str] | None:
         return None
     # GitHub: owner/repo are the first two segments (drop /issues/123, /pull/5, …).
     # GitLab: keep the full (possibly nested) project path — the API takes it whole.
-    slug = "/".join(parts[:2] if _HOSTS[host] == "github" else parts)
-    return _HOSTS[host], slug
+    slug = "/".join(parts[:2] if platform == "github" else parts)
+    return platform, slug
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -85,12 +121,16 @@ class ForgeSource(Source):
         get: Callable[[str], Any] | None = None,
         max_age: float | None = DEFAULT_MAX_AGE,
         now: Callable[[], datetime] | None = None,
+        gitlab_base: str | None = None,
     ) -> None:
-        detected = detect_forge(repo)
+        detected = detect_forge(repo, gitlab_base=gitlab_base)
         if detected is None:
             raise ValueError(f"{repo!r} is not a recognized GitHub/GitLab URL.")
         self.repo = repo
         self.platform, self.slug = detected
+        # For GitLab, the API base — a self-hosted instance (``gitlab_base``) or
+        # gitlab.com. GitHub always uses api.github.com.
+        self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
         self.project = self.slug.split("/")[-1]  # repo name, for on-air attribution
         self.max_count = max_count
         # The recency cap (seconds); None = no age limit. Combined with the last
@@ -194,7 +234,7 @@ class ForgeSource(Source):
 
     def _poll_gitlab(self) -> list[NewsItem]:
         pid = urllib.parse.quote(self.slug, safe="")
-        base = f"https://gitlab.com/api/v4/projects/{pid}"
+        base = f"{self.api_base}/api/v4/projects/{pid}"
         items: list[NewsItem] = []
         for kind, path, ref in (("issue", "issues", "issues"), ("merge_request", "merge_requests", "merge_requests")):
             listing = self._get(

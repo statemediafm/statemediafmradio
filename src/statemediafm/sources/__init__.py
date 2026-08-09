@@ -17,6 +17,7 @@ def open_source(
     max_count: int = 20,
     token: str | None = None,
     max_age: float | None = FORGE_DEFAULT_MAX_AGE,
+    gitlab_base: str | None = None,
 ) -> Source:
     """Pick the right source for ``repo``.
 
@@ -24,10 +25,14 @@ def open_source(
     their latest comments). Anything else (a local path, a bare remote) →
     ``GitSource`` (recent commits), which is all that is available without a
     forge API. ``max_age`` (seconds) caps a forge to recently-updated items
-    (default 12h — see ``ForgeSource``); ``None`` removes the cap.
+    (default 12h — see ``ForgeSource``); ``None`` removes the cap. ``gitlab_base``
+    names a **self-hosted GitLab** instance so its URLs are recognized + polled
+    via its API (from the Settings ``[gitlab] endpoint`` config).
     """
-    if detect_forge(repo) is not None:
-        return ForgeSource(repo, max_count=max_count, token=token, max_age=max_age)
+    if detect_forge(repo, gitlab_base=gitlab_base) is not None:
+        return ForgeSource(
+            repo, max_count=max_count, token=token, max_age=max_age, gitlab_base=gitlab_base
+        )
     return GitSource(repo, max_count=max_count)
 
 

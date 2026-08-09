@@ -995,6 +995,30 @@ return of(u,o);};})();</script>
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
   <details class='section' open>
+    <summary>Config</summary>
+    <p class='muted'>Connect State Media FM to your infrastructure. Set these
+    <strong>before</strong> adding a project under <em>News Update Sources</em> — a
+    token or instance URL saved <em>after</em> a source is added only takes effect
+    once you re-add that source. Stored in the gitignored
+    <code>statemediafm.auth.toml</code> (owner-only); tokens are masked and never
+    sent anywhere but your own server.</p>
+    <h3>GitLab</h3>
+    <p class='muted'>For <strong>self-hosted GitLab</strong>, set the instance URL
+    (e.g. <code>https://gitlab.mycorp.com</code>) so projects on it are recognized
+    and polled via its API — leave it blank for <code>gitlab.com</code>. Add a
+    read-only <code>read_api</code> (or <code>read_repository</code>) personal access
+    token. Then add the project's URL under <em>News Update Sources</em>.</p>
+    <div id='cfg-gitlab'></div>
+    <h3>LLM gateway</h3>
+    <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter,
+    Azure, a self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and
+    <strong>API token</strong>. LLM news-writing is enabled by starting the server
+    with <code>--live</code>; then pick a gateway-served model under <em>News-parsing
+    model</em>.</p>
+    <div id='cfg-gateway'></div>
+  </details>
+
+  <details class='section' open>
     <summary>Mix</summary>
     <div class='authrow'>
       <label class='muted' id='modelwrap'>ambient generator
@@ -1535,7 +1559,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadConfig(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
 // ── Voice selection (feature-flagged off for now) ─────────────────────────────
@@ -1801,10 +1825,23 @@ function authRow(src, c, epPlaceholder){
     btn.disabled=true; btn.textContent='Saving…';
     const body={source:src, endpoint:row.querySelector('.ep').value, token:row.querySelector('.tok').value};
     try{ await fetch('/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      await loadAuth(); await loadGateways();
+      await loadAuth(); await loadGateways(); if(typeof loadConfig==='function'){ await loadConfig(); }
     }catch(e){ btn.disabled=false; btn.textContent='Save'; }
   });
   return row;
+}
+// Config section: the essential connection configs (self-hosted GitLab instance
+// + PAT, LLM gateway URL + token), reusing the shared endpoint/token row. Same
+// /auth storage as the Auth/Gateways sections — saving in one refreshes the rest.
+async function loadConfig(){
+  try{
+    const d=await (await fetch('/auth')).json();
+    const c=d.config||{};
+    const gl=document.getElementById('cfg-gitlab'); if(gl){ gl.innerHTML='';
+      gl.appendChild(authRow('gitlab', c['gitlab']||{}, 'GitLab instance URL (blank = gitlab.com)')); }
+    const gw=document.getElementById('cfg-gateway'); if(gw){ gw.innerHTML='';
+      gw.appendChild(authRow('llm-gateway', c['llm-gateway']||{}, 'gateway base URL')); }
+  }catch(e){}
 }
 async function loadAuth(){
   const wrap=document.getElementById('authform');

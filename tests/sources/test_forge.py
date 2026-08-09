@@ -184,3 +184,54 @@ def test_github_degrades_when_comments_forbidden():
 def test_forge_rejects_non_forge_url():
     with pytest.raises(ValueError, match="not a recognized"):
         ForgeSource("/local/path")
+
+
+# ── Self-hosted GitLab ───────────────────────────────────────────────────────
+
+
+def test_detect_forge_self_hosted_gitlab():
+    base = "https://gitlab.corp.example"
+    # Unrecognized until the instance is configured; then it's GitLab.
+    assert detect_forge("https://gitlab.corp.example/team/app") is None
+    assert detect_forge("https://gitlab.corp.example/team/app", gitlab_base=base) == (
+        "gitlab", "team/app")
+    # Nested groups keep the full path; a work-item URL normalizes to the project.
+    assert detect_forge(
+        "https://gitlab.corp.example/grp/sub/app/-/issues/7", gitlab_base=base
+    ) == ("gitlab", "grp/sub/app")
+    # A bare-host config (no scheme) also works.
+    assert detect_forge(
+        "https://gitlab.corp.example/team/app", gitlab_base="gitlab.corp.example"
+    ) == ("gitlab", "team/app")
+
+
+def test_detect_forge_does_not_confuse_lookalike_host():
+    # Exact-host match: 'gitlab.company.com' is NOT gitlab.com.
+    assert detect_forge("https://gitlab.company.com/a/b") is None
+
+
+def test_open_source_routes_self_hosted_gitlab_to_forge():
+    src = open_source(
+        "https://gitlab.corp.example/team/app", gitlab_base="https://gitlab.corp.example"
+    )
+    assert isinstance(src, ForgeSource) and src.platform == "gitlab"
+
+
+def test_gitlab_poll_uses_configured_instance_base():
+    routes = {
+        "/issues?": [{"iid": 1, "title": "Bug", "author": {"name": "Ana"},
+                      "description": "d", "user_notes_count": 0,
+                      "updated_at": "2026-07-24T10:00:00Z", "state": "opened", "web_url": "w1"}],
+        "/merge_requests?": [{"iid": 2, "title": "MR", "author": {"name": "Bo"},
+                              "description": "m", "user_notes_count": 0,
+                              "updated_at": "2026-07-24T09:00:00Z", "state": "opened", "web_url": "w2"}],
+    }
+    fake = _FakeGet(routes)
+    src = ForgeSource("https://gitlab.corp.example/team/app", get=fake, max_age=None,
+                      gitlab_base="https://gitlab.corp.example")
+    items = src.poll()
+    assert {i.title for i in items} == {"Bug", "MR"}
+    # Every API call hit the configured self-hosted instance, not gitlab.com.
+    assert fake.calls
+    assert all(u.startswith("https://gitlab.corp.example/api/v4/projects/") for u in fake.calls)
+    assert "team%2Fapp" in fake.calls[0]  # URL-encoded full project path

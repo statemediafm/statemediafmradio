@@ -122,8 +122,8 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
 
     captured = {}
 
-    def _fake_open_source(repo, max_count=20, token=None, max_age=None):
-        captured.update(token=token, max_age=max_age)
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None, gitlab_base=None):
+        captured.update(token=token, max_age=max_age, gitlab_base=gitlab_base)
 
         class _S:
             name = "s"
@@ -135,6 +135,7 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
 
     monkeypatch.setattr(roster, "open_source", _fake_open_source)
     monkeypatch.setattr(roster, "source_token", lambda src, path=None: "AUTHTOK" if src == "github" else None)
+    monkeypatch.setattr(roster, "source_endpoint", lambda src, path=None: None)
     roster._build_repo("T", {"repo": "https://github.com/o/r"})
     assert captured["token"] == "AUTHTOK"  # pulled from the gitignored auth config
     assert captured["max_age"] == 12 * 3600  # omitted → the 12h radio-recent default
@@ -142,3 +143,29 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
     # A max_age duration string is parsed to seconds and passed through.
     roster._build_repo("T", {"repo": "https://github.com/o/r", "max_age": "7d"})
     assert captured["max_age"] == 7 * 86400
+
+
+def test_repo_source_uses_self_hosted_gitlab_endpoint(monkeypatch):
+    from statemediafm import roster
+
+    captured = {}
+
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None, gitlab_base=None):
+        captured.update(repo=repo, token=token, gitlab_base=gitlab_base)
+
+        class _S:
+            name = "s"
+
+            def poll(self, since=None):
+                return []
+
+        return _S()
+
+    monkeypatch.setattr(roster, "open_source", _fake_open_source)
+    # Configured self-hosted GitLab instance + its saved token.
+    monkeypatch.setattr(roster, "source_endpoint", lambda src, path=None: "https://gitlab.corp.example" if src == "gitlab" else None)
+    monkeypatch.setattr(roster, "source_token", lambda src, path=None: "GLPAT" if src == "gitlab" else None)
+
+    roster._build_repo("T", {"repo": "https://gitlab.corp.example/team/app"})
+    assert captured["gitlab_base"] == "https://gitlab.corp.example"  # threaded to open_source
+    assert captured["token"] == "GLPAT"  # the URL is recognized as GitLab, so its token applies

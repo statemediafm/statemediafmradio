@@ -37,7 +37,7 @@ from .roster import (
     load_config,
     load_source_plugins,
 )
-from .sources import HackerNewsSource, Source, open_source
+from .sources import HackerNewsSource, Source, detect_forge, open_source
 
 # Voices rotated across broadcast segments so each topic/source sounds distinct.
 # All are Piper *medium* voices (22.05 kHz) so segments concatenate cleanly.
@@ -76,7 +76,17 @@ def _source_items(args: argparse.Namespace) -> list | None:
         items += _poll(HackerNewsSource(max_count=args.max_count))
         picked = True
     if args.repo:
-        items += _poll(open_source(args.repo, max_count=args.max_count, token=args.token))
+        # Honor a configured self-hosted GitLab instance ([gitlab] endpoint), and a
+        # UI-saved GitLab token when no --token is given, so `demo` matches `serve`.
+        from .auth import source_endpoint, source_token
+
+        gitlab_base = source_endpoint("gitlab") or None
+        token = args.token
+        if token is None and (detect_forge(args.repo, gitlab_base=gitlab_base) or (None,))[0] == "gitlab":
+            token = source_token("gitlab")
+        items += _poll(
+            open_source(args.repo, max_count=args.max_count, token=token, gitlab_base=gitlab_base)
+        )
         picked = True
     return items if picked else None
 
@@ -219,8 +229,17 @@ def _ad_hoc_roster(args: argparse.Namespace) -> list[tuple[str, Source, Cadence,
     if args.hn or not args.repo:  # default to HN unless only --repo was given
         sources.append(("Hacker News front page", HackerNewsSource(max_count=args.max_count)))
     if args.repo:
+        from .auth import source_endpoint, source_token
+
+        gitlab_base = source_endpoint("gitlab") or None
+        token = args.token
+        if token is None and (detect_forge(args.repo, gitlab_base=gitlab_base) or (None,))[0] == "gitlab":
+            token = source_token("gitlab")
         sources.append(
-            ("Repository activity", open_source(args.repo, max_count=args.max_count, token=args.token))
+            (
+                "Repository activity",
+                open_source(args.repo, max_count=args.max_count, token=token, gitlab_base=gitlab_base),
+            )
         )
     n = len(sources)
     return [
