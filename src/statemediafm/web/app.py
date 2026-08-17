@@ -1513,7 +1513,9 @@ async function loadSpotifyBar(){
     document.getElementById('sp-skip').hidden=!spConnected;
     document.getElementById('sp-who').textContent = spConnected
       ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
-    if(spConnected){ spSetReady(false); await loadPlaylists(); initSpotifySDK(); }
+    // Only reset the ready state when there's no player yet — re-running this (e.g.
+    // on a tab switch) must not flip an already-ready player back to "not ready".
+    if(spConnected){ if(!spPlayer) spSetReady(false); await loadPlaylists(); initSpotifySDK(); }
   }catch(e){ bar.hidden=true; }
 }
 async function loadPlaylists(){
@@ -1664,6 +1666,9 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
   if(tab==='settings'){ loadDemo(); loadConfig(); loadCadence(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  // Returning to the player re-syncs it with any settings just changed, so nothing
+  // needs a full reload (all of these are idempotent reads).
+  if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNewsBadge(); pollMusic(); pollSong(); }
 }));
 
 // ── Voice selection (feature-flagged off for now) ─────────────────────────────
@@ -1740,6 +1745,7 @@ document.getElementById('sp-save').addEventListener('click', async ()=>{
     await fetch('/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     document.getElementById('sp-secret').value='';
     await loadSpotify();
+    loadSpotifyBar();  // reveal the Connect bar on the player without a reload
   }catch(e){ st.textContent='error'; }
 });
 document.getElementById('sp-test').addEventListener('click', async ()=>{
