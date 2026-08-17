@@ -6,6 +6,7 @@ import urllib.error
 
 from statemediafm.core.models import NewsItem
 from statemediafm.core.schedule import Cadence
+from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
 from statemediafm.newsroom.tts import ToneWavTTS
 from statemediafm.serve import _effective_llm, _publish_plan, _voice_rotation, refresh_once
 from statemediafm.web.app import _State
@@ -26,16 +27,18 @@ def _items():
     ]
 
 
-def test_effective_llm_off_when_not_live_and_no_boot_client():
-    state = _State()  # live off, no boot llm
+def _llm():
+    """A fake LLM so news airs — news is always LLM-written (no offline fallback)."""
+    return (FakeLLMClient(), LLMConfig(model="test/model"))
+
+
+def test_effective_llm_none_without_a_model_or_client():
+    state = _State()  # no news_cfg, no model, no boot client
     assert _effective_llm(state, None) is None
 
 
-def test_effective_llm_builds_lazily_when_toggled_live():
-    from statemediafm.newsroom.llm import LLMConfig
-
+def test_effective_llm_builds_lazily_from_a_configured_model():
     state = _State()
-    state.live = True  # toggled on from the UI, no --live at boot
     state.news_cfg = LLMConfig(model="openai/gpt-4o-mini")
     state.news_model = "openai/gpt-4o-mini"
     eff = _effective_llm(state, None)
@@ -44,12 +47,6 @@ def test_effective_llm_builds_lazily_when_toggled_live():
     assert cfg.model == "openai/gpt-4o-mini"
     # The lazily-built client is cached on the state (not rebuilt each tick).
     assert _effective_llm(state, None)[0] is client
-
-
-def test_effective_llm_live_without_a_model_stays_deterministic():
-    state = _State()
-    state.live = True  # on, but nothing picked and no base cfg
-    assert _effective_llm(state, None) is None
 
 
 def test_effective_llm_honours_a_wired_boot_client_for_backcompat():
@@ -82,7 +79,7 @@ def test_publish_plan_assigns_a_distinct_stable_voice_per_source():
         ("Engineering", [forge], Cadence(900, 0), 5),
     ]
     cache: dict = {}
-    _publish_plan(state, per_topic, ToneWavTTS(), "newsroom", 0, None, cache)
+    _publish_plan(state, per_topic, ToneWavTTS(), "newsroom", 0, _llm(), cache)
     tv = cache["topic_voice"]
     # Each source gets its own voice; the first keeps the operator's base voice.
     assert tv["Hacker News"] == "alan"
@@ -90,7 +87,7 @@ def test_publish_plan_assigns_a_distinct_stable_voice_per_source():
     assert len(set(tv.values())) == 2  # distinct
 
     # Stable: re-publishing (even if one source is momentarily absent) keeps the map.
-    _publish_plan(state, [per_topic[1]], ToneWavTTS(), "newsroom", 0, None, cache)
+    _publish_plan(state, [per_topic[1]], ToneWavTTS(), "newsroom", 0, _llm(), cache)
     assert cache["topic_voice"]["Engineering"] == tv["Engineering"]
 
 
@@ -98,7 +95,7 @@ def test_refresh_once_publishes_program_and_plan():
     state = _State()
     roster = [("Hacker News", _FakeSource(_items()), Cadence(900, 0), 5)]
     cache = {}
-    refresh_once(state, roster, ToneWavTTS(), cache=cache)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, llm=_llm())
     assert state.program is not None
     assert "stack(" in state.program.text
     assert state.plan is not None and state.plan.segments
@@ -116,7 +113,7 @@ def test_plan_carries_headline_links_for_the_page_list():
                  origin="Hacker News", actors=["b"]),
     ]
     roster = [("HN", _FakeSource(items), Cadence(900, 0), 5)]
-    refresh_once(state, roster, ToneWavTTS(), cache={})
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
     heads = state.plan.segments[0].headlines
     assert ("Big story", "https://news.ycombinator.com/item?id=1") in heads
     assert ("No link here", None) in heads  # no ref → plain text, no crash
@@ -125,9 +122,9 @@ def test_plan_carries_headline_links_for_the_page_list():
 def test_refresh_once_skips_revoicing_when_unchanged():
     state, cache = _State(), {}
     roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
-    refresh_once(state, roster, ToneWavTTS(), cache=cache)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, llm=_llm())
     first_plan = state.plan
-    refresh_once(state, roster, ToneWavTTS(), cache=cache)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, llm=_llm())
     # Unchanged items → the plan object is not rebuilt (no re-voicing) ...
     assert state.plan is first_plan
     # ... but the music program is still recomputed each tick.
@@ -177,13 +174,11 @@ def test_refresh_once_uses_live_style():
     state = _State()
     state.style = "sports-desk"
     roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
-    refresh_once(state, roster, ToneWavTTS(), cache={})
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
     assert state.plan.segments[0].script.style == "sports-desk"
 
 
-def test_refresh_once_falls_back_when_llm_errors():
-    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
-
+def test_refresh_once_airs_no_news_when_the_llm_fails():
     class _Boom(FakeLLMClient):
         def complete(self, prompt, cfg):
             raise RuntimeError("gateway down")
@@ -191,9 +186,17 @@ def test_refresh_once_falls_back_when_llm_errors():
     state = _State()
     roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
     refresh_once(state, roster, ToneWavTTS(), cache={}, llm=(_Boom(), LLMConfig(model="m")))
-    # A live-model failure degrades to the deterministic copy — still on air.
-    assert state.plan is not None and state.plan.segments
-    assert "firmwide radio service" in state.plan.segments[0].script.text
+    # No deterministic fallback: the bulletin is skipped, but the music still plays.
+    assert state.plan is None
+    assert state.program is not None
+
+
+def test_refresh_once_airs_no_news_without_a_model():
+    # No LLM configured at all → no bulletin (music only).
+    state = _State()
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    refresh_once(state, roster, ToneWavTTS(), cache={})  # llm=None
+    assert state.plan is None and state.program is not None
 
 
 def test_refresh_once_gates_news_to_director_windows():
@@ -205,7 +208,7 @@ def test_refresh_once_gates_news_to_director_windows():
     cache: dict = {}
 
     # First tick (elapsed 0): the opening bulletin airs.
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0, llm=_llm())
     assert state.plan is not None
     first = state.plan
 
@@ -213,11 +216,12 @@ def test_refresh_once_gates_news_to_director_windows():
     roster[0] = ("HN", _FakeSource([
         NewsItem(id="9", source="hackernews", kind="story", title="New drop",
                  origin="Hacker News", actors=["z"])]), Cadence(900, 0), 5)
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1060.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1060.0, llm=_llm())
     assert state.plan is first  # not re-aired between windows
 
     # Past the 17-min slot → the held fresh news airs.
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0 + 17 * 60 + 1)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director,
+                 now=1000.0 + 17 * 60 + 1, llm=_llm())
     assert state.plan is not first
 
 
@@ -255,7 +259,7 @@ def test_refresh_once_reads_a_live_edited_roster():
     extra = NewsItem(id="2", source="slack", kind="message", title="Deploy done",
                      origin="Slack", actors=["b"])
     roster.append(("Chat", _FakeSource([extra]), Cadence(900, 0), 5))
-    refresh_once(state, roster, ToneWavTTS(), cache={})
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
     assert {s.title for s in state.plan.segments} == {"HN", "Chat"}
 
 
@@ -269,7 +273,7 @@ def test_refresh_once_skips_failing_sources():
         ("HN", _FakeSource(_items()), Cadence(900, 0), 5),
         ("Bad", _Bad(), Cadence(900, 0), 5),
     ]
-    refresh_once(state, roster, ToneWavTTS(), cache={})
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
     assert state.program is not None
     # The window airs the topic several times; only the good source appears.
     assert {s.title for s in state.plan.segments} == {"HN"}

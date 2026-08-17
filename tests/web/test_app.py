@@ -125,75 +125,6 @@ def test_models_list_and_switch():
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
-def test_news_live_off_by_default_and_toggles_without_restart():
-    state = _State()
-    client = TestClient(create_app(state))
-    assert client.get("/news-live").json()["live"] is False
-    assert client.get("/news-model").json()["live"] is False
-
-    # Toggle live on at runtime — no 409, no restart.
-    r = client.post("/news-live", params={"on": True}).json()
-    assert r["live"] is True and state.live is True
-    assert client.get("/news-model").json()["live"] is True
-    # Setting a model works regardless of live (stored for when it's used).
-    resp = client.post("/news-model", params={"name": "openai/x"})
-    assert resp.status_code == 200 and state.news_model == "openai/x"
-
-
-def test_news_model_select_when_live():
-    state = _State()
-    state.live = True
-    state.news_model = "anthropic/claude-opus-4-8"
-    state.news_models = ["anthropic/claude-opus-4-8", "openai/gpt-4o-mini"]
-    client = TestClient(create_app(state))
-
-    d = client.get("/news-model").json()
-    assert d["live"] is True and d["current"] == "anthropic/claude-opus-4-8"
-
-    resp = client.post("/news-model", params={"name": "openai/gpt-4o-mini"})
-    assert resp.json()["current"] == "openai/gpt-4o-mini"
-    assert state.news_model == "openai/gpt-4o-mini"
-
-    # A custom model is accepted and remembered in the options list.
-    resp = client.post("/news-model", params={"name": "ollama/llama3.1"})
-    assert state.news_model == "ollama/llama3.1"
-    assert "ollama/llama3.1" in resp.json()["models"]
-    assert client.post("/news-model", params={"name": "  "}).status_code == 400
-
-
-def test_news_model_discovery_merges_gateway_models(monkeypatch):
-    import statemediafm.newsroom.llm as llm_pkg
-    from statemediafm.newsroom.llm import LLMConfig
-
-    # The endpoint imports discover_models from the package namespace — patch there.
-    monkeypatch.setattr(llm_pkg, "discover_models",
-                        lambda cfg, **kw: ["openai/gpt-4o-mini", "openai/o1"])
-
-    state = _State()
-    state.news_model = "openai/gpt-4o-mini"
-    state.news_models = ["openai/gpt-4o-mini"]
-    state.news_cfg = LLMConfig(model="openai/gpt-4o-mini", api_base="https://gw/v1")
-    client = TestClient(create_app(state))
-
-    d = client.post("/news-model/discover").json()
-    assert d["discovered"] == ["openai/gpt-4o-mini", "openai/o1"]
-    # New model merged in without duplicating the one already listed.
-    assert state.news_models == ["openai/gpt-4o-mini", "openai/o1"]
-
-
-def test_news_model_discovery_works_without_live(monkeypatch):
-    # Discovery is available regardless of the live toggle, so the operator can
-    # populate the model list before switching news on.
-    import statemediafm.newsroom.llm as llm_pkg
-
-    monkeypatch.setattr(llm_pkg, "discover_models", lambda cfg, **kw: ["m/a", "m/b"])
-    state = _State()  # live off, no model
-    client = TestClient(create_app(state))
-    d = client.post("/news-model/discover").json()
-    assert d["discovered"] == ["m/a", "m/b"]
-    assert "m/a" in state.news_models
-
-
 def test_sources_list_add_and_remove():
     from statemediafm.roster import build_segment
 
@@ -330,19 +261,6 @@ def test_license_endpoint_saves_key_but_unlocks_nothing_while_stubbed(monkeypatc
     assert client.get("/persona").json()["licensed"] is False
 
 
-def test_news_model_temperature_and_max_tokens():
-    state = _State()
-    state.news_model = "openai/gpt-4o-mini"
-    client = TestClient(create_app(state))
-    resp = client.post("/news-model", params={"name": "openai/o1", "temperature": 0.3,
-                                              "max_tokens": 512})
-    assert resp.json()["temperature"] == 0.3 and resp.json()["max_tokens"] == 512
-    assert state.news_temperature == 0.3 and state.news_max_tokens == 512
-    # Out-of-range values are rejected.
-    assert client.post("/news-model", params={"name": "m", "temperature": 5}).status_code == 400
-    assert client.post("/news-model", params={"name": "m", "max_tokens": 0}).status_code == 400
-
-
 def test_mix_settings_roundtrip():
     state = _State()
     client = TestClient(create_app(state))
@@ -462,7 +380,7 @@ def test_tuning_list_and_switch():
     client = TestClient(create_app(state))
     listing = client.get("/tuning").json()
     assert listing["tunings"] == [440.0, 435.0, 433.0]
-    assert listing["current"] == 440.0  # standard by default
+    assert listing["current"] == 433.0  # the station's default tuning
 
     state.last_signal = ActivitySignal(window_s=0.0, volume=5, volatility=0.3, participant_count=2)
     resp = client.post("/tuning", params={"a": 433.0})
@@ -476,6 +394,7 @@ def test_tuning_list_and_switch():
 def test_serve_refresh_makes_genmusic_and_plan_live():
     from statemediafm.core.models import NewsItem
     from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
     from statemediafm.newsroom.tts import ToneWavTTS
     from statemediafm.serve import refresh_once
 
@@ -488,7 +407,8 @@ def test_serve_refresh_makes_genmusic_and_plan_live():
     client = TestClient(create_app(state))
     assert client.get("/genmusic").json() == {"text": None, "play": True}
 
-    refresh_once(state, [("HN", _FakeSource(), Cadence(900, 0), 5)], ToneWavTTS(), cache={})
+    refresh_once(state, [("HN", _FakeSource(), Cadence(900, 0), 5)], ToneWavTTS(), cache={},
+                 llm=(FakeLLMClient(), LLMConfig(model="m")))
     music = client.get("/genmusic").json()
     assert music["style"] == "Entrainment 0.1" and "stack(" in music["text"]
     plan = client.get("/plan").json()
@@ -603,9 +523,11 @@ def test_demo_mode_adds_and_removes_sources():
 def test_demo_mode_re_reads_every_two_minutes_even_when_unchanged():
     from statemediafm.core.models import NewsItem
     from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
     from statemediafm.newsroom.tts import ToneWavTTS
     from statemediafm.serve import refresh_once
 
+    llm = (FakeLLMClient(), LLMConfig(model="m"))
     state = _State()
     state.demo_mode = True  # no director → demo's 2-min cadence, re-read regardless
     item = NewsItem(id="1", source="hackernews", kind="story", title="Big",
@@ -618,23 +540,26 @@ def test_demo_mode_re_reads_every_two_minutes_even_when_unchanged():
     roster = [("HN", _Src(), Cadence(900, 0), 5)]
     cache: dict = {}
     # Opening bulletin airs on the first tick.
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0, llm=llm)
     first = state.plan
     assert first is not None
     # 1 minute later the 2-min slot isn't due → held.
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1060.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1060.0, llm=llm)
     assert state.plan is first
     # Past the 2-min slot → RE-READS even though the items are identical (the demo
     # shows the rhythm; normal mode would hold on unchanged activity).
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 120 + 1)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 120 + 1, llm=llm)
     assert state.plan is not first
 
 
 def test_quiet_mode_gates_music_around_the_news():
     from statemediafm.core.models import NewsItem
     from statemediafm.core.schedule import Cadence
+    from statemediafm.newsroom.llm import FakeLLMClient, LLMConfig
     from statemediafm.newsroom.tts import ToneWavTTS
     from statemediafm.serve import refresh_once
+
+    llm = (FakeLLMClient(), LLMConfig(model="m"))
 
     class _Src:
         def poll(self, since=None):
@@ -647,13 +572,13 @@ def test_quiet_mode_gates_music_around_the_news():
     roster = [("HN", _Src(), Cadence(900, 0), 5)]
 
     # t=0: fresh news → the music leads in, but the news is HELD (not aired yet)
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=0.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=0.0, llm=llm)
     assert state.music_on is True and state.plan is None
 
     # after the 1-3 min lead-in → the news airs
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=300.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=300.0, llm=llm)
     assert state.plan is not None
 
     # ~1 minute after the news → the music goes silent until the next cycle
-    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=400.0)
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, now=400.0, llm=llm)
     assert state.music_on is False

@@ -20,7 +20,7 @@ from dataclasses import replace
 from .core.models import Script
 from .core.schedule import Programme, assemble_broadcast
 from .genmusic import THETA_START, activity, compose
-from .newsroom.summarize import Read, radio_reads, summarize
+from .newsroom.summarize import Read, summarize
 from .newsroom.tts import TTSProvider, render_reads
 
 # Quiet-mode lead-in window before the news airs (seconds): 1–3 minutes.
@@ -101,23 +101,24 @@ def _demo_director():
 
 
 def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) -> list[Read]:
-    """The ``Read`` chunks for one segment.
+    """The ``Read`` chunks for one segment — always LLM-written.
 
-    With a live ``llm`` (a ``(client, cfg)`` pair) the segment is written by the
-    model — the LLM *parses* the activity into prose, mirroring ``voice --live``.
-    A live-model failure degrades to the deterministic ``radio_reads`` copy and
-    prints a note, so a flaky gateway can't take the broadcast off air. Offline
-    (the default) it's the deterministic reads with their per-headline pauses and
-    per-source voices. ``ident``/``signoff`` are the persona's station phrasing.
+    ``llm`` is the ``(client, cfg)`` pair; the model *parses* the activity into
+    prose. There is no deterministic fallback: if no model is configured (``llm``
+    is ``None``) or the model call fails, the segment airs **nothing** this cycle
+    (an empty list). ``ident``/``signoff`` are accepted for signature compatibility.
     """
-    if llm is not None:
-        client, cfg = llm
-        try:
-            script = summarize(items, style, client=client, cfg=cfg)
-            return [Read("other", script.text)]
-        except Exception as exc:  # noqa: BLE001 — degrade to offline copy, stay on air
-            print(f"live summarize failed ({exc}); using deterministic copy", file=sys.stderr)
-    return radio_reads(items, style, max_headlines=headlines or 5, ident=ident, signoff=signoff)
+    _ = (ident, signoff)  # station phrasing is the model's job in the LLM path
+    if llm is None:
+        print("no news model configured; skipping this bulletin", file=sys.stderr)
+        return []
+    client, cfg = llm
+    try:
+        script = summarize(items, style, client=client, cfg=cfg)
+        return [Read("other", script.text)]
+    except Exception as exc:  # noqa: BLE001 — no fallback: skip the bulletin, stay on air
+        print(f"live summarize failed ({exc}); skipping this bulletin", file=sys.stderr)
+        return []
 
 
 def _headlines(items, cap) -> list[tuple[str, str | None]]:
@@ -163,6 +164,8 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
     content: dict = {}
     for topic, items, _cadence, headlines in per_topic:
         reads = _segment_reads(items, style, headlines, llm, ident=ident, signoff=signoff)
+        if not reads:
+            continue  # no model / the model failed → this segment airs nothing
         script = Script(text=" ".join(r.text for r in reads), style=style)
         if topic not in topic_voice and rotation:
             topic_voice[topic] = rotation[len(topic_voice) % len(rotation)]
@@ -178,23 +181,18 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
             )
         content[topic] = (script, audio, _headlines(items, headlines))
         programmes.append(Programme(topic, _cadence))
+    if not programmes:
+        return  # nothing to air this cycle (no news model, or all segments failed)
     state.set_plan(assemble_broadcast(programmes, content, window_s=3600))
 
 
 def _effective_llm(state, llm):
-    """The ``(client, cfg)`` for LLM news this tick, or ``None`` for the offline copy.
-
-    News is live when the operator has toggled it on (``state.live``) — settable in
-    the Settings UI without a restart — or when a client was wired at boot
-    (``--live``, back-compat). The client is the wired one, else a lazily-built,
-    cached ``LiteLLMClient`` (the gateway URL/key resolve from the auth file at call
-    time). The base config is the wired/seeded ``news_cfg``, overlaid with the UI's
-    model + sampling knobs. Returns ``None`` (→ deterministic copy) when no model is
-    chosen, so a live toggle with nothing configured degrades gracefully.
+    """The ``(client, cfg)`` for LLM news this tick, or ``None`` if no model is
+    configured. News is **always** LLM-written (via the gateway/key in the auth
+    file); there is no deterministic fallback. The client is the one wired at boot,
+    else a lazily-built, cached ``LiteLLMClient``; the base config is the seeded
+    ``news_cfg``. ``None`` (no model) → no bulletin this cycle (see ``_segment_reads``).
     """
-    live = getattr(state, "live", False) or (llm is not None)
-    if not live:
-        return None
     if llm is not None:
         client, base_cfg = llm
     else:
@@ -217,7 +215,7 @@ def _effective_llm(state, llm):
     overrides = {k: v for k, v in overrides.items() if v is not None}
     cfg = replace(base_cfg, **overrides) if overrides else base_cfg
     if not getattr(cfg, "model", None):
-        return None  # live on but no model picked yet → stay on the deterministic copy
+        return None  # no model configured → no bulletin this cycle
     return (client, cfg)
 
 

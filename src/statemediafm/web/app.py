@@ -137,7 +137,7 @@ class _State:
         self.sp_user: dict | None = None  # {id, name, premium}
         self.sp_oauth_state: str | None = None  # CSRF state for the auth redirect
         self.sp_restored: bool = False  # attempted refresh-token restore this process?
-        self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
+        self.tuning: float = 433.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.news_every_s: float | None = None  # news-bulletin cadence (s); None → Director default
         self.refresh_s: float = 60.0  # source-poll interval (s); the serve loop reads this live
@@ -547,95 +547,6 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
             raise HTTPException(status_code=400, detail="empty key")
         save_license(key)
         return license_status()
-
-    def _gateway_configured() -> bool:
-        """Is there something for a live LLM to call — a configured gateway slot or
-        an Anthropic key in the environment?"""
-        import os
-
-        from ..auth import source_endpoint, source_token
-
-        return bool(
-            source_endpoint("llm-gateway")
-            or source_token("llm-gateway")
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-        )
-
-    @app.get("/news-live")
-    def news_live() -> dict:
-        """Whether the LLM writes the news, and whether anything is configured to
-        call. Toggled from Settings — no restart needed."""
-        return {
-            "live": bool(getattr(store, "live", False)),
-            "gateway_configured": _gateway_configured(),
-            "model": store.news_model,
-        }
-
-    @app.post("/news-live")
-    def set_news_live(on: bool) -> dict:
-        """Turn LLM news on/off at runtime. When on with nothing configured (or a
-        model the gateway can't serve), each tick degrades gracefully to the
-        deterministic copy, so this can't take the news off air."""
-        store.live = bool(on)
-        return {
-            "live": store.live,
-            "gateway_configured": _gateway_configured(),
-            "model": store.news_model,
-        }
-
-    @app.get("/news-model")
-    def news_model() -> dict:
-        """The gateway model used for news parsing: the current pick, the offered
-        options, and whether news parsing is live (toggle it under Settings ›
-        News-parsing model)."""
-        return {
-            "current": store.news_model,
-            "models": list(store.news_models),
-            "live": bool(getattr(store, "live", False)),
-            "temperature": store.news_temperature,
-            "max_tokens": store.news_max_tokens,
-        }
-
-    @app.post("/news-model")
-    def set_news_model(
-        name: str, temperature: float | None = None, max_tokens: int | None = None
-    ) -> dict:
-        """Switch the news-parsing model and (optionally) its sampling knobs — any
-        model the gateway serves, plus ``temperature`` / ``max_tokens``. Applies to
-        the next news cycle (used when Live news is on)."""
-        if temperature is not None and not 0.0 <= temperature <= 2.0:
-            raise HTTPException(status_code=400, detail="temperature must be 0..2")
-        if max_tokens is not None and max_tokens <= 0:
-            raise HTTPException(status_code=400, detail="max_tokens must be positive")
-        store.news_temperature = temperature
-        store.news_max_tokens = max_tokens
-        name = name.strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="empty model")
-        store.news_model = name
-        if name not in store.news_models:
-            store.news_models.append(name)  # remember a custom entry
-        return {
-            "current": store.news_model,
-            "models": list(store.news_models),
-            "temperature": store.news_temperature,
-            "max_tokens": store.news_max_tokens,
-        }
-
-    @app.post("/news-model/discover")
-    def discover_news_models() -> dict:
-        """Auto-discover models the gateway serves (OpenAI-compatible
-        ``GET {base}/models``) and merge them into the selectable options.
-        Best-effort: an unreachable gateway just adds nothing."""
-        from ..newsroom.llm import LLMConfig, discover_models
-
-        cfg = store.news_cfg or LLMConfig(model=store.news_model or "")
-        found = discover_models(cfg)
-        merged = list(store.news_models)
-        merged.extend(m for m in found if m not in merged)
-        store.news_models = merged
-        return {"models": merged, "discovered": found}
 
     @app.get("/sources")
     def sources() -> dict:
@@ -1074,11 +985,10 @@ return of(u,o);};})();</script>
     <em>Settings › Mix › Spotify</em>, then Connect and press Play.</p>
   </div>
 
-  <!-- Shared output: news-voice level, badge, visualizer, now-playing, bulletins -->
+  <!-- Shared output: news-voice level, visualizer, now-playing, bulletins -->
   <div class='bar'>
     <label class='muted' id='voicewrap'>news voice
       <input type='range' id='voicevol' min='0' max='1' step='0.05'></label>
-    <span class='muted grow' id='newsbadge'></span>
   </div>
   <canvas id='viz'></canvas>
   <section id='song'></section>
@@ -1109,7 +1019,7 @@ return of(u,o);};})();</script>
 
   <details class='section' open>
     <summary>Mix</summary>
-    <div class='authrow'>
+    <div class='authrow' hidden>
       <label class='muted' id='modelwrap'>ambient generator
         <select id='model'></select>
       </label>
@@ -1117,17 +1027,8 @@ return of(u,o);};})();</script>
         <select id='tuning'></select>
       </label>
     </div>
-    <p class='muted'>Mix ambient generator <em>types</em> instead of a single one — the
-    station rotates through the selected generators (~6&nbsp;min each). Optionally mix
-    Spotify songs into the song slots.</p>
-    <div class='authrow'>
-      <label class='muted'><input type='checkbox' id='mix-gen'> Mix ambient generators</label>
-      <span class='muted' id='mix-models'></span>
-    </div>
-    <div class='authrow'>
-      <label class='muted'><input type='checkbox' id='mix-spotify'> Mix in Spotify songs</label>
-      <span class='muted' id='mix-spotify-hint'></span>
-    </div>
+    <p class='muted'>The ambient bed is <strong>Entrainment&nbsp;0.1</strong> at
+    A=433&nbsp;Hz.</p>
     <div class='authrow' id='voice-row' hidden>
       <label class='muted'>voice <select id='voice-sel'></select></label>
       <button id='narration-save'>Apply</button>
@@ -1144,26 +1045,6 @@ return of(u,o);};})();</script>
       <button id='sp-save'>Save</button>
       <button id='sp-test'>Test connection</button>
       <span class='muted' id='sp-status'></span>
-    </div>
-    <h3>News-parsing model</h3>
-    <div class='authrow'>
-      <label class='switch'><input type='checkbox' id='news-live'><span class='track'></span>
-        <strong>Live news (LLM)</strong></label>
-      <span class='muted' id='news-live-status'></span>
-    </div>
-    <div id='newsmodel-wrap' hidden>
-      <p class='muted'>Which model the <code>llm-gateway</code> uses to write the news.
-      Pick one the gateway serves (Discover), or type a model string. Applies to
-      the next news cycle. Off → the deterministic offline copy.</p>
-      <div class='authrow'>
-        <select id='newsmodel'></select>
-        <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
-        <input id='newsmodel-temp' type='number' step='0.1' min='0' max='2' placeholder='temperature'>
-        <input id='newsmodel-maxtokens' type='number' min='1' placeholder='max_tokens'>
-        <button id='newsmodel-save'>Set model</button>
-        <button id='newsmodel-discover'>Discover from gateway</button>
-        <span class='muted' id='newsmodel-status'></span>
-      </div>
     </div>
   </details>
 
@@ -1227,8 +1108,9 @@ return of(u,o);};})();</script>
     <h3>LLM gateway</h3>
     <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter, Azure, a
     self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and <strong>API key</strong>.
-    Turn writing on with the <strong>Live news</strong> switch under <em>News-parsing model</em>,
-    then pick a gateway-served model (Discover).</p>
+    News is always written by this gateway; the model comes from your run config
+    (<code>[llm]</code> / <code>model_config.yaml</code>). Without a gateway or key, no
+    bulletin airs.</p>
     <div id='gatewayform'></div>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
@@ -1687,10 +1569,10 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
-  if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNewsBadge(); pollMusic(); pollSong(); }
+  if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); pollMusic(); pollSong(); }
 }));
 
 // ── Voice selection (feature-flagged off for now) ─────────────────────────────
@@ -1722,35 +1604,7 @@ document.getElementById('license-save').addEventListener('click', async ()=>{
   }catch(e){ st.textContent='error'; }
 });
 // Mix (under Narration) — rotate ambient generators, and/or mix in Spotify songs.
-async function loadMix(){
-  try{
-    const d=await (await fetch('/mix')).json();
-    document.getElementById('mix-gen').checked=!!d.mix_generators;
-    document.getElementById('mix-spotify').checked=!!d.mix_spotify;
-    document.getElementById('mix-spotify-hint').textContent =
-      d.spotify_configured ? '' : '· connect Spotify (below) first';
-    const wrap=document.getElementById('mix-models'); wrap.innerHTML='';
-    const sel=new Set(d.selected||[]);
-    for(const m of (d.models||[])){
-      const lab=document.createElement('label'); lab.className='muted'; lab.style.marginLeft='.7rem';
-      lab.innerHTML='<input type="checkbox" '+(sel.has(m)?'checked':'')+' value="'+esc(m)+'"> '+esc(m);
-      wrap.appendChild(lab);
-    }
-    wrap.style.display = d.mix_generators ? 'inline' : 'none';
-  }catch(e){}
-}
-async function saveMix(){
-  const selected=[...document.querySelectorAll('#mix-models input:checked')].map(c=>c.value);
-  const body={mix_generators:document.getElementById('mix-gen').checked,
-              mix_spotify:document.getElementById('mix-spotify').checked, selected};
-  try{ await fetch('/mix',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body)}); await loadMix(); }catch(e){}
-}
-document.getElementById('mix-gen').addEventListener('change', saveMix);
-document.getElementById('mix-spotify').addEventListener('change', saveMix);
-document.getElementById('mix-models').addEventListener('change', saveMix);
-
-// Spotify connector (under Narration) — Client ID + Secret, saved gitignored.
+// Spotify connector (under Mix) — Client ID + Secret, saved gitignored.
 async function loadSpotify(){
   try{
     const d=await (await fetch('/spotify')).json();
@@ -1774,7 +1628,7 @@ document.getElementById('sp-test').addEventListener('click', async ()=>{
   const st=document.getElementById('sp-status'); st.textContent='testing…';
   try{
     const d=await (await fetch('/spotify/test',{method:'POST'})).json();
-    st.textContent = d.ok ? 'connection OK ✓' : ('failed: '+(d.detail||'unknown'));
+    st.textContent = d.ok ? 'connection OK' : ('failed: '+(d.detail||'unknown'));
   }catch(e){ st.textContent='error'; }
 });
 // Commercial Features — the registered modules and whether each is unlocked.
@@ -1784,7 +1638,7 @@ async function loadLicense(){
     const wrap=document.getElementById('license-modules');
     wrap.innerHTML=(d.modules||[]).map(m=>
       '<div class="srcrow"><span class="grow">'+esc(m.name)+' — '+esc(m.description||'')+
-      '</span><span class="kind">'+(m.entitled?'✓ unlocked':'🔒 locked')+'</span></div>').join('')
+      '</span><span class="kind">'+(m.entitled?'unlocked':'locked')+'</span></div>').join('')
       || '<p class="muted">No commercial modules registered.</p>';
   }catch(e){}
 }
@@ -1890,71 +1744,12 @@ async function loadPresets(){
       b.addEventListener('click', ()=>{
         const ep=document.querySelector('.authrow[data-source="llm-gateway"] .ep');
         if(ep) ep.value=p.api_base;
-        newsModelCustom.value=p.model;
-        document.getElementById('newsmodel-status').textContent='preset: '+p.name+' — enter the API key in the token slot above, then Save.';
+        b.textContent=p.name+' — set the API key, then Save';
       });
       wrap.appendChild(b);
     }
   }catch(e){}
 }
-
-// News-parsing model selector (Settings) — only shown when the server runs live.
-const newsModelSel=document.getElementById('newsmodel');
-const newsModelCustom=document.getElementById('newsmodel-custom');
-async function loadNewsModel(){
-  try{
-    const lv=await (await fetch('/news-live')).json();
-    document.getElementById('news-live').checked = !!lv.live;
-    document.getElementById('news-live-status').textContent = lv.live
-      ? (lv.gateway_configured ? '· LLM writes the news'
-         : '· no gateway/key yet — set one in Config, or export ANTHROPIC_API_KEY (falls back to the offline copy until then)')
-      : '· deterministic offline copy';
-    document.getElementById('newsmodel-wrap').hidden = !lv.live;
-    if(!lv.live) return;
-    const d=await (await fetch('/news-model')).json();
-    newsModelSel.innerHTML='';
-    for(const m of (d.models||[])){
-      const o=document.createElement('option'); o.value=m; o.textContent=m;
-      if(m===d.current) o.selected=true; newsModelSel.appendChild(o);
-    }
-    document.getElementById('newsmodel-temp').value = d.temperature!=null ? d.temperature : '';
-    document.getElementById('newsmodel-maxtokens').value = d.max_tokens!=null ? d.max_tokens : '';
-    document.getElementById('newsmodel-status').textContent='current: '+esc(d.current||'');
-  }catch(e){}
-}
-document.getElementById('news-live').addEventListener('change', async (e)=>{
-  const st=document.getElementById('news-live-status'); st.textContent='saving…';
-  try{
-    await fetch('/news-live?on='+(e.target.checked?'true':'false'), {method:'POST'});
-    await loadNewsModel(); loadNewsBadge();
-  }catch(err){ st.textContent='error'; }
-});
-document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
-  const name=(newsModelCustom.value.trim())||newsModelSel.value;
-  if(!name) return;
-  const st=document.getElementById('newsmodel-status'); st.textContent='saving…';
-  let q='/news-model?name='+encodeURIComponent(name);
-  const t=document.getElementById('newsmodel-temp').value.trim();
-  const mt=document.getElementById('newsmodel-maxtokens').value.trim();
-  if(t!=='') q+='&temperature='+encodeURIComponent(t);
-  if(mt!=='') q+='&max_tokens='+encodeURIComponent(mt);
-  try{
-    const r=await fetch(q, {method:'POST'});
-    if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
-    newsModelCustom.value=''; await loadNewsModel(); loadNewsBadge();
-  }catch(e){ st.textContent='error'; }
-});
-// Auto-discover the gateway's model catalogue (OpenAI-compatible /models).
-document.getElementById('newsmodel-discover').addEventListener('click', async ()=>{
-  const st=document.getElementById('newsmodel-status'); st.textContent='discovering…';
-  try{
-    const r=await fetch('/news-model/discover', {method:'POST'});
-    if(!r.ok){ st.textContent='error: '+r.status; return; }
-    const d=await r.json(); await loadNewsModel();
-    st.textContent = d.discovered && d.discovered.length
-      ? ('discovered '+d.discovered.length+' models') : 'no models returned by the gateway';
-  }catch(e){ st.textContent='error'; }
-});
 // A single endpoint/token row, shared by the Auth (news sources) and Gateways
 // sections — both POST to /auth; the placeholder differs (endpoint vs URL).
 function authRow(src, c, epPlaceholder){
@@ -2014,23 +1809,11 @@ async function loadGateways(){
     for(const g of (d.gateways||[])) wrap.appendChild(authRow(g,(d.config&&d.config[g])||{},'URL (base endpoint)'));
   }catch(e){ wrap.textContent='Could not load gateways.'; }
 }
-
-// News-parsing badge on the Player tab: live model, or the deterministic copy.
-const newsBadge=document.getElementById('newsbadge');
-async function loadNewsBadge(){
-  try{
-    const d=await (await fetch('/news-model')).json();
-    newsBadge.textContent = d.live ? ('news: '+(d.current||'live model')) : 'news: offline copy';
-    newsBadge.title = d.live ? 'LLM-written via the llm-gateway' : 'deterministic, no LLM';
-  }catch(e){}
-}
-
-loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNewsBadge(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
 setPlayerMode((function(){ try{ return localStorage.getItem('smfm-mode')||'flow'; }catch(e){ return 'flow'; } })());
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(pollSong, 15000);
-setInterval(loadNewsBadge, 30000);
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
 const cv=document.getElementById('viz'), ctx=cv.getContext('2d');
