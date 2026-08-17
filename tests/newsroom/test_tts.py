@@ -106,6 +106,41 @@ def test_render_reads_accepts_fractional_pause_multiplier():
     assert audio.duration_ms >= 500
 
 
+def test_render_reads_fractional_pause_keeps_22050hz_frame_aligned():
+    # A fractional pause must insert whole frames of silence — otherwise the clip
+    # after it is byte-shifted and reads back as white noise (regression: 0.45 s at
+    # 22050 Hz mono 16-bit = 19845 bytes, odd). Piper's voices are 22050 Hz.
+    import io
+    import struct
+    import wave
+
+    from statemediafm.core.models import AudioRef
+    from statemediafm.newsroom.summarize import Read
+    from statemediafm.newsroom.tts import TTSProvider, render_reads
+
+    def _clip(value, n=2205):  # 0.1 s of a constant sample at 22050 Hz
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(22050)
+            w.writeframes(struct.pack("<" + "h" * n, *([value] * n)))
+        return AudioRef(id="x", media_type="audio/wav", data=buf.getvalue(), duration_ms=100)
+
+    class _Fake(TTSProvider):
+        def render(self, script, voice=None):
+            return _clip(1000)
+
+    reads = [Read("other", "a"), Read("pause", "", "0.45"), Read("other", "b")]
+    audio = render_reads(reads, _Fake(), headline_pause_ms=1000)
+    with wave.open(io.BytesIO(audio.data)) as w:
+        frames = w.readframes(w.getnframes())
+    samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+    # Every non-silent sample must still be exactly 1000 — a byte shift would turn
+    # them into garbage (white noise).
+    assert {s for s in samples if s != 0} == {1000}
+
+
 def test_render_reads_switches_voice_per_origin():
     base = ToneWavTTS()
     other = ToneWavTTS(frequency=180.0)  # same 8 kHz format → concatenates

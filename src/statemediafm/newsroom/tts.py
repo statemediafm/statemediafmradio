@@ -71,7 +71,13 @@ def _assemble_wavs(clips: list[AudioRef], gaps_ms: list[int]) -> AudioRef:
         elif fmt != params:
             raise ValueError(f"concat: format mismatch at segment {i}: {fmt} != {params}")
         if i and gap > 0:
-            frames += b"\x00" * int(params[0] * params[1] * params[2] * gap / 1000)
+            # Whole FRAMES of silence — the byte count must be a multiple of the
+            # frame size (channels × sample width), or every following sample is
+            # byte-shifted and reads back as white noise (a fractional/odd gap did
+            # this at 22050 Hz: 0.45 s → 19845 bytes, odd). Compute frames, then ×
+            # frame size so it is always aligned.
+            frame_bytes = params[0] * params[1]
+            frames += b"\x00" * (int(params[2] * gap / 1000) * frame_bytes)
         frames += data
 
     nchannels, width, rate = params  # type: ignore[misc]
