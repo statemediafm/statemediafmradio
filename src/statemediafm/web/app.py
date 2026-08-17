@@ -1034,20 +1034,24 @@ return of(u,o);};})();</script>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
 <div id='player-view'>
-  <!-- Two modes: generative Flow State vs your Spotify Playlist -->
-  <div id='modes'>
-    <button data-mode='flow' class='active'>🌊 Flow State</button>
-    <button data-mode='playlist'>🎵 Playlist</button>
+  <!-- Primary transport, shared across both modes: play the radio, stop it, air a
+       bulletin on demand, and toggle quiet mode. -->
+  <div id='transport'>
+    <button id='play'>Play</button>
+    <button id='stop'>Stop</button>
+    <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>Newscast now</button>
+    <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
+    <span class='muted grow' id='status'>press Play</span>
   </div>
 
-  <!-- FLOW STATE: the generative music + its live controls -->
+  <!-- The bed the news plays over: generative Flow State, or your Spotify. -->
+  <div id='modes'>
+    <button data-mode='flow' class='active'>Flow State</button>
+    <button data-mode='playlist'>Playlist</button>
+  </div>
+
+  <!-- FLOW STATE: the generative music's live controls -->
   <div id='flow-panel'>
-    <div id='transport'>
-      <button id='play'>▶ Start</button>
-      <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>📢 Newscast now</button>
-      <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
-      <span class='muted grow' id='status'>generative radio · press Start</span>
-    </div>
     <div class='bar'>
       <label class='muted' id='intensitywrap'>energy
         <input type='range' id='intensity' min='0' max='1' step='0.05'>
@@ -1055,21 +1059,19 @@ return of(u,o);};})();</script>
     </div>
   </div>
 
-  <!-- PLAYLIST: your Spotify (Premium) -->
+  <!-- PLAYLIST: your Spotify (Premium). Play/Stop are the shared transport above. -->
   <div id='playlist-panel' hidden>
     <div id='spotify-bar' class='bar' hidden>
       <button id='sp-connect'>Connect Spotify (Premium)</button>
       <span class='muted' id='sp-who'></span>
       <select id='sp-playlist' hidden></select>
-      <button id='sp-play' hidden>▶ Play</button>
-      <button id='sp-skip' hidden>⏭ Skip</button>
-      <button id='sp-stop' hidden>■ Stop</button>
+      <button id='sp-skip' hidden>Skip</button>
       <button id='sp-logout' hidden>Disconnect</button>
       <span class='muted grow' id='sp-msg'></span>
     </div>
     <p class='muted' id='playlist-note'>Plays your Spotify playlists in this tab (needs
     Spotify <strong>Premium</strong>). First set the Client ID / Secret in
-    <em>Settings › Narration › Spotify</em>, then Connect.</p>
+    <em>Settings › Mix › Spotify</em>, then Connect and press Play.</p>
   </div>
 
   <!-- Shared output: news-voice level, badge, visualizer, now-playing, bulletins -->
@@ -1151,7 +1153,7 @@ return of(u,o);};})();</script>
     </div>
     <div id='newsmodel-wrap' hidden>
       <p class='muted'>Which model the <code>llm-gateway</code> uses to write the news.
-      Pick one the gateway serves (↻ Discover), or type a model string. Applies to
+      Pick one the gateway serves (Discover), or type a model string. Applies to
       the next news cycle. Off → the deterministic offline copy.</p>
       <div class='authrow'>
         <select id='newsmodel'></select>
@@ -1159,7 +1161,7 @@ return of(u,o);};})();</script>
         <input id='newsmodel-temp' type='number' step='0.1' min='0' max='2' placeholder='temperature'>
         <input id='newsmodel-maxtokens' type='number' min='1' placeholder='max_tokens'>
         <button id='newsmodel-save'>Set model</button>
-        <button id='newsmodel-discover'>↻ Discover from gateway</button>
+        <button id='newsmodel-discover'>Discover from gateway</button>
         <span class='muted' id='newsmodel-status'></span>
       </div>
     </div>
@@ -1226,7 +1228,7 @@ return of(u,o);};})();</script>
     <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter, Azure, a
     self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and <strong>API key</strong>.
     Turn writing on with the <strong>Live news</strong> switch under <em>News-parsing model</em>,
-    then pick a gateway-served model (↻ Discover).</p>
+    then pick a gateway-served model (Discover).</p>
     <div id='gatewayform'></div>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
@@ -1254,17 +1256,32 @@ const newsEl=document.getElementById('news');
 const btn=document.getElementById('play');
 const modelSel=document.getElementById('model');
 
-// One transport control. First click starts the audio (browsers require a user
-// gesture); after that the SAME button pauses/resumes the broadcast (which stops/
-// restarts the server loop + audio). "On air" was a dead status label — the status
-// line carries that now.
+// Shared transport: Play starts/resumes the radio in the current mode (Flow State
+// generative bed, or your Spotify playlist); Stop halts it. Newscast-now airs a
+// bulletin on demand. Play requires a user gesture (browsers block audio until one).
 let broadcasting=true;
+let strudelReady=false;  // the generative engine is initialised + warmed
 function updateTransport(){
-  btn.textContent = !started ? '▶ Start' : (broadcasting ? '⏸ Pause' : '▶ Resume');
+  const playing = started && broadcasting;
+  btn.disabled = playing;                     // Play is a no-op while already playing
+  const stop=document.getElementById('stop'); if(stop) stop.disabled = !playing;
 }
 async function loadBroadcast(){
   try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; }catch(e){}
   updateTransport();
+}
+// Initialise + warm the generative engine once (only needed for Flow State).
+async function ensureStrudel(){
+  if(strudelReady) return true;
+  statusEl.textContent='starting…';
+  try{ await initStrudel(); }
+  catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e); return false; }
+  statusEl.textContent='warming up…';
+  for(let i=0;i<80;i++){ try{ await evaluate('setcps(0.5)\ns("~")'); break; }
+    catch(e){ await new Promise(r=>setTimeout(r,80)); } }
+  if(typeof window.samples==='function'){
+    samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e)); }
+  strudelReady=true; return true;
 }
 
 // Populate the ambient-generator dropdown and switch models on change.
@@ -1421,8 +1438,8 @@ async function pollMusic(){
     if(started && d.play===false){
       if(!musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
       viz.on=false;
-      statusEl.textContent = broadcasting ? '● quiet · silent (music returns before the news)'
-                                          : '■ broadcast stopped';
+      statusEl.textContent = broadcasting ? 'quiet · silent (music returns before the news)'
+                                          : 'stopped';
       return;
     }
     if(!d.text){ statusEl.textContent='waiting for activity…'; return; }
@@ -1433,7 +1450,7 @@ async function pollMusic(){
     }
     const ctx=(typeof getAudioContext==='function')?getAudioContext():null;
     const ac=ctx?(' · audio '+ctx.state):'';
-    statusEl.textContent=(started?(ducked?'● news over music':'● on air'):'ready')+
+    statusEl.textContent=(started?(ducked?'news over music':'on air'):'ready')+
       ' · '+d.style+' · '+d.brainwave_band+' · intensity '+d.intensity.toFixed(2)+ac;
   }catch(e){}
 }
@@ -1477,7 +1494,7 @@ async function pollSong(){
         encodeURIComponent(id)+'" width="100%" height="152" allow="autoplay; encrypted-media" loading="lazy"></iframe>'
       : (d.url ? '<a href="'+esc(d.url)+'" target="_blank" rel="noopener noreferrer">Open in Spotify</a>'
                : '<span class="muted">connect Spotify (Settings › Narration) to play this slot</span>');
-    el.innerHTML='<article><h2>♪ '+esc(d.title)+' — '+esc(d.artist)+'</h2>'+body+'</article>';
+    el.innerHTML='<article><h2>'+esc(d.title)+' — '+esc(d.artist)+'</h2>'+body+'</article>';
   }catch(e){}
 }
 // ── Spotify Web Playback SDK (Premium): play the user's playlists in this tab,
@@ -1487,7 +1504,6 @@ window.onSpotifyWebPlaybackSDKReady=()=>{ window._spSdk=true; if(spConnected) in
 async function spTok(){ try{ return (await (await fetch('/spotify/token')).json()).access_token; }catch(e){ return null; } }
 function spMsg(t){ document.getElementById('sp-msg').textContent=t; }
 function spSetReady(ready){
-  document.getElementById('sp-play').disabled=!ready;
   document.getElementById('sp-skip').disabled=!ready;
 }
 async function loadSpotifyBar(){
@@ -1499,7 +1515,6 @@ async function loadSpotifyBar(){
     document.getElementById('sp-connect').hidden=spConnected;
     document.getElementById('sp-logout').hidden=!spConnected;
     document.getElementById('sp-playlist').hidden=!spConnected;
-    document.getElementById('sp-play').hidden=!spConnected;
     document.getElementById('sp-skip').hidden=!spConnected;
     document.getElementById('sp-who').textContent = spConnected
       ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
@@ -1536,7 +1551,7 @@ function initSpotifySDK(){
   spPlayer=new Spotify.Player({name:'State Media FM', volume:0.8,
     getOAuthToken: cb=>{ spTok().then(t=>cb(t||'')); }});
   const err=(label)=>({message})=>{ spErrShown=true; spMsg(label+': '+(message||'')); };
-  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spSetReady(true); spErrShown=true; spMsg('● player ready — press Play playlist'); });
+  spPlayer.addListener('ready', ({device_id})=>{ spDevice=device_id; spSetReady(true); spErrShown=true; spMsg('player ready — press Play'); });
   spPlayer.addListener('not_ready', ()=>{ spDevice=null; spSetReady(false); spMsg('device went offline'); });
   spPlayer.addListener('initialization_error', err('init error (usually Widevine/DRM in Brave)'));
   spPlayer.addListener('authentication_error', err('auth error — Disconnect then Connect'));
@@ -1550,7 +1565,7 @@ function initSpotifySDK(){
     if(!t){ el.innerHTML=''; return; }
     const img=(t.album&&t.album.images&&t.album.images[0])?t.album.images[0].url:'';
     const art=(t.artists||[]).map(a=>a.name).join(', ');
-    el.innerHTML='<article><h2>'+(s.paused?'⏸ ':'♪ ')+esc(t.name)+' — '+esc(art)+'</h2>'+
+    el.innerHTML='<article><h2>'+(s.paused?'paused — ':'')+esc(t.name)+' — '+esc(art)+'</h2>'+
       (img?'<img src="'+esc(img)+'" alt="" style="width:128px;height:128px;border-radius:8px">':'')+'</article>';
   });
   spPlayer.connect().then(ok=>{ if(!ok){ spErrShown=true; spMsg('player.connect() was rejected'); } });
@@ -1569,26 +1584,24 @@ async function spPlay(){
     const r=await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(spDevice),
       {method:'PUT', headers:H, body:JSON.stringify({context_uri:uri})});
     if(!r.ok){ const b=await r.text(); spMsg('play failed ('+r.status+') '+b.slice(0,140)); return; }
-    spMode=true; try{ if(started) await evaluate('silence'); }catch(e){}  // Spotify is the music now
-    document.getElementById('sp-stop').hidden=false; spMsg('▶ playing your playlist');
+    spMode=true; try{ if(strudelReady) await evaluate('silence'); }catch(e){}  // Spotify is the music now
+    spMsg('playing your playlist');
   }catch(e){ spMsg('play error: '+((e&&e.message)||e)); }
 }
 async function spStop(){
   spMode=false; try{ if(spPlayer) await spPlayer.pause(); }catch(e){}
-  document.getElementById('sp-stop').hidden=true; spMsg('stopped — back to the generative bed');
+  spMsg('stopped — back to the generative bed');
   lastProgram=''; pollMusic();  // bring the generative bed back
 }
 document.getElementById('sp-connect').addEventListener('click', ()=>{ window.location='/spotify/login'; });
 document.getElementById('sp-logout').addEventListener('click', async ()=>{
   await fetch('/spotify/logout',{method:'POST'}); try{ if(spPlayer) spPlayer.disconnect(); }catch(e){}
   spPlayer=null; spMode=false; loadSpotifyBar(); });
-document.getElementById('sp-play').addEventListener('click', spPlay);
-document.getElementById('sp-stop').addEventListener('click', spStop);
 document.getElementById('sp-skip').addEventListener('click', async ()=>{
   if(!spDevice) return;
   const t=await spTok();
   try{ await fetch('https://api.spotify.com/v1/me/player/next?device_id='+encodeURIComponent(spDevice),
-    {method:'POST', headers:{'Authorization':'Bearer '+t}}); spMsg('⏭ skipped'); }
+    {method:'POST', headers:{'Authorization':'Bearer '+t}}); spMsg('skipped'); }
   catch(e){ spMsg('skip failed'); }
 });
 // Fade the Spotify music down and pause it for the news, then resume + fade up.
@@ -1613,40 +1626,45 @@ function setPlayerMode(m){
   try{ localStorage.setItem('smfm-mode', m); }catch(e){}
   if(m==='playlist'){
     // Switch away from the generative Flow music immediately; ready the Spotify player.
-    if(started){ try{ evaluate('silence'); }catch(e){} musicSilenced=true; }
+    if(strudelReady){ try{ evaluate('silence'); }catch(e){} musicSilenced=true; }
     viz.on=false;
     loadSpotifyBar();
   }else{
-    // Flow: stop Spotify and bring the generative bed back.
-    if(spMode){ spStop(); } else { lastProgram=''; musicSilenced=false; pollMusic(); }
+    // Flow: stop Spotify and bring the generative bed back (if we're playing).
+    if(spMode){ spStop(); } else if(started && broadcasting){ lastProgram=''; musicSilenced=false; pollMusic(); }
   }
+  updateTransport();
 }
 document.querySelectorAll('#modes button').forEach(b=>
   b.addEventListener('click', ()=>setPlayerMode(b.dataset.mode)));
+// Play: start/resume the radio in the current mode — the SAME button for Flow State
+// and Playlist. In Flow State it starts the generative bed; in Playlist it starts
+// your Spotify playlist. The news airs over whichever you pick.
 btn.addEventListener('click', async ()=>{
-  if(!started){
-    started=true; btn.disabled=true; statusEl.textContent='starting…';
-    try{ await initStrudel(); }
-    catch(e){ console.error(e); statusEl.textContent='init error: '+((e&&e.message)||e);
-      started=false; btn.disabled=false; updateTransport(); return; }
-    // Warm up: the first evaluate can reject until Strudel registers its runtime.
-    statusEl.textContent='warming up…';
-    for(let i=0;i<80;i++){
-      try{ await evaluate('setcps(0.5)\ns("~")'); break; }
-      catch(e){ await new Promise(r=>setTimeout(r,80)); }
+  btn.disabled=true;
+  try{
+    broadcasting=true;
+    try{ await fetch('/broadcast?on=true',{method:'POST'}); }catch(e){}
+    if(playerMode==='playlist'){
+      if(!spConnected){ statusEl.textContent='connect Spotify below, then press Play';
+        spMsg('Connect Spotify to play a playlist'); broadcasting=false; return; }
+      started=true; pollNews(); pollSong();
+      await spPlay();  // starts your playlist; spMode=true. News ducks it.
+    }else{
+      if(!(await ensureStrudel())){ broadcasting=false; return; }
+      started=true;
+      await pollMusic(); pollNews(); pollSong();
     }
-    if(typeof window.samples==='function'){
-      samples('github:tidalcycles/dirt-samples').catch(e=>console.warn('samples failed:',e));
-    }
-    if(!broadcasting){ broadcasting=true; try{ await fetch('/broadcast?on=true',{method:'POST'}); }catch(e){} }
-    btn.disabled=false; updateTransport();
-    await pollMusic(); pollNews(); pollSong();
-    return;
-  }
-  // Already started → pause/resume the broadcast.
-  broadcasting=!broadcasting; updateTransport();
-  try{ await fetch('/broadcast?on='+(broadcasting?'true':'false'), {method:'POST'}); }catch(e){}
-  await pollMusic();
+  } finally { updateTransport(); }
+});
+// Stop: halt the radio (music/playlist + news). Play resumes.
+document.getElementById('stop').addEventListener('click', async ()=>{
+  broadcasting=false;
+  try{ await fetch('/broadcast?on=false',{method:'POST'}); }catch(e){}
+  if(spMode){ spMode=false; try{ if(spPlayer) await spPlayer.pause(); }catch(e){} }
+  else if(strudelReady){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
+  viz.on=false; statusEl.textContent='stopped';
+  updateTransport();
 });
 // Newscast now: air a bulletin from the latest activity on demand, without
 // re-polling sources or resetting any timer (see POST /news-now). Force the news
@@ -1657,7 +1675,7 @@ document.getElementById('news-now').addEventListener('click', async ()=>{
   try{
     const r=await (await fetch('/news-now',{method:'POST'})).json();
     if(r.aired){ lastNewsUrl=''; await pollNews();
-      s.textContent = started ? '● newscast' : 'newscast ready — press Start to hear it'; }
+      s.textContent = started ? 'newscast' : 'newscast ready — press Play to hear it'; }
     else{ s.textContent='no activity yet to report'; }
   }catch(e){ s.textContent='error'; }
   setTimeout(()=>{ b.disabled=false; }, 2500);
