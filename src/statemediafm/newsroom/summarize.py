@@ -167,6 +167,25 @@ def reads_from_prose(text: str) -> list[Read]:
     return reads or [Read("other", (text or "").strip())]
 
 
+def bulletin_reads(text: str, *, ident: str | None = None, signoff: str | None = None) -> list[Read]:
+    """Wrap an LLM-written bulletin with the station **ident** (opener) and
+    **sign-off** (closer), pacing the prose in between (see :func:`reads_from_prose`).
+    ``ident``/``signoff`` default to the firmwide phrasing; a persona overrides them.
+    The sign-off is split after its first sentence with a double pause so it lands."""
+    reads: list[Read] = [Read("other", ident or DEFAULT_IDENT), Read("pause", "", "2")]
+    reads.extend(reads_from_prose(text))
+    reads.append(Read("pause", "", "1"))  # a beat before the sign-off
+    sign = signoff or DEFAULT_SIGNOFF
+    head, sep, tail = sign.partition(". ")
+    if sep and tail:
+        reads.append(Read("other", head + "."))
+        reads.append(Read("pause", "", "2"))
+        reads.append(Read("other", tail))
+    else:
+        reads.append(Read("other", sign))
+    return reads
+
+
 def radio_reads(
     items: list[NewsItem],
     style: str,

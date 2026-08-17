@@ -340,6 +340,26 @@ def test_reads_from_prose_paces_sentences_and_topics():
     assert [r.origin for r in reads if r.role == "pause"] == ["0.45", "0.9", "0.45"]
 
 
+def test_bulletin_reads_wraps_with_ident_and_signoff():
+    from statemediafm.newsroom.summarize import DEFAULT_IDENT, bulletin_reads
+
+    reads = bulletin_reads("First. Second.")
+    spoken = [r.text for r in reads if r.role != "pause"]
+    assert spoken[0] == DEFAULT_IDENT  # opens with the station ident
+    assert spoken[1:3] == ["First.", "Second."]  # the paced prose
+    # closes with the sign-off, split after its first sentence
+    assert "And that's the current state." in spoken
+    assert spoken[-1] == "More as things develop."
+
+
+def test_bulletin_reads_honours_persona_phrasing():
+    from statemediafm.newsroom.summarize import bulletin_reads
+
+    reads = bulletin_reads("Body.", ident="This is the newsroom.", signoff="Do stay with us.")
+    spoken = [r.text for r in reads if r.role != "pause"]
+    assert spoken[0] == "This is the newsroom." and spoken[-1] == "Do stay with us."
+
+
 def test_reads_from_prose_single_sentence_has_no_pauses():
     from statemediafm.newsroom.summarize import reads_from_prose
 

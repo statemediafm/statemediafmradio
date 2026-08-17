@@ -20,7 +20,7 @@ from dataclasses import replace
 from .core.models import Script
 from .core.schedule import Programme, assemble_broadcast
 from .genmusic import THETA_START, activity, compose
-from .newsroom.summarize import Read, reads_from_prose, summarize
+from .newsroom.summarize import Read, bulletin_reads, summarize
 from .newsroom.tts import TTSProvider, render_reads
 
 # Quiet-mode lead-in window before the news airs (seconds): 1–3 minutes.
@@ -104,19 +104,18 @@ def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) ->
     """The ``Read`` chunks for one segment — always LLM-written.
 
     ``llm`` is the ``(client, cfg)`` pair; the model *parses* the activity into
-    prose. There is no deterministic fallback: if no model is configured (``llm``
-    is ``None``) or the model call fails, the segment airs **nothing** this cycle
-    (an empty list). ``ident``/``signoff`` are accepted for signature compatibility.
+    prose, which is wrapped with the station ``ident``/``signoff`` and paced. There
+    is no deterministic fallback: if no model is configured (``llm`` is ``None``) or
+    the model call fails, the segment airs **nothing** this cycle (an empty list).
     """
-    _ = (ident, signoff)  # station phrasing is the model's job in the LLM path
     if llm is None:
         print("no news model configured; skipping this bulletin", file=sys.stderr)
         return []
     client, cfg = llm
     try:
         script = summarize(items, style, client=client, cfg=cfg)
-        # Pace the bulletin: pauses between sentences, double pauses between topics.
-        return reads_from_prose(script.text)
+        # Wrap with the station ident + sign-off; pace sentences/topics in between.
+        return bulletin_reads(script.text, ident=ident, signoff=signoff)
     except Exception as exc:  # noqa: BLE001 — no fallback: skip the bulletin, stay on air
         print(f"live summarize failed ({exc}); skipping this bulletin", file=sys.stderr)
         return []
