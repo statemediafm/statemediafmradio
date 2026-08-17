@@ -133,7 +133,7 @@ def render_reads(
         role, text = read[0], read[1]
         origin = read[2] if len(read) > 2 else None
         if role == "pause":  # not voiced; adds silence before the next read
-            extra += int(origin or 1) * headline_pause_ms
+            extra += round(float(origin or 1) * headline_pause_ms)
             continue
         text = text.strip()
         if not text:

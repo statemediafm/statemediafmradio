@@ -20,7 +20,7 @@ from dataclasses import replace
 from .core.models import Script
 from .core.schedule import Programme, assemble_broadcast
 from .genmusic import THETA_START, activity, compose
-from .newsroom.summarize import Read, summarize
+from .newsroom.summarize import Read, reads_from_prose, summarize
 from .newsroom.tts import TTSProvider, render_reads
 
 # Quiet-mode lead-in window before the news airs (seconds): 1–3 minutes.
@@ -115,7 +115,8 @@ def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) ->
     client, cfg = llm
     try:
         script = summarize(items, style, client=client, cfg=cfg)
-        return [Read("other", script.text)]
+        # Pace the bulletin: pauses between sentences, double pauses between topics.
+        return reads_from_prose(script.text)
     except Exception as exc:  # noqa: BLE001 — no fallback: skip the bulletin, stay on air
         print(f"live summarize failed ({exc}); skipping this bulletin", file=sys.stderr)
         return []
@@ -166,7 +167,7 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
         reads = _segment_reads(items, style, headlines, llm, ident=ident, signoff=signoff)
         if not reads:
             continue  # no model / the model failed → this segment airs nothing
-        script = Script(text=" ".join(r.text for r in reads), style=style)
+        script = Script(text=" ".join(r.text for r in reads if r.role != "pause"), style=style)
         if topic not in topic_voice and rotation:
             topic_voice[topic] = rotation[len(topic_voice) % len(rotation)]
         seg_voice = topic_voice.get(topic, base_voice)

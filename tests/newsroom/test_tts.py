@@ -96,6 +96,16 @@ def test_render_reads_requires_content():
         render_reads([], ToneWavTTS())
 
 
+def test_render_reads_accepts_fractional_pause_multiplier():
+    from statemediafm.newsroom.summarize import Read
+    from statemediafm.newsroom.tts import ToneWavTTS, render_reads
+
+    reads = [Read("other", "one"), Read("pause", "", "0.5"), Read("other", "two")]
+    audio = render_reads(reads, ToneWavTTS(), headline_pause_ms=1000)
+    # 0.5 * 1000 ms = 500 ms of inserted silence between the two spoken clips.
+    assert audio.duration_ms >= 500
+
+
 def test_render_reads_switches_voice_per_origin():
     base = ToneWavTTS()
     other = ToneWavTTS(frequency=180.0)  # same 8 kHz format → concatenates

@@ -133,10 +133,36 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
         "You are a radio newsroom writer. Turn the following team updates into a "
         f"single spoken news segment of about {target_words} words "
         f"(~{target_seconds} seconds) in a {style} style. "
-        "Cover who, what, where, when, why, and how. Write only the words to be "
-        "read aloud — no headings, no stage directions, no bullet points.\n\n"
+        "Cover who, what, where, when, why, and how. Put each distinct story or "
+        "topic in its own paragraph, separated by a blank line. Write only the words "
+        "to be read aloud — no headings, no stage directions, no bullet points.\n\n"
         f"Updates:\n{updates}"
     )
+
+
+# Spoken pacing for LLM-written bulletins (multipliers on ``headline_pause_ms``):
+# a short beat between sentences, a longer double beat between topics.
+_SENTENCE_PAUSE = "0.45"
+_TOPIC_PAUSE = "0.9"
+
+
+def reads_from_prose(text: str) -> list[Read]:
+    """Chunk an LLM-written bulletin into spoken ``Read``s with pacing: a pause
+    between **sentences** and a longer double pause between **topics** (paragraphs,
+    separated by a blank line — the prompt asks the model to break topics that way).
+    The voicer (:func:`newsroom.tts.render_reads`) turns the pause markers into
+    silence."""
+    reads: list[Read] = []
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", (text or "").strip()) if p.strip()]
+    for pi, para in enumerate(paragraphs):
+        if pi:
+            reads.append(Read("pause", "", _TOPIC_PAUSE))  # double pause between topics
+        sentences = [s.strip() for s in _SENTENCE_SPLIT.split(para) if s.strip()]
+        for si, sentence in enumerate(sentences):
+            if si:
+                reads.append(Read("pause", "", _SENTENCE_PAUSE))  # pause between sentences
+            reads.append(Read("other", sentence))
+    return reads or [Read("other", (text or "").strip())]
 
 
 def radio_reads(

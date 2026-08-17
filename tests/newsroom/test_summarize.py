@@ -329,6 +329,29 @@ def test_naive_radio_script_rejects_empty_window():
         naive_radio_script([], style="lofi")
 
 
+def test_reads_from_prose_paces_sentences_and_topics():
+    from statemediafm.newsroom.summarize import reads_from_prose
+
+    text = "First sentence. Second sentence.\n\nA new topic here. And more."
+    reads = reads_from_prose(text)
+    spoken = [r.text for r in reads if r.role != "pause"]
+    assert spoken == ["First sentence.", "Second sentence.", "A new topic here.", "And more."]
+    # a beat between sentences, a double beat between topics (paragraphs)
+    assert [r.origin for r in reads if r.role == "pause"] == ["0.45", "0.9", "0.45"]
+
+
+def test_reads_from_prose_single_sentence_has_no_pauses():
+    from statemediafm.newsroom.summarize import reads_from_prose
+
+    reads = reads_from_prose("Just the one.")
+    assert [r.role for r in reads] == ["other"] and reads[0].text == "Just the one."
+
+
+def test_build_prompt_asks_for_paragraph_per_topic():
+    prompt = build_prompt(_items(), style="newsroom")
+    assert "own paragraph" in prompt
+
+
 def test_naive_radio_script_singular_update_wording():
     one = [NewsItem(id="c1", source="git", kind="commit", title="only", actors=["a"])]
     assert "was 1 item" in naive_radio_script(one, style="lofi")

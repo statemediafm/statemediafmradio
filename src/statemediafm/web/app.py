@@ -1309,10 +1309,15 @@ try{ const v=parseFloat(localStorage.getItem('smfm-newsvol')); if(!isNaN(v)) new
 // duck + a faded, delayed release, which is the audible 80%.
 const DUCK={GAIN:0.45, RELEASE_MS:600, NEWS_FADE_MS:500};
 let releaseTimer=null;
-async function playCurrent(){
+async function playCurrent(fresh){
   if(!currentProg) return;
   const base=currentProg.replace(/\.fadeIn\([0-9.]+\)\s*$/,'');
   const code=ducked?base+'.gain('+DUCK.GAIN+')':currentProg;
+  // A genuinely NEW program (not a duck re-eval): stop the previous pattern first,
+  // so an earlier generator (e.g. Space Dub) can't keep ringing under the new one.
+  // evaluate() replaces the pattern, but already-triggered long samples/delays can
+  // linger — hush() clears them; the new program's .fadeIn brings it back in.
+  if(fresh){ try{ if(typeof hush==='function') hush(); }catch(e){} }
   // evaluate() is async; await it so a rejection is caught here (not "uncaught").
   try{ await evaluate(code); }
   catch(e){ console.error('strudel:',e); statusEl.textContent='music error: '+((e&&e.message)||e); }
@@ -1369,7 +1374,7 @@ async function pollMusic(){
     viz.intensity=d.intensity; viz.band=d.brainwave_band; viz.on=started;
     // (re)start when the program changes OR the gate just re-opened after silence
     if(started && (d.text!==lastProgram || musicSilenced)){
-      lastProgram=d.text; currentProg=d.text; musicSilenced=false; await playCurrent();
+      lastProgram=d.text; currentProg=d.text; musicSilenced=false; await playCurrent(true);
     }
     const ctx=(typeof getAudioContext==='function')?getAudioContext():null;
     const ac=ctx?(' · audio '+ctx.state):'';
