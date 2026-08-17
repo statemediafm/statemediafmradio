@@ -19,6 +19,24 @@ def test_health_ok():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_news_now_calls_the_air_hook():
+    state = _State()
+    calls = []
+    state.air_news_now = lambda: (calls.append(1), True)[1]
+    client = TestClient(create_app(state))
+    assert client.post("/news-now").json() == {"aired": True}
+    assert calls  # the hook ran
+
+    # No activity yet → aired False, no crash.
+    state.air_news_now = lambda: False
+    assert client.post("/news-now").json() == {"aired": False}
+
+
+def test_news_now_no_hook_is_safe():
+    client = TestClient(create_app(_State()))  # no hook wired (e.g. embedder/tests)
+    assert client.post("/news-now").json() == {"aired": False}
+
+
 def test_cadence_get_set_and_live_retime():
     from statemediafm.core.director import Director
 

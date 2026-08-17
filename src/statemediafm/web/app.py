@@ -165,6 +165,9 @@ class _State:
         # Persistence hook: serve.run sets this to write the settings file after a
         # UI change (see configstore); None in tests/embedders → nothing persists.
         self.on_change = None
+        # "Newscast now" hook: serve.run sets this to air a bulletin immediately from
+        # the latest activity, without disturbing the poll/news timers. None → no-op.
+        self.air_news_now = None
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -259,6 +262,14 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.broadcasting = on
         store.music_on = on  # silence the audio when stopped; restore on resume
         return {"broadcasting": store.broadcasting}
+
+    @app.post("/news-now")
+    def news_now() -> dict:
+        """Air a news bulletin **now** from the latest activity, on demand. It does
+        not poll sources or reset the source-poll / news-cadence timers — it re-airs
+        from what was last gathered. ``aired`` is False if there's no activity yet."""
+        fn = getattr(store, "air_news_now", None)
+        return {"aired": bool(fn and fn())}
 
     @app.get("/quiet")
     def quiet() -> dict:
@@ -1033,6 +1044,7 @@ return of(u,o);};})();</script>
   <div id='flow-panel'>
     <div id='transport'>
       <button id='play'>▶ Start</button>
+      <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>📢 Newscast now</button>
       <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
       <span class='muted grow' id='status'>generative radio · press Start</span>
     </div>
@@ -1079,30 +1091,6 @@ return of(u,o);};})();</script>
   </div>
   <p class='muted'>Reads the Hacker News front page and a repo's git issues every 2
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
-
-  <details class='section' open>
-    <summary>Config</summary>
-    <p class='muted'>Connect State Media FM to your infrastructure. Set these
-    <strong>before</strong> adding a project under <em>News Update Sources</em> — a
-    token or instance URL saved <em>after</em> a source is added only takes effect
-    once you re-add that source. Stored in the gitignored
-    <code>statemediafm.auth.toml</code> (owner-only); tokens are masked and never
-    sent anywhere but your own server.</p>
-    <h3>GitLab</h3>
-    <p class='muted'>For <strong>self-hosted GitLab</strong>, set the instance URL
-    (e.g. <code>https://gitlab.mycorp.com</code>) so projects on it are recognized
-    and polled via its API — leave it blank for <code>gitlab.com</code>. Add a
-    read-only <code>read_api</code> (or <code>read_repository</code>) personal access
-    token. Then add the project's URL under <em>News Update Sources</em>.</p>
-    <div id='cfg-gitlab'></div>
-    <h3>LLM gateway</h3>
-    <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter,
-    Azure, a self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and
-    <strong>API token</strong>. LLM news-writing is enabled by starting the server
-    with <code>--live</code>; then pick a gateway-served model under <em>News-parsing
-    model</em>.</p>
-    <div id='cfg-gateway'></div>
-  </details>
 
   <details class='section'>
     <summary>Cadence</summary>
@@ -1200,10 +1188,11 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Auth</summary>
-    <p class='muted'>Personal endpoints and tokens for the activity sources State Media
-    FM polls (GitHub, GitLab, Jira, Slack, PagerDuty). Stored locally in a gitignored
-    file (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and
-    never committed or sent anywhere but your own server.</p>
+    <p class='muted'>Endpoints and tokens for the services State Media FM connects to —
+    the activity sources it polls (GitHub, GitLab, Jira, Slack, PagerDuty) and the LLM
+    gateway that writes the news. Stored locally in a gitignored file
+    (<code>statemediafm.auth.toml</code>, owner-only); tokens are masked here and never
+    committed or sent anywhere but your own server.</p>
     <p class='warn'>⚠ State Media FM only <strong>reads</strong> activity. Grant each token
     the <strong>narrowest, read-only scope</strong> the provider allows — never write or
     admin. A leaked token can do only what you scoped it for.</p>
@@ -1222,24 +1211,25 @@ return of(u,o);};})();</script>
           <code>channels:history</code> (read-only) for the channels you add; no write/post scopes.</li>
         <li><strong>PagerDuty</strong> — a <em>read-only</em> REST API key.</li>
         <li><strong>llm-gateway</strong> — an API key scoped to only the model(s) you use, and (if the
-          gateway supports it) a spend cap. See <em>Gateways</em>.</li>
+          gateway supports it) a spend cap.</li>
       </ul>
       <p class='muted'>If a token leaks, revoke it at the provider — this app can't. Storage and the
       full trust model are in <code>SECURITY_MODEL.md</code>.</p>
     </details>
+    <p class='muted'><strong>Self-hosted GitLab:</strong> set the GitLab <em>endpoint</em> to
+    your instance URL (e.g. <code>https://gitlab.mycorp.com</code>) so projects on it are
+    recognized and polled via its API — leave it blank for <code>gitlab.com</code>. Set the
+    endpoint/token <strong>before</strong> adding a project under <em>News Update Sources</em>
+    (a value saved after a source is added only applies once you re-add it).</p>
     <div id='authform'></div>
-  </details>
-
-  <details class='section'>
-    <summary>Gateways</summary>
-    <p class='muted'>Model/LLM gateways used for news parsing — each has a slot for its
-    <strong>URL</strong> (base endpoint) and <strong>auth token</strong> (API key).
-    Provider-agnostic: LiteLLM, OpenRouter, Azure OpenAI, a self-hosted vLLM/Ollama/
-    NIM, etc. Stored in the same gitignored auth file; tokens masked, never sent
-    anywhere but your own server.</p>
+    <h3>LLM gateway</h3>
+    <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter, Azure, a
+    self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and <strong>API key</strong>.
+    Turn writing on with the <strong>Live news</strong> switch under <em>News-parsing model</em>,
+    then pick a gateway-served model (↻ Discover).</p>
     <div id='gatewayform'></div>
-    <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and
-    suggests a news model — you still enter the API key in the token slot):</p>
+    <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
+    news model — you still enter the API key in the token slot):</p>
     <div id='presets'></div>
   </details>
 
@@ -1658,6 +1648,20 @@ btn.addEventListener('click', async ()=>{
   try{ await fetch('/broadcast?on='+(broadcasting?'true':'false'), {method:'POST'}); }catch(e){}
   await pollMusic();
 });
+// Newscast now: air a bulletin from the latest activity on demand, without
+// re-polling sources or resetting any timer (see POST /news-now). Force the news
+// audio to play by clearing lastNewsUrl so an identical bulletin still airs.
+document.getElementById('news-now').addEventListener('click', async ()=>{
+  const b=document.getElementById('news-now'), s=document.getElementById('status');
+  b.disabled=true; s.textContent='airing newscast…';
+  try{
+    const r=await (await fetch('/news-now',{method:'POST'})).json();
+    if(r.aired){ lastNewsUrl=''; await pollNews();
+      s.textContent = started ? '● newscast' : 'newscast ready — press Start to hear it'; }
+    else{ s.textContent='no activity yet to report'; }
+  }catch(e){ s.textContent='error'; }
+  setTimeout(()=>{ b.disabled=false; }, 2500);
+});
 // Tabs: Player / Settings.
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>{
@@ -1665,7 +1669,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadConfig(); loadCadence(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNewsBadge(); pollMusic(); pollSong(); }
@@ -1948,23 +1952,10 @@ function authRow(src, c, epPlaceholder){
     btn.disabled=true; btn.textContent='Saving…';
     const body={source:src, endpoint:row.querySelector('.ep').value, token:row.querySelector('.tok').value};
     try{ await fetch('/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      await loadAuth(); await loadGateways(); if(typeof loadConfig==='function'){ await loadConfig(); }
+      await loadAuth(); await loadGateways();
     }catch(e){ btn.disabled=false; btn.textContent='Save'; }
   });
   return row;
-}
-// Config section: the essential connection configs (self-hosted GitLab instance
-// + PAT, LLM gateway URL + token), reusing the shared endpoint/token row. Same
-// /auth storage as the Auth/Gateways sections — saving in one refreshes the rest.
-async function loadConfig(){
-  try{
-    const d=await (await fetch('/auth')).json();
-    const c=d.config||{};
-    const gl=document.getElementById('cfg-gitlab'); if(gl){ gl.innerHTML='';
-      gl.appendChild(authRow('gitlab', c['gitlab']||{}, 'GitLab instance URL (blank = gitlab.com)')); }
-    const gw=document.getElementById('cfg-gateway'); if(gw){ gw.innerHTML='';
-      gw.appendChild(authRow('llm-gateway', c['llm-gateway']||{}, 'gateway base URL')); }
-  }catch(e){}
 }
 // Cadence: news-bulletin + source-poll intervals (live, persisted).
 function _fmtSecs(s){ return s==null ? '' : (s%60===0 ? (s/60)+'m' : s+'s'); }

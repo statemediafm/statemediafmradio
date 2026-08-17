@@ -97,11 +97,14 @@ def test_publish_plan_assigns_a_distinct_stable_voice_per_source():
 def test_refresh_once_publishes_program_and_plan():
     state = _State()
     roster = [("Hacker News", _FakeSource(_items()), Cadence(900, 0), 5)]
-    refresh_once(state, roster, ToneWavTTS(), cache={})
+    cache = {}
+    refresh_once(state, roster, ToneWavTTS(), cache=cache)
     assert state.program is not None
     assert "stack(" in state.program.text
     assert state.plan is not None and state.plan.segments
     assert state.plan.segments[0].title == "Hacker News"
+    # The latest activity is stashed so "Newscast now" can re-air without re-polling.
+    assert cache.get("last_per_topic") and cache["last_per_topic"][0][0] == "Hacker News"
 
 
 def test_plan_carries_headline_links_for_the_page_list():

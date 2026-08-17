@@ -297,6 +297,7 @@ def refresh_once(
 
     if not all_items:
         return
+    cache["last_per_topic"] = per_topic  # so "Newscast now" can re-air without re-polling
 
     # Remember the latest activity so a live model/tuning switch can recompose.
     signal = activity(all_items)
@@ -499,6 +500,20 @@ def run(
     security = new_security_policy(host=host)
     app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}
+
+    def _air_news_now() -> bool:
+        """Re-air a bulletin from the most recent activity (set by refresh_once),
+        without polling sources or touching the poll/news timers."""
+        per_topic = cache.get("last_per_topic")
+        if not per_topic:
+            return False
+        eff_style = getattr(state, "style", None) or style
+        _publish_plan(
+            state, per_topic, tts, eff_style, headline_pause_ms, _effective_llm(state, llm), cache
+        )
+        return True
+
+    state.air_news_now = _air_news_now
 
     async def _loop() -> None:
         while True:
