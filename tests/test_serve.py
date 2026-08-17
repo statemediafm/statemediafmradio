@@ -7,7 +7,7 @@ import urllib.error
 from statemediafm.core.models import NewsItem
 from statemediafm.core.schedule import Cadence
 from statemediafm.newsroom.tts import ToneWavTTS
-from statemediafm.serve import refresh_once
+from statemediafm.serve import _publish_plan, _voice_rotation, refresh_once
 from statemediafm.web.app import _State
 
 
@@ -24,6 +24,39 @@ def _items():
         NewsItem(id="1", source="hackernews", kind="story", title="Big story",
                  origin="Hacker News", actors=["a"]),
     ]
+
+
+def test_voice_rotation_leads_with_base_then_distinct_voices():
+    rot = _voice_rotation("alan")
+    assert rot[0] == "alan"  # the operator's chosen voice leads
+    assert len(rot) == len(set(rot))  # all distinct
+    assert set(rot) >= {"alan", "alba"}
+    # A non-curated base still leads, curated voices behind it.
+    assert _voice_rotation("en_US-lessac-medium")[0] == "en_US-lessac-medium"
+
+
+def test_publish_plan_assigns_a_distinct_stable_voice_per_source():
+    state = _State()
+    state.voice = "alan"
+    hn = NewsItem(id="h1", source="hackernews", kind="story", title="Big story",
+                  origin="Hacker News", actors=["a"])
+    forge = NewsItem(id="i1", source="forge", kind="issue", title="Scheduler hangs",
+                     origin="app", actors=["b"])
+    per_topic = [
+        ("Hacker News", [hn], Cadence(900, 0), 5),
+        ("Engineering", [forge], Cadence(900, 0), 5),
+    ]
+    cache: dict = {}
+    _publish_plan(state, per_topic, ToneWavTTS(), "newsroom", 0, None, cache)
+    tv = cache["topic_voice"]
+    # Each source gets its own voice; the first keeps the operator's base voice.
+    assert tv["Hacker News"] == "alan"
+    assert tv["Engineering"] != "alan"
+    assert len(set(tv.values())) == 2  # distinct
+
+    # Stable: re-publishing (even if one source is momentarily absent) keeps the map.
+    _publish_plan(state, [per_topic[1]], ToneWavTTS(), "newsroom", 0, None, cache)
+    assert cache["topic_voice"]["Engineering"] == tv["Engineering"]
 
 
 def test_refresh_once_publishes_program_and_plan():

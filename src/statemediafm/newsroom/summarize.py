@@ -70,6 +70,44 @@ def _authored_by_bot(item: NewsItem) -> bool:
     return bool(item.actors) and is_bot(item.actors[0])
 
 
+# Work-item kinds that carry a useful body (the latest comment or the description)
+# worth speaking after the headline — see ``_forge_context``.
+_FORGE_KINDS = frozenset({"issue", "pull_request", "merge_request"})
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def _speech_brief(text: str, max_words: int = 28) -> str:
+    """A short, spoken-word-friendly gist of a work item's body: strip code
+    fences, URLs, and markdown noise, then take the first sentence (capped to
+    ``max_words``). ``""`` when there's nothing speakable."""
+    t = re.sub(r"```.*?```", " ", text or "", flags=re.DOTALL)  # drop fenced code
+    t = re.sub(r"https?://\S+", "", t)  # drop URLs (unreadable aloud)
+    t = t.replace("`", "")
+    t = re.sub(r"[*_#>|~\[\]]", " ", t)  # common markdown punctuation
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return ""
+    first = _SENTENCE_SPLIT.split(t, maxsplit=1)[0]
+    words = first.split()
+    if len(words) > max_words:
+        first = " ".join(words[:max_words])
+    return first.strip().rstrip(",;:")
+
+
+def _forge_context(item: NewsItem) -> str:
+    """A follow-up spoken sentence giving the substance of a forge work item —
+    its latest comment or description — so the listener hears more than the title.
+    ``""`` for non-forge items or ones with no usable body. When the body is a
+    comment (``forge`` appends the commenter as a second actor), credit them."""
+    if item.kind not in _FORGE_KINDS:
+        return ""
+    brief = _speech_brief(item.body or "")
+    if not brief:
+        return ""
+    commenter = item.actors[1] if len(item.actors) >= 2 and not is_bot(item.actors[1]) else None
+    return f"Latest, from {commenter}: {brief}" if commenter else brief
+
+
 def time_greeting(now: datetime) -> str:
     """The broadcast's opening line, stating the current hour and minute."""
     return f"Good day. It is {now:%H:%M}."
@@ -148,7 +186,7 @@ def radio_reads(
     # origin's first appearance; a per-source cap keeps one busy source from
     # crowding out the others. Deduped; bot-authored items skipped as noise.
     seen: set[str] = set()
-    groups: dict[str, list[str]] = {}
+    groups: dict[str, list[NewsItem]] = {}
     order: list[str] = []
     for it in items:
         if _authored_by_bot(it):
@@ -162,7 +200,7 @@ def radio_reads(
             groups[origin] = []
             order.append(origin)
         if len(groups[origin]) < max_headlines:
-            groups[origin].append(headline)
+            groups[origin].append(it)  # keep the item so forge context can follow
     single_origin = len(order) == 1
 
     plural = "s" if len(items) != 1 else ""
@@ -186,13 +224,21 @@ def radio_reads(
     elif single_origin:
         origin = order[0]
         reads.append(Read("other", f"Here are the headlines from {origin}."))
-        reads.extend(Read("headline", f"{h}.", origin) for h in groups[origin])
+        for it in groups[origin]:
+            reads.append(Read("headline", f"{_clean_headline(it.title)}.", origin))
+            ctx = _forge_context(it)
+            if ctx:  # a forge item's latest comment / description, spoken after the title
+                reads.append(Read("other", ctx))
     else:
         reads.append(Read("other", "Here are the headlines."))
         for origin in order:
-            for i, h in enumerate(groups[origin]):
+            for i, it in enumerate(groups[origin]):
+                h = _clean_headline(it.title)
                 text = f"From {origin}, {h}." if i == 0 else f"{h}."
                 reads.append(Read("headline", text, origin))
+                ctx = _forge_context(it)
+                if ctx:
+                    reads.append(Read("other", ctx))
     # Double the pause after the last headline: the block already gets one beat
     # before the sign-off (headline→other); add one more.
     if order:

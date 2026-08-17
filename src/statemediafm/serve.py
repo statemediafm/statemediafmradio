@@ -137,18 +137,45 @@ def _headlines(items, cap) -> list[tuple[str, str | None]]:
     return out
 
 
-def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None) -> None:
-    voice = getattr(state, "voice", None)  # live-selectable narration voice
+def _voice_rotation(base: str | None) -> list:
+    """Voices to rotate across sources so each sounds distinct — the operator's
+    ``base`` voice first (so the first source keeps it), then the other curated
+    voices. A ``base`` that isn't a curated alias (a full Piper name/path) still
+    leads, with the curated set behind it."""
+    from .newsroom.tts import voice_names
+
+    names = voice_names()
+    if base in names:
+        return [base] + [n for n in names if n != base]
+    return [base, *names] if base else names
+
+
+def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cache=None) -> None:
+    base_voice = getattr(state, "voice", None)  # the operator's chosen narration voice
     ident = getattr(state, "ident", None)  # persona station phrasing
     signoff = getattr(state, "signoff", None)
+    rotation = _voice_rotation(base_voice)
+    # Give each SOURCE its own voice so git/forge updates sound distinct from Hacker
+    # News, etc. The assignment is remembered in the tick cache by first appearance,
+    # so a source keeps its voice across bulletins even when others fall silent.
+    topic_voice = cache.setdefault("topic_voice", {}) if cache is not None else {}
     programmes: list[Programme] = []
     content: dict = {}
     for topic, items, _cadence, headlines in per_topic:
         reads = _segment_reads(items, style, headlines, llm, ident=ident, signoff=signoff)
         script = Script(text=" ".join(r.text for r in reads), style=style)
-        audio = render_reads(
-            reads, tts, style=style, voice=voice, headline_pause_ms=headline_pause_ms
-        )
+        if topic not in topic_voice and rotation:
+            topic_voice[topic] = rotation[len(topic_voice) % len(rotation)]
+        seg_voice = topic_voice.get(topic, base_voice)
+        try:
+            audio = render_reads(
+                reads, tts, style=style, voice=seg_voice, headline_pause_ms=headline_pause_ms
+            )
+        except Exception:  # noqa: BLE001 — a per-source voice that can't load (e.g. an
+            # offline model download) must not take the segment off air.
+            audio = render_reads(
+                reads, tts, style=style, voice=base_voice, headline_pause_ms=headline_pause_ms
+            )
         content[topic] = (script, audio, _headlines(items, headlines))
         programmes.append(Programme(topic, _cadence))
     state.set_plan(assemble_broadcast(programmes, content, window_s=3600))
@@ -287,7 +314,7 @@ def refresh_once(
         state.music_on = True
         if air_news:
             cache["news_sig"] = signature
-            _publish_plan(state, per_topic, tts, style, headline_pause_ms, eff_llm)
+            _publish_plan(state, per_topic, tts, style, headline_pause_ms, eff_llm, cache)
         return
 
     # ── Quiet mode: gate the music around the news broadcast ─────────────────
@@ -300,7 +327,7 @@ def refresh_once(
         cache["q_air_at"] = now + _quiet_lead(signature)
         cache["q_off_at"] = None
     if cache.get("q_pending") and now >= cache.get("q_air_at", now):
-        _publish_plan(state, cache["q_pending"], tts, style, headline_pause_ms, eff_llm)
+        _publish_plan(state, cache["q_pending"], tts, style, headline_pause_ms, eff_llm, cache)
         cache["q_pending"] = None
         cache["q_off_at"] = now + _QUIET_TAIL  # then a 1-minute tail
     if cache.get("q_off_at") is not None and now >= cache["q_off_at"]:

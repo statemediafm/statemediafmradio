@@ -332,3 +332,72 @@ def test_naive_radio_script_rejects_empty_window():
 def test_naive_radio_script_singular_update_wording():
     one = [NewsItem(id="c1", source="git", kind="commit", title="only", actors=["a"])]
     assert "was 1 item" in naive_radio_script(one, style="lofi")
+
+
+# ── Forge work items: summarize into a useful spoken statement (offline path) ──
+
+
+def test_forge_item_speaks_its_description_after_the_headline():
+    items = [
+        NewsItem(id="i1", source="forge", kind="issue", title="Scheduler hangs",
+                 body="The 17-minute cadence stalls after the first bulletin.",
+                 origin="app", actors=["ana"]),
+    ]
+    reads = radio_reads(items, "newsroom")
+    texts = [r.text for r in reads]
+    # The title is still the headline...
+    assert "Here are the headlines from app." in texts
+    assert "Scheduler hangs." in texts
+    # ...and the description is spoken right after it, as an 'other' read.
+    hi = texts.index("Scheduler hangs.")
+    assert reads[hi + 1].role == "other"
+    assert "cadence stalls after the first bulletin" in reads[hi + 1].text
+
+
+def test_forge_item_credits_the_latest_commenter():
+    # forge.py appends the commenter as a 2nd actor when body is a latest comment.
+    items = [
+        NewsItem(id="m1", source="forge", kind="merge_request", title="Add retry",
+                 body="Still flaky on staging, investigating.",
+                 origin="app", actors=["ana", "bob"]),
+    ]
+    text = naive_radio_script(items, "newsroom")
+    assert "Add retry." in text
+    assert "Latest, from bob: Still flaky on staging, investigating." in text
+
+
+def test_non_forge_items_get_no_extra_context():
+    # Commits and HN stories keep the title-only headline (no body follow-up).
+    items = [
+        NewsItem(id="c1", source="git", kind="commit", title="Tidy imports",
+                 body="mechanical cleanup", origin="app", actors=["a"]),
+        NewsItem(id="s1", source="hackernews", kind="story", title="Big news",
+                 body="a long article body", origin="Hacker News", actors=["b"]),
+    ]
+    reads = radio_reads(items, "newsroom")
+    others = [r.text for r in reads if r.role == "other"]
+    assert not any("mechanical cleanup" in t for t in others)
+    assert not any("long article body" in t for t in others)
+
+
+def test_forge_context_strips_markdown_and_urls_and_caps_length():
+    from statemediafm.newsroom.summarize import _speech_brief
+
+    body = "Fixed the `race` in scheduler.py. See https://x.example/pr/1 for the diff."
+    brief = _speech_brief(body)
+    assert brief == "Fixed the race in scheduler.py."  # first sentence, no backticks/URL
+    assert "http" not in brief and "`" not in brief
+
+    long = " ".join(f"word{i}" for i in range(60))  # no sentence break
+    assert len(_speech_brief(long, max_words=10).split()) == 10
+
+
+def test_radio_reads_join_still_equals_script_with_forge_context():
+    items = [
+        NewsItem(id="i1", source="forge", kind="issue", title="Bug",
+                 body="It breaks on empty input.", origin="app", actors=["ana"]),
+    ]
+    reads = radio_reads(items, "newsroom")
+    voiced = " ".join(r.text for r in reads if r.role != "pause")
+    assert voiced == naive_radio_script(items, "newsroom")
+    assert "It breaks on empty input." in voiced
