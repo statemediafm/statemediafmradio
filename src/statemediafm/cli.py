@@ -432,6 +432,8 @@ def _serve(args: argparse.Namespace) -> int:
         mix=pmix,
         persist=True,  # write UI changes back to statemediafm.config.toml
         live=live,
+        # Shipped default: the local Claude CLI (the operator's own login, no key).
+        news_backend=pnews.get("backend") or "claude-cli",
         news_cfg=news_cfg,
         news_model=pnews.get("model") or None,
         news_temperature=pnews.get("temperature"),

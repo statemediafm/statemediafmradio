@@ -186,13 +186,35 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
     state.set_plan(assemble_broadcast(programmes, content, window_s=3600))
 
 
+def _news_client(state, backend):
+    """The cached news-writing client for ``backend``: the local Claude Code CLI
+    (``claude -p``, using the operator's own auth) or the LiteLLM gateway."""
+    if backend == "claude-cli":
+        client = getattr(state, "_cli_client", None)
+        if client is None:
+            from .newsroom.llm import ClaudeCliClient
+
+            client = ClaudeCliClient()
+            state._cli_client = client
+        return client
+    client = getattr(state, "_llm_client", None)
+    if client is None:
+        from .newsroom.llm import LiteLLMClient
+
+        client = LiteLLMClient()
+        state._llm_client = client
+    return client
+
+
 def _effective_llm(state, llm):
-    """The ``(client, cfg)`` for LLM news this tick, or ``None`` if no model is
-    configured. News is **always** LLM-written (via the gateway/key in the auth
-    file); there is no deterministic fallback. The client is the one wired at boot,
-    else a lazily-built, cached ``LiteLLMClient``; the base config is the seeded
-    ``news_cfg``. ``None`` (no model) → no bulletin this cycle (see ``_segment_reads``).
+    """The ``(client, cfg)`` for LLM news this tick, or ``None``. News is **always**
+    LLM-written (no deterministic fallback); the *writer* is chosen by
+    ``state.news_backend`` — the local **Claude Code CLI** (default; the operator's
+    own auth, no key) or the **LLM gateway**. The client is the one wired at boot
+    (legacy/tests), else lazily built + cached. For the gateway a model is required
+    (``None`` → no bulletin); the CLI uses its own default model.
     """
+    backend = getattr(state, "news_backend", None) or "gateway"
     if llm is not None:
         client, base_cfg = llm
     else:
@@ -201,12 +223,7 @@ def _effective_llm(state, llm):
         base_cfg = getattr(state, "news_cfg", None) or LLMConfig(
             model=getattr(state, "news_model", None) or ""
         )
-        client = getattr(state, "_llm_client", None)
-        if client is None:
-            from .newsroom.llm import LiteLLMClient
-
-            client = LiteLLMClient()
-            state._llm_client = client
+        client = _news_client(state, backend)
     overrides = {
         "model": getattr(state, "news_model", None),
         "temperature": getattr(state, "news_temperature", None),
@@ -214,8 +231,9 @@ def _effective_llm(state, llm):
     }
     overrides = {k: v for k, v in overrides.items() if v is not None}
     cfg = replace(base_cfg, **overrides) if overrides else base_cfg
-    if not getattr(cfg, "model", None):
-        return None  # no model configured → no bulletin this cycle
+    # The gateway needs an explicit model; the Claude CLI falls back to its own.
+    if llm is None and backend != "claude-cli" and not getattr(cfg, "model", None):
+        return None
     return (client, cfg)
 
 
@@ -375,6 +393,7 @@ def run(
     mix: dict | None = None,
     persist: bool = False,
     live: bool = False,
+    news_backend: str | None = None,
     news_cfg=None,
     news_model: str | None = None,
     news_temperature: float | None = None,
@@ -460,6 +479,8 @@ def run(
     if llm is not None and news_cfg is None:
         _client, news_cfg = llm
     state.live = bool(live)
+    if news_backend:
+        state.news_backend = news_backend
     if news_cfg is not None:
         state.news_cfg = news_cfg
         state.news_model = news_model or news_cfg.model

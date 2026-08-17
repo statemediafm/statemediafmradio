@@ -125,6 +125,18 @@ def test_models_list_and_switch():
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
+def test_news_backend_get_and_set():
+    state = _State()
+    client = TestClient(create_app(state))
+    d = client.get("/news-backend").json()
+    assert d["backend"] == "gateway" and set(d["options"]) == {"claude-cli", "gateway"}
+    assert "claude_available" in d
+
+    r = client.post("/news-backend", params={"backend": "claude-cli"})
+    assert r.json()["backend"] == "claude-cli" and state.news_backend == "claude-cli"
+    assert client.post("/news-backend", params={"backend": "nope"}).status_code == 400
+
+
 def test_sources_list_add_and_remove():
     from statemediafm.roster import build_segment
 

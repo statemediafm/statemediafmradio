@@ -148,6 +148,7 @@ class _State:
         self.demo_topics: list[str] = []  # source topics Demo Mode added (to remove on off)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
         self.live: bool = False  # LLM writes the news (vs the deterministic offline copy)
+        self.news_backend: str = "gateway"  # who writes the news: "claude-cli" | "gateway"
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
         self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
@@ -472,6 +473,35 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
                 raise HTTPException(status_code=400, detail="refresh must be >= 1s")
             store.refresh_s = float(secs)
         return {"news_every_s": store.news_every_s, "refresh_s": store.refresh_s}
+
+    _NEWS_BACKENDS = ("claude-cli", "gateway")
+
+    def _claude_available() -> bool:
+        from ..newsroom.llm import ClaudeCliClient
+
+        return ClaudeCliClient().available()
+
+    @app.get("/news-backend")
+    def news_backend() -> dict:
+        """Who writes the news: the local Claude Code CLI (the operator's own auth)
+        or the LLM gateway. ``claude_available`` hints whether the CLI is installed."""
+        return {
+            "backend": getattr(store, "news_backend", "claude-cli"),
+            "options": list(_NEWS_BACKENDS),
+            "claude_available": _claude_available(),
+        }
+
+    @app.post("/news-backend")
+    def set_news_backend(backend: str) -> dict:
+        """Choose the news writer — ``claude-cli`` or ``gateway``. Applies next cycle."""
+        if backend not in _NEWS_BACKENDS:
+            raise HTTPException(status_code=400, detail="unknown backend")
+        store.news_backend = backend
+        return {
+            "backend": store.news_backend,
+            "options": list(_NEWS_BACKENDS),
+            "claude_available": _claude_available(),
+        }
 
     @app.get("/voice")
     def voice() -> dict:
@@ -1105,12 +1135,23 @@ return of(u,o);};})();</script>
     endpoint/token <strong>before</strong> adding a project under <em>News Update Sources</em>
     (a value saved after a source is added only applies once you re-add it).</p>
     <div id='authform'></div>
+    <h3>News writer</h3>
+    <p class='muted'>Who writes the news bulletins — your local <strong>Claude&nbsp;CLI</strong>
+    (uses the Claude&nbsp;Code login you already have, no API key) or an
+    <strong>LLM&nbsp;gateway</strong>. Applies next news cycle.</p>
+    <div class='authrow'>
+      <label class='muted'>backend
+        <select id='news-backend'>
+          <option value='claude-cli'>Local Claude CLI</option>
+          <option value='gateway'>LLM gateway</option>
+        </select></label>
+      <span class='muted' id='news-backend-status'></span>
+    </div>
     <h3>LLM gateway</h3>
-    <p class='muted'>The model gateway that writes the news (LiteLLM, OpenRouter, Azure, a
-    self-hosted vLLM/Ollama/NIM, …): its base <strong>URL</strong> and <strong>API key</strong>.
-    News is always written by this gateway; the model comes from your run config
-    (<code>[llm]</code> / <code>model_config.yaml</code>). Without a gateway or key, no
-    bulletin airs.</p>
+    <p class='muted'>Used only when the writer above is <em>LLM gateway</em>. A gateway
+    (LiteLLM, OpenRouter, Azure, a self-hosted vLLM/Ollama/NIM, …): its base
+    <strong>URL</strong> and <strong>API key</strong>; the model comes from your run
+    config (<code>[llm]</code> / <code>model_config.yaml</code>).</p>
     <div id='gatewayform'></div>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
@@ -1569,7 +1610,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); pollMusic(); pollSong(); }
@@ -1730,6 +1771,23 @@ document.getElementById('src-add').addEventListener('click', async ()=>{
       document.getElementById(id).value='';
     st.textContent=''; await loadSources();
   }catch(e){ st.textContent='error'; }
+});
+
+// News writer: local Claude CLI vs the LLM gateway.
+async function loadNewsBackend(){
+  try{
+    const d=await (await fetch('/news-backend')).json();
+    const sel=document.getElementById('news-backend'); if(sel) sel.value=d.backend;
+    const st=document.getElementById('news-backend-status');
+    if(st) st.textContent = d.backend==='claude-cli'
+      ? (d.claude_available ? '· uses your logged-in Claude Code (no API key)'
+         : '· claude CLI not found on PATH — install Claude Code, or use the gateway')
+      : '· uses the LLM gateway below';
+  }catch(e){}
+}
+document.getElementById('news-backend').addEventListener('change', async (e)=>{
+  try{ await fetch('/news-backend?backend='+encodeURIComponent(e.target.value), {method:'POST'});
+    await loadNewsBackend(); }catch(err){}
 });
 
 // ── LLM gateway presets ──────────────────────────────────────────────────────

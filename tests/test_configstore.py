@@ -71,12 +71,13 @@ def test_cadence_persists():
 def test_news_settings_roundtrip():
     st = _State()
     st.live = True
+    st.news_backend = "claude-cli"
     st.news_model = "openai/gpt-4o-mini"
     st.news_temperature = 0.4
     st.news_max_tokens = 512
     cfg = cs.state_to_config(st)
-    assert cfg["news"] == {"live": True, "model": "openai/gpt-4o-mini",
-                           "temperature": 0.4, "max_tokens": 512}
+    assert cfg["news"] == {"live": True, "backend": "claude-cli",
+                           "model": "openai/gpt-4o-mini", "temperature": 0.4, "max_tokens": 512}
 
 
 def test_default_subcommand_is_serve(monkeypatch):

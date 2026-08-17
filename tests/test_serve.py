@@ -37,6 +37,18 @@ def test_effective_llm_none_without_a_model_or_client():
     assert _effective_llm(state, None) is None
 
 
+def test_effective_llm_uses_the_claude_cli_backend():
+    from statemediafm.newsroom.llm import ClaudeCliClient
+
+    state = _State()
+    state.news_backend = "claude-cli"
+    eff = _effective_llm(state, None)  # constructs the client; does NOT invoke it
+    assert eff is not None
+    client, _cfg = eff
+    assert isinstance(client, ClaudeCliClient)  # no model needed for the CLI
+    assert _effective_llm(state, None)[0] is client  # cached, not rebuilt
+
+
 def test_effective_llm_builds_lazily_from_a_configured_model():
     state = _State()
     state.news_cfg = LLMConfig(model="openai/gpt-4o-mini")

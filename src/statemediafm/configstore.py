@@ -99,6 +99,7 @@ def state_to_config(state) -> dict:
     sources = [dict(s) for s in getattr(state, "segments", []) or [] if s.get("topic") not in demo]
     news = {
         "live": bool(getattr(state, "live", False)),
+        "backend": getattr(state, "news_backend", "claude-cli"),
         "model": getattr(state, "news_model", None) or "",
     }
     if getattr(state, "news_temperature", None) is not None:

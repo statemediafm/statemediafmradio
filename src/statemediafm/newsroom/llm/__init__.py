@@ -16,12 +16,14 @@ from .base import (
     llm_config,
     load_model_config,
 )
+from .claude_cli import ClaudeCliClient
 from .fake import FakeLLMClient
 from .litellm_client import LiteLLMClient, discover_models, resolve_gateway
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
     "GATEWAY_PRESETS",
+    "ClaudeCliClient",
     "FakeLLMClient",
     "LLMClient",
     "LLMConfig",
