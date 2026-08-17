@@ -19,6 +19,20 @@ def test_health_ok():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_mutation_fires_persist_hook_but_reads_do_not():
+    state = _State()
+    calls = []
+    state.on_change = lambda: calls.append(1)
+    client = TestClient(create_app(state))
+
+    client.post("/intensity", params={"level": 0.5})
+    assert calls  # a successful settings mutation persisted
+
+    calls.clear()
+    client.get("/genmusic")
+    assert not calls  # a read does not persist
+
+
 def test_index_serves_strudel_player():
     client = TestClient(create_app())
     resp = client.get("/")

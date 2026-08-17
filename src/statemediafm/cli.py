@@ -22,6 +22,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 
 from . import serve as serve_mod
+from .configstore import load_config as load_station_config
 from .core.models import AudioRef, Script
 from .core.plan import single_news_plan
 from .core.schedule import Cadence, Programme, assemble_broadcast, parse_duration
@@ -281,9 +282,11 @@ def _ad_hoc_segments(args: argparse.Namespace) -> list[dict]:
     return segs
 
 
-def _resolve_segments(args: argparse.Namespace) -> list[dict]:
-    """The roster as segment dicts (config ``[[segments]]`` or ad-hoc). Raises
-    _CliError on a bad config; returns [] when no source was given."""
+def _resolve_segments(args: argparse.Namespace, persisted: dict | None = None) -> list[dict]:
+    """The roster as segment dicts. Precedence: an explicit ``--config`` file, then
+    ``--hn``/``--repo`` flags, then the **persisted** sources
+    (``statemediafm.config.toml``), then the zero-config Hacker News default. Raises
+    _CliError on a bad ``--config``."""
     if args.config:
         try:
             config = load_config(args.config)
@@ -294,7 +297,12 @@ def _resolve_segments(args: argparse.Namespace) -> list[dict]:
         if not segs:
             raise _CliError("roster config has no 'segments'")
         return list(segs)
-    return _ad_hoc_segments(args)
+    if args.hn or args.repo:
+        return _ad_hoc_segments(args)  # explicit source flags win over the persisted roster
+    persisted_sources = (persisted or {}).get("sources")
+    if persisted_sources:
+        return [dict(s) for s in persisted_sources]  # restore the UI-managed roster
+    return _ad_hoc_segments(args)  # nothing configured → the Hacker News default
 
 
 def _broadcast(args: argparse.Namespace) -> int:
@@ -362,7 +370,12 @@ def _broadcast(args: argparse.Namespace) -> int:
 
 
 def _serve(args: argparse.Namespace) -> int:
-    segments = _resolve_segments(args)
+    # Persisted UI settings (statemediafm.config.toml) — the memory that makes a
+    # no-flags run reproduce the last session. Flags still win (see below).
+    persisted = load_station_config()
+    pstation = persisted.get("station", {}) if persisted else {}
+    pmix = persisted.get("mix", {}) if persisted else {}
+    segments = _resolve_segments(args, persisted)
     if not segments:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
         return 2
@@ -370,11 +383,16 @@ def _serve(args: argparse.Namespace) -> int:
         roster = [build_segment(seg, i) for i, seg in enumerate(segments)]
     except (ValueError, KeyError) as exc:
         raise _CliError(f"roster config error: {exc}") from exc
-    tts = _piper_or_tone(args, voice=args.voice, tone_freq=_TONE_FREQS[0])
+    # Precedence: an explicit flag > the persisted setting > the built-in default.
+    # (The serve subparser defaults --voice/--style to None so an omitted flag
+    # falls through to the persisted value instead of masking it.)
+    voice = args.voice or pstation.get("voice") or "alan"
+    style = args.style or pstation.get("style") or "newsroom"
+    tts = _piper_or_tone(args, voice=voice, tone_freq=_TONE_FREQS[0])
     config = load_config(args.config) if args.config else {}
-    # The ambient generator is a config item ([genmusic] in the --config file);
-    # by default the UI selector is hidden and Entrainment 0.1 is used.
+    # The ambient generator: --generator > persisted > [genmusic] config > default.
     gm = genmusic_settings(config)
+    generator = args.generator or pstation.get("generator") or gm["generator"]
     # --live: the LLM writes the news (via the llm-gateway). The [llm] `models`
     # list becomes the Settings tab's selectable news-parsing models.
     llm = news_models = None
@@ -388,17 +406,19 @@ def _serve(args: argparse.Namespace) -> int:
         port=args.port,
         refresh=args.refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
-        style=args.style,
-        # --generator overrides the config so restarts (and the opening bulletin's
-        # music bed) honour the chosen ambient generator rather than the default.
-        generator=args.generator or gm["generator"],
+        style=style,
+        generator=generator,
         show_selector=gm["selector"],
         generators_dir=gm["generators_dir"],
         llm=llm,
         news_models=news_models,
         segments=segments,
-        voice=args.voice,
+        voice=voice,
         news_every_s=parse_duration(args.news_every),
+        base_intensity=pstation.get("base_intensity"),
+        quiet_mode=bool(pstation.get("quiet_mode", False)),
+        mix=pmix,
+        persist=True,  # write UI changes back to statemediafm.config.toml
     )
 
 
@@ -549,6 +569,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     _add_source_args(sv)
     _add_voice_args(sv)
+    # For serve, an omitted --voice/--style must fall through to the persisted
+    # setting (statemediafm.config.toml), so default them to None here (the shared
+    # adders default them for demo/broadcast, which have no persistence).
+    sv.set_defaults(voice=None, style=None)
     sv.add_argument(
         "--config",
         default=None,

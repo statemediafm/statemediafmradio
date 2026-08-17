@@ -352,6 +352,10 @@ def run(
     segments: list[dict] | None = None,
     voice: str | None = None,
     news_every_s: float | None = None,
+    base_intensity: float | None = None,
+    quiet_mode: bool = False,
+    mix: dict | None = None,
+    persist: bool = False,
 ) -> int:
     """Boot the FastAPI app and drive ``refresh_once`` on an interval.
 
@@ -416,6 +420,14 @@ def run(
     # The live roster is owned by the app state so the Settings tab can edit it.
     state.roster = list(roster)
     state.segments = list(segments or [])
+    # Restore persisted (non-flag) settings: energy, quiet mode, mix toggles.
+    if base_intensity is not None:
+        state.base_intensity = float(base_intensity)
+    state.quiet_mode = bool(quiet_mode)
+    if mix:
+        state.mix_generators = bool(mix.get("generators", state.mix_generators))
+        state.mix_models = list(mix.get("models", state.mix_models))
+        state.mix_spotify = bool(mix.get("spotify", state.mix_spotify))
     # News-parsing model selection (Settings tab). Seed the current pick with the
     # wired model and offer the configured list (plus the current one) as options.
     if llm is not None:
@@ -436,6 +448,12 @@ def run(
     director = Director(news=Cadence(news_every_s)) if news_every_s else Director()
     state.director = director
     start = time.monotonic()
+    # Persist UI changes to the settings file so they survive a restart (the
+    # persist middleware in create_app calls this after each successful mutation).
+    if persist:
+        from .configstore import save_config, state_to_config
+
+        state.on_change = lambda: save_config(state_to_config(state))
     security = new_security_policy(host=host)
     app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}

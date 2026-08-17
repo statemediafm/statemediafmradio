@@ -27,3 +27,6 @@ statemediafm.auth.toml
 # Commercial license key (never commit)
 statemediafm.license
 *.license
+
+# Persisted UI settings (non-secret, per-install; see examples/config.toml)
+statemediafm.config.toml

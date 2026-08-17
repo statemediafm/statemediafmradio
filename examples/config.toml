@@ -1,0 +1,34 @@
+# statemediafm.config.toml — persisted, non-secret station settings.
+#
+# This is the Settings tab's memory: run `statemediafm serve` with no flags and it
+# restores what you last configured here. You normally DON'T edit this by hand —
+# the UI writes it — but it's plain TOML if you want to seed a fresh install.
+#
+# Copy to `statemediafm.config.toml` in your working directory to use it. Secrets
+# (GitLab PAT, LLM-gateway key) do NOT go here — they live in the gitignored
+# `statemediafm.auth.toml`; sources below reference their provider, not a token.
+
+[station]
+generator = "Entrainment 0.1"   # ambient generator to start with
+voice = "alan"                  # narration voice (alan/alba/…)
+base_intensity = 0.25           # resting energy 0..1 (theta start)
+quiet_mode = false              # music only around the news, silent between
+
+[mix]
+generators = false              # rotate through several ambient generators
+models = []                     #   which generators are in the mix (empty → all)
+spotify = false                 # mix Spotify songs into the song slots
+
+# The source roster — the same shape the UI's "News Update Sources" manages.
+[[sources]]
+topic = "Hacker News front page"
+source = "hackernews"
+every = "15m"
+
+# A self-hosted GitLab project (set the instance URL + read_api PAT under
+# Settings › Config, which writes them to statemediafm.auth.toml):
+# [[sources]]
+# topic = "Engineering"
+# source = "repo"
+# repo = "https://gitlab.mycorp.com/team/app"
+# every = "15m"

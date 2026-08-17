@@ -159,6 +159,9 @@ class _State:
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
         self.director = None  # rhythm-of-the-day clock (Director), set by serve.run
+        # Persistence hook: serve.run sets this to write the settings file after a
+        # UI change (see configstore); None in tests/embedders → nothing persists.
+        self.on_change = None
 
     def set_plan(self, plan: BroadcastPlan) -> None:
         self.plan = plan
@@ -187,6 +190,19 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
     app = FastAPI(title="State Media FM", version="0.1.0")
     app.state.store = store
     app.state.security = security
+
+    @app.middleware("http")
+    async def _persist_after_mutation(request: Request, call_next):
+        """After a successful settings mutation, persist the station config (if a
+        persistence hook is wired — serve.run sets one; tests/embedders don't)."""
+        response = await call_next(request)
+        hook = getattr(store, "on_change", None)
+        if hook and request.method in ("POST", "DELETE", "PUT") and response.status_code < 400:
+            import contextlib
+
+            with contextlib.suppress(Exception):  # persistence must never break a response
+                hook()
+        return response
 
     if security is not None:
         from urllib.parse import urlsplit
