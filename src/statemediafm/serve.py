@@ -483,6 +483,10 @@ def run(
 
     director = Director(news=Cadence(news_every_s)) if news_every_s else Director()
     state.director = director
+    # Cadences are live-editable from Settings: the loop reads state.refresh_s each
+    # tick, and /cadence re-times director.news.
+    state.news_every_s = director.news.every_s
+    state.refresh_s = float(refresh)
     start = time.monotonic()
     # Persist UI changes to the settings file so they survive a restart (the
     # persist middleware in create_app calls this after each successful mutation).
@@ -512,7 +516,7 @@ def run(
                 )
             except Exception as exc:  # noqa: BLE001 — one bad tick must not kill the loop
                 print(f"refresh error: {exc}", file=sys.stderr)
-            await asyncio.sleep(refresh)
+            await asyncio.sleep(getattr(state, "refresh_s", refresh))  # live-editable
 
     print(
         f"statemediafm serving on http://{host}:{port}  (refreshing every {refresh:.0f}s)",

@@ -139,6 +139,8 @@ class _State:
         self.sp_restored: bool = False  # attempted refresh-token restore this process?
         self.tuning: float = 440.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
+        self.news_every_s: float | None = None  # news-bulletin cadence (s); None → Director default
+        self.refresh_s: float = 60.0  # source-poll interval (s); the serve loop reads this live
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
@@ -423,6 +425,42 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.base_intensity = level
         _recompose(store)
         return {"current": store.base_intensity, "band": band_for_intensity(level)}
+
+    @app.get("/cadence")
+    def cadence() -> dict:
+        """The rhythm-of-the-day cadences: how often a news bulletin airs
+        (``news_every_s``) and how often sources are polled (``refresh_s``)."""
+        return {
+            "news_every_s": store.news_every_s,
+            "refresh_s": store.refresh_s,
+        }
+
+    @app.post("/cadence")
+    def set_cadence(news_every: str | None = None, refresh: str | None = None) -> dict:
+        """Change the cadences live (no restart). ``news_every``/``refresh`` accept a
+        duration (``17m``, ``90s``, ``1h``) or bare seconds; the news cadence
+        re-times the running Director immediately."""
+        from ..core.schedule import Cadence, parse_duration
+
+        if news_every is not None and str(news_every).strip():
+            try:
+                secs = parse_duration(news_every)
+            except (ValueError, KeyError) as exc:
+                raise HTTPException(status_code=400, detail="bad news_every") from exc
+            if secs <= 0:
+                raise HTTPException(status_code=400, detail="news_every must be > 0")
+            store.news_every_s = secs
+            if store.director is not None:
+                store.director.news = Cadence(secs)  # re-time the live rhythm
+        if refresh is not None and str(refresh).strip():
+            try:
+                secs = parse_duration(refresh)
+            except (ValueError, KeyError) as exc:
+                raise HTTPException(status_code=400, detail="bad refresh") from exc
+            if secs < 1:
+                raise HTTPException(status_code=400, detail="refresh must be >= 1s")
+            store.refresh_s = float(secs)
+        return {"news_every_s": store.news_every_s, "refresh_s": store.refresh_s}
 
     @app.get("/voice")
     def voice() -> dict:
@@ -1066,6 +1104,19 @@ return of(u,o);};})();</script>
     <div id='cfg-gateway'></div>
   </details>
 
+  <details class='section'>
+    <summary>Cadence</summary>
+    <p class='muted'>The rhythm of the day: how often a news bulletin airs, and how
+    often sources are polled. Accepts a duration (<code>17m</code>, <code>90s</code>,
+    <code>1h</code>) or bare seconds. Applies immediately.</p>
+    <div class='authrow'>
+      <label class='muted'>news every <input id='cad-news' placeholder='17m'></label>
+      <label class='muted'>refresh <input id='cad-refresh' placeholder='60s'></label>
+      <button id='cad-save'>Apply</button>
+      <span class='muted' id='cad-status'></span>
+    </div>
+  </details>
+
   <details class='section' open>
     <summary>Mix</summary>
     <div class='authrow'>
@@ -1612,7 +1663,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadConfig(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadConfig(); loadCadence(); loadSources(); loadNarration(); loadMix(); loadSpotify(); loadNewsModel(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
 }));
 
 // ── Voice selection (feature-flagged off for now) ─────────────────────────────
@@ -1909,6 +1960,29 @@ async function loadConfig(){
       gw.appendChild(authRow('llm-gateway', c['llm-gateway']||{}, 'gateway base URL')); }
   }catch(e){}
 }
+// Cadence: news-bulletin + source-poll intervals (live, persisted).
+function _fmtSecs(s){ return s==null ? '' : (s%60===0 ? (s/60)+'m' : s+'s'); }
+async function loadCadence(){
+  try{
+    const d=await (await fetch('/cadence')).json();
+    document.getElementById('cad-news').value=_fmtSecs(d.news_every_s);
+    document.getElementById('cad-refresh').value=_fmtSecs(d.refresh_s);
+  }catch(e){}
+}
+document.getElementById('cad-save').addEventListener('click', async ()=>{
+  const st=document.getElementById('cad-status'); st.textContent='saving…';
+  const news=document.getElementById('cad-news').value.trim();
+  const refresh=document.getElementById('cad-refresh').value.trim();
+  const q=[];
+  if(news) q.push('news_every='+encodeURIComponent(news));
+  if(refresh) q.push('refresh='+encodeURIComponent(refresh));
+  if(!q.length){ st.textContent=''; return; }
+  try{
+    const r=await fetch('/cadence?'+q.join('&'), {method:'POST'});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
+    await loadCadence(); st.textContent='applied';
+  }catch(e){ st.textContent='error'; }
+});
 async function loadAuth(){
   const wrap=document.getElementById('authform');
   try{

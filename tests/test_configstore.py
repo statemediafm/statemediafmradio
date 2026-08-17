@@ -31,6 +31,7 @@ def test_state_config_roundtrips(tmp_path):
     assert loaded["station"]["voice"] == "alba"
     assert loaded["station"]["base_intensity"] == 0.6
     assert loaded["station"]["quiet_mode"] is True
+    assert loaded["station"]["refresh_s"] == 60.0
     assert loaded["mix"]["models"] == ["Space Dub", "Entrainment 0.1"]
     assert [s["topic"] for s in loaded["sources"]] == ["HN", "Eng"]
 
@@ -41,6 +42,30 @@ def test_state_config_roundtrips(tmp_path):
     assert st2.mix_generators is True
     assert st2.mix_models == ["Space Dub", "Entrainment 0.1"]
     assert st2.mix_spotify is True
+
+
+def test_cadence_precedence_flag_over_persisted(monkeypatch, tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text("[station]\nnews_every_s = 300.0\nrefresh_s = 30.0\n", encoding="utf-8")
+    monkeypatch.setenv("STATEMEDIAFM_CONFIG", str(cfg))
+    cap = {}
+    monkeypatch.setattr(cli.serve_mod, "run", lambda *a, **k: cap.update(k) or 0)
+
+    # No cadence flags → the persisted cadence is restored.
+    cli.main(["serve", "--no-open", "--tone"])
+    assert cap["news_every_s"] == 300.0 and cap["refresh"] == 30.0
+    # An explicit flag overrides the persisted value.
+    cap.clear()
+    cli.main(["serve", "--news-every", "10m", "--refresh", "5", "--no-open", "--tone"])
+    assert cap["news_every_s"] == 600.0 and cap["refresh"] == 5.0
+
+
+def test_cadence_persists():
+    st = _State()
+    st.news_every_s = 300.0
+    st.refresh_s = 45.0
+    station = cs.state_to_config(st)["station"]
+    assert station["news_every_s"] == 300.0 and station["refresh_s"] == 45.0
 
 
 def test_news_settings_roundtrip():

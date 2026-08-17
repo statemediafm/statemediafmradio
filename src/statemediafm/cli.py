@@ -401,12 +401,23 @@ def _serve(args: argparse.Namespace) -> int:
     live = bool(getattr(args, "live", False)) or bool(pnews.get("live", False))
     news_cfg = _llm_config(args)
     news_models = llm_settings(config).get("models") or []
+    # Cadences: flag > persisted > default (news 17m, refresh 60s).
+    if args.news_every:
+        news_every_s = parse_duration(args.news_every)
+    elif pstation.get("news_every_s"):
+        news_every_s = float(pstation["news_every_s"])
+    else:
+        news_every_s = parse_duration("17m")
+    if args.refresh is not None:
+        refresh = float(args.refresh)
+    else:
+        refresh = float(pstation.get("refresh_s") or 60.0)
     return serve_mod.run(
         roster,
         tts,
         host=args.host,
         port=args.port,
-        refresh=args.refresh,
+        refresh=refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
         style=style,
         generator=generator,
@@ -415,7 +426,7 @@ def _serve(args: argparse.Namespace) -> int:
         news_models=news_models,
         segments=segments,
         voice=voice,
-        news_every_s=parse_duration(args.news_every),
+        news_every_s=news_every_s,
         base_intensity=pstation.get("base_intensity"),
         quiet_mode=bool(pstation.get("quiet_mode", False)),
         mix=pmix,
@@ -588,7 +599,9 @@ def main(argv: list[str] | None = None) -> int:
     _add_voice_args(sv)
     # For serve, an omitted --voice/--style must fall through to the persisted
     # setting (statemediafm.config.toml), so default them to None here (the shared
-    # adders default them for demo/broadcast, which have no persistence).
+    # adders default them for demo/broadcast, which don't persist). --news-every /
+    # --refresh get their None defaults on their own add_argument calls below (they
+    # are added after this, so set_defaults here wouldn't stick).
     sv.set_defaults(voice=None, style=None)
     sv.add_argument(
         "--config",
@@ -610,14 +623,15 @@ def main(argv: list[str] | None = None) -> int:
         "Overrides the [genmusic] config; the news bed and opening bulletin use it.",
     )
     sv.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1).")
-    sv.add_argument("--port", type=int, default=8000, help="Bind port (default 8000).")
+    sv.add_argument("--port", type=int, default=8150, help="Bind port (default 8150).")
     sv.add_argument(
-        "--refresh", type=float, default=60.0, help="Seconds between source refreshes (default 60)."
+        "--refresh", type=float, default=None,
+        help="Seconds between source refreshes (default 60; persisted/editable in Settings).",
     )
     sv.add_argument(
         "--news-every",
-        default="17m",
-        help="Rhythm-of-the-day news cadence — how often a bulletin airs (default 17m).",
+        default=None,
+        help="News cadence — how often a bulletin airs (default 17m; persisted/editable in Settings).",
     )
     sv.add_argument(
         "--no-open",

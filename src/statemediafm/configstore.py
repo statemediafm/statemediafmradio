@@ -105,14 +105,18 @@ def state_to_config(state) -> dict:
         news["temperature"] = float(state.news_temperature)
     if getattr(state, "news_max_tokens", None) is not None:
         news["max_tokens"] = int(state.news_max_tokens)
+    station = {
+        "generator": getattr(state, "model", None),
+        "voice": getattr(state, "voice", None),
+        "style": getattr(state, "style", None),
+        "base_intensity": float(getattr(state, "base_intensity", 0.25)),
+        "quiet_mode": bool(getattr(state, "quiet_mode", False)),
+        "refresh_s": float(getattr(state, "refresh_s", 60.0)),
+    }
+    if getattr(state, "news_every_s", None) is not None:
+        station["news_every_s"] = float(state.news_every_s)
     return {
-        "station": {
-            "generator": getattr(state, "model", None),
-            "voice": getattr(state, "voice", None),
-            "style": getattr(state, "style", None),
-            "base_intensity": float(getattr(state, "base_intensity", 0.25)),
-            "quiet_mode": bool(getattr(state, "quiet_mode", False)),
-        },
+        "station": station,
         "news": news,
         "mix": {
             "generators": bool(getattr(state, "mix_generators", False)),

@@ -143,7 +143,7 @@ Decouple LLM news from the `--live` flag (`app.py:506` 409, `serve.py:394` seeds
 
 ## 3. Phased implementation
 
-> **Status:** Phases 1–3 shipped. Phase 4 (cadence UI + README rewrite) remains.
+> **Status:** Phases 1–4 shipped.
 
 **Phase 1 — Persistence spine (unblocks everything). ✅**
 1. `configstore.py`: `load_config_file()/save_config_file()` (stdlib TOML r/w), shared
@@ -163,7 +163,7 @@ Decouple LLM news from the `--live` flag (`app.py:506` 409, `serve.py:394` seeds
    optional `webbrowser.open` + `--no-open`. Standardize default port.
    → *Deliverable:* `statemediafm` alone runs and is fully configurable in the UI.
 
-**Phase 4 — Polish.**
+**Phase 4 — Polish. ✅**
 6. Cadence section in Settings (news-every / refresh) + persist. README rewrite of the
    run/onboarding flow. `config.toml` round-trip test; a "fresh clone" smoke test.
 

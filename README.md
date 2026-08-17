@@ -1,244 +1,54 @@
 # State Media FM
 
-Internal streaming radio built on a team's collaboration, project, and
-version-control data. It turns activity (git, Slack, Jira, Grafana, …) into a
-voiced news broadcast, with generative music that tracks project activity.
+**Why.** Your team throws off a constant stream of activity — issues, merge
+requests, deploys, chatter — and keeping an eye on it means living in dashboards.
+State Media FM turns that activity into a low-key **internal radio station**: calm
+focus music with the occasional spoken news bulletin, so you stay aware without
+staring at a screen.
 
-See [PLAN.md](PLAN.md) for the architecture and roadmap, and
-[SECURITY_MODEL.md](SECURITY_MODEL.md) for the trust model. Milestones **M0–M3**
-are in place and **M4** is partly shipped: a live station that turns a team's
-recent activity (GitHub/GitLab issues and merge/pull requests with their latest
-comments, a local repo's commits, or the Hacker News front page) into a
-summarized, **voiced news broadcast**, with **generative
-[Strudel](https://strudel.cc) music** that tracks project activity, a **browser
-player**, and **optional Spotify** playback between bulletins.
+**What.** It's a small app you run on your own machine. It reads your team's tools
+(GitHub / GitLab, Hacker News, and more), writes short news updates, reads them
+aloud, and plays them over generative background music in a **browser tab**. It's
+free and open-source (Apache-2.0), works offline, and phones nothing home.
 
-## Quick start
+**How.** You run **one command**; it starts a local web server and opens a browser
+tab. You point it at your sources — and, optionally, an AI gateway for richer news
+writing — right in the **Settings** tab. No config files to edit, and everything you
+set is remembered next time.
 
-### Standalone, zero dependencies
+## Run it
 
-The offline demo path uses only the Python standard library, so it ships as a
-single-file zipapp — no install, no `pip`, no `PYTHONPATH`:
-
-```sh
-./scripts/build_standalone.sh
-python3 dist/statemediafm.pyz demo --repo /path/to/a/git/repo
-```
-
-Choose a source:
-
-- **`--repo <GitHub/GitLab URL>`** (e.g. `https://github.com/meltano/meltano`) —
-  reads the most recently updated **issues and merge/pull requests, with the
-  latest comment on each** (public projects work unauthenticated, subject to the
-  platform's rate limits; pass `--token` or set `GITHUB_TOKEN` / `GITLAB_TOKEN`
-  to raise them);
-- **`--repo <local/bare repo path>`** — falls back to recent **commits** (all
-  that is available without a forge API);
-- **`--hn`** — the **Hacker News front page** (top stories via the official HN
-  API). Try it with `python3 dist/statemediafm.pyz demo --hn`.
-
-It writes a radio script to stdout and saves the voiced audio to
-`statemediafm-demo.wav`. Copy `dist/statemediafm.pyz` anywhere and run it with just
-`python3`. Passing **both** `--hn` and `--repo` combines them into one segment,
-covering each source in full before the next (depth-first, not interleaved),
-with each source's headlines attributed and voiced in its own voice.
-
-The zero-dependency zipapp builds a deterministic summary from the real activity
-(top contributors + recent headlines) and voices it with a placeholder tone — so
-it needs no credentials or model, yet the output reflects the project.
-
-### Real spoken audio
-
-An installed instance **speaks by default** (offline neural TTS via
-[Piper](https://github.com/OHF-Voice/piper1-gpl)); the tone is only a fallback
-for the zipapp, which has no `[tts]` extra. Install it and run normally:
+You need **Python 3.12+** and **git**. Copy-paste:
 
 ```sh
-uv pip install -e ".[tts]"          # or: pip install -e ".[tts]"
-statemediafm demo --repo /path/to/repo --out news.wav   # spoken; add --tone to force the placeholder
+git clone https://github.com/statemediafm/statemediafmradio.git
+cd statemediafmradio
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[all]"
+statemediafm
 ```
 
-The CLI is installed under two names: **`statemediafm`** (canonical) and the
-short alias **`smfm`** — use whichever you prefer (`smfm serve`, `smfm demo …`).
-The package, environment variables (`STATEMEDIAFM_*`) and config files keep the
-full name.
+That's it — your browser opens to **http://127.0.0.1:8150**. (If it doesn't open on
+its own, just visit that address.)
 
-The first run downloads a small voice model (~60 MB) into `./voices/`
-(override with `STATEMEDIAFM_VOICES_DIR`); later runs are offline. Pick a voice with
-`--voice`:
+## Set it going
 
-| Alias | Voice |
-|---|---|
-| `alan` (default) | British male |
-| `alba` | British (Scottish) female |
-| `northern_english_male` | Northern English male |
-| `southern_english_female` | Southern English female |
+1. Click **▶ Start** — browsers stay silent until you click, so this begins the audio.
+   It's already playing generative music with a Hacker News bulletin on a timer.
+2. To add your own team's activity, open the **Settings** tab:
+   - **Config** — paste your GitLab (or GitHub) address and a **read-only** access
+     token. Optionally add an **AI gateway** URL + key for smarter news writing.
+   - **News Update Sources** — add your project's URL.
+   - **News-parsing model** — flip **Live news** on and pick a model (optional; with
+     it off you still get clear, plain summaries).
+3. Everything you change is **saved automatically**. Next time, just run
+   `statemediafm` again and it all comes back.
 
-You can also pass a full Piper name (e.g. `en_US-lessac-medium`) or a path to
-your own `.onnx` model. Speech needs a normal install with the `[tts]` extra;
-the zero-dependency zipapp always uses the tone.
+To stop it, press **Ctrl-C** in the terminal.
 
-### Installed (real models + web)
+---
 
-```sh
-uv pip install -e ".[all]"          # or: pip install -e ".[all]"
-
-# Real summaries via the local Claude client (LiteLLM → anthropic/claude-opus-4-8).
-# Auth: set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) in the environment.
-statemediafm demo --repo /path/to/repo --live
-```
-
-Extras: `.[llm]` (LiteLLM + config), `.[tts]` (Piper neural speech), `.[web]`
-(FastAPI + uvicorn), `.[dev]` (pytest, ruff, mypy), `.[all]`.
-
-## Multiple sources as timed segments
-
-`broadcast` airs several sources at **different times**, each on its own cadence,
-so they read as distinct news segments about their topic (a step toward the
-"rhythm of the day" scheduler):
-
-```sh
-# Ad hoc: sources on a shared interval, auto-staggered to interleave.
-statemediafm broadcast --hn --repo https://github.com/meltano/meltano --every 15m --window 60
-```
-
-It prints a rundown plus the script for each segment:
-
-```
-Broadcast rundown — next 60 min, 8 segments:
-  16:36  Repository activity        18s
-  16:42  Hacker News front page     31s
-  16:51  Repository activity        18s
-  ...
-```
-
-**Configurable roster.** For full control — which sources air, how often, and
-staggered by what offset — pass a TOML/JSON roster (see
-[`examples/roster.toml`](examples/roster.toml)):
-
-```sh
-statemediafm broadcast --config examples/roster.toml --window 60
-```
-
-```toml
-[[segments]]
-topic = "Hacker News front page"
-source = "hackernews"
-every = "15m"
-offset = "6m"
-
-[[segments]]
-topic = "Engineering issues"
-source = "repo"
-repo = "https://github.com/meltano/meltano"
-every = "15m"
-offset = "0"
-```
-
-**Audio.** `--out` (default `news.wav`, `''` to skip) writes one combined WAV of
-all segments back to back; `--out-dir DIR` writes one WAV per segment topic. So
-`statemediafm broadcast --hn --window 120` alone drops a spoken `news.wav` in the
-current directory (installed instances speak by default; `--tone` forces the
-placeholder). Each segment is voiced in a **different** rotating voice so the
-topics sound distinct. The broadcast opens with a spoken time greeting ("Good day. It is
-16:52."), headlines are **attributed** to their source (Hacker News, the git
-project) and spaced by `--headline-pause` seconds (default `1.0`).
-
-Durations accept units (`15m`, `90s`, `1h`) or bare seconds. The scheduler
-(`core/schedule.py`: `Cadence`, `Programme`, `assemble_broadcast`) is
-pure/deterministic — it never reads the wall clock.
-
-## Serving live (M2)
-
-`statemediafm serve` runs the web server with a background loop that reuses the same
-roster and keeps `/genmusic` (generative music) and `/plan` (voiced news) fresh
-from live activity:
-
-```sh
-uv pip install -e ".[web]"                      # FastAPI + uvicorn
-statemediafm serve --hn --repo <URL> --refresh 60    # or: --config examples/roster.toml
-# → http://127.0.0.1:8000  ·  GET /genmusic, /plan, /audio/{id}, /health
-```
-
-Each tick recomputes the Strudel program from current activity and re-voices the
-news plan only when the item set changes (so TTS isn't run every tick). Needs
-the `[web]` extra; add `[tts]` for spoken news.
-
-To preview the **rhythm of the day** without serving, `statemediafm rundown`
-(alias `smfm rundown`) prints a full "hour of radio" — news bulletins on the
-17-minute cadence, song slots and station idents between, music underneath —
-with the 2–5 minute felt cadence proven. `--news-every` and `--window` tune it.
-
-Open **`http://127.0.0.1:8000`** in a browser: the page loads
-[Strudel](https://strudel.cc), and after you press **▶ Start radio** it plays the
-generative music live — polling `/genmusic` and crossfading (each program's
-built-in `fadeIn`) as repo/HN activity changes — with the latest news headlines
-and an incidental visualizer that tracks intensity + brainwave band. The start
-button is required: browsers block audio until a user gesture.
-
-## Generative music (M2)
-
-State Media FM also turns a repo's activity into a **Strudel program** — generative
-music that tracks the project. Activity becomes an `ActivitySignal` (volume,
-volatility, participants, themes); that maps to an intensity on the
-brainwave-band scale (sessions start at **theta** and rise toward gamma as
-activity climbs), and a style renderer emits Strudel source text:
-
-```sh
-python3 dist/statemediafm.pyz genmusic --repo /path/to/repo
-```
-
-A quiet repo idles calm and dark; a busy, multi-contributor repo brightens,
-speeds up, and adds a lead and percussion. `--base-intensity` sets the user's
-resting energy, `--intensity` overrides the derived value, `--out` writes the
-program to a file. The installed server also exposes it at `GET /genmusic` as
-JSON (`{text, style, intensity, brainwave_band, fade_ms}`) for a client player
-to poll and crossfade between. *(The browser Strudel player + visualizer is the
-remaining M2 piece.)*
-
-## Tests
-
-```sh
-uv pip install -e ".[dev]"
-pytest
-```
-
-## Security & trust
-
-State Media FM is meant to be **read before it's run**. The full trust model is in
-[SECURITY_MODEL.md](SECURITY_MODEL.md); the honest limitations and hardening
-backlog are in [HARDENING_PLAN.md](HARDENING_PLAN.md). In short:
-
-- **Loopback, single-operator.** It binds to `127.0.0.1` and the control API is
-  **currently unauthenticated** — built for the person running it on their own
-  machine. Do **not** bind it to `0.0.0.0` or a shared host without adding auth
-  (tracked in the hardening plan).
-- **Offline by default, no telemetry.** There is no phone-home. Every network call
-  is a functional, operator-configured one: the news sources you add, the LLM
-  gateway you point it at, Spotify (only if you connect it), a one-time
-  voice-model download, and two CDN `<script>` loads on the player page.
-- **Secrets stay on disk, gitignored.** News-source tokens and Spotify credentials
-  live in `statemediafm.auth.toml` (written `0600`, gitignored, masked in the UI) —
-  treat it as account-equivalent and never commit it. Scope every token
-  **read-only / least-privilege**; the Auth panel documents the minimum per provider.
-- **Untrusted input is never executed.** Source text is voiced and displayed, never
-  run; it is delimited/length-capped before the news prompt and reduced to a numeric
-  hash before the music. Prompt-injection defense relies on your chosen gateway/model.
-
-## Layout
-
-```
-src/statemediafm/
-  core/        data model (§6 contracts) + plan assembly + schedule + director
-  sources/     forge issues/MRs, git commits, Hacker News front page → NewsItem
-  newsroom/    summarize (LLMClient) + voice (TTSProvider) + themed personas
-  genmusic/    activity → ActivitySignal → compose → Strudel (IR + generators)
-  web/         FastAPI control API + browser player (news, music, Spotify)
-  serve.py     live loop: refresh sources, re-voice, compose, fill song slots
-  spotify.py   Spotify connector: catalogue search + user OAuth + playback wiring
-  songs.py     between-news song slots (generic mood/genre search seeds)
-  auth.py      gitignored token/endpoint store (statemediafm.auth.toml)
-  licensing.py open-core entitlements (commercial modules; verification stubbed)
-  pipeline.py  NewsItems → summarize → voice → BroadcastPlan
-  cli.py       demo / genmusic / broadcast / serve / rundown
-```
+Want the details — other install options, the command-line tools, how the music and
+news are generated, the local API, and the architecture? See
+**[TECHNICAL.md](TECHNICAL.md)**. For the trust model (what it protects, what stays
+on your machine, how tokens are stored), see **[SECURITY_MODEL.md](SECURITY_MODEL.md)**.

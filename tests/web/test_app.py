@@ -19,6 +19,30 @@ def test_health_ok():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_cadence_get_set_and_live_retime():
+    from statemediafm.core.director import Director
+
+    state = _State()
+    state.director = Director()
+    client = TestClient(create_app(state))
+
+    d = client.get("/cadence").json()
+    assert d["refresh_s"] == 60.0
+
+    # A duration string re-times the live Director and the poll interval.
+    r = client.post("/cadence", params={"news_every": "5m", "refresh": "30s"}).json()
+    assert r["news_every_s"] == 300.0 and r["refresh_s"] == 30.0
+    assert state.news_every_s == 300.0
+    assert state.director.news.every_s == 300.0  # the running rhythm changed
+    assert state.refresh_s == 30.0
+
+    # Bare seconds and validation.
+    assert client.post("/cadence", params={"refresh": "90"}).json()["refresh_s"] == 90.0
+    assert client.post("/cadence", params={"news_every": "0"}).status_code == 400
+    assert client.post("/cadence", params={"refresh": "0.5"}).status_code == 400
+    assert client.post("/cadence", params={"news_every": "nonsense"}).status_code == 400
+
+
 def test_mutation_fires_persist_hook_but_reads_do_not():
     state = _State()
     calls = []
