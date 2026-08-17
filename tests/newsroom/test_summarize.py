@@ -352,6 +352,11 @@ def test_build_prompt_asks_for_paragraph_per_topic():
     assert "own paragraph" in prompt
 
 
+def test_build_prompt_suppresses_points_but_allows_notable_comments():
+    prompt = build_prompt(_items(), style="newsroom")
+    assert "points or score" in prompt and "notably high" in prompt
+
+
 def test_naive_radio_script_singular_update_wording():
     one = [NewsItem(id="c1", source="git", kind="commit", title="only", actors=["a"])]
     assert "was 1 item" in naive_radio_script(one, style="lofi")

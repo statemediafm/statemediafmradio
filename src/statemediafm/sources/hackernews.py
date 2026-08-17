@@ -57,7 +57,10 @@ class HackerNewsSource(Source):
                     source=self.name,
                     kind="story",
                     title=story["title"],
-                    body=f"{score} points and {n_comments} comments, via {domain}.",
+                    # Points/score are deliberately kept OUT of the spoken body (the
+                    # score is a poor on-air detail); the comment count stays, and
+                    # the newsroom mentions it only when notable. Score is in raw.
+                    body=f"{n_comments} comments, via {domain}.",
                     origin="Hacker News",
                     actors=[story["by"]] if story.get("by") else [],
                     timestamp=datetime.fromtimestamp(ts, tz=UTC) if ts else None,

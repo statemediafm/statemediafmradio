@@ -133,9 +133,11 @@ def build_prompt(items: list[NewsItem], style: str, target_seconds: int = 90) ->
         "You are a radio newsroom writer. Turn the following team updates into a "
         f"single spoken news segment of about {target_words} words "
         f"(~{target_seconds} seconds) in a {style} style. "
-        "Cover who, what, where, when, why, and how. Put each distinct story or "
-        "topic in its own paragraph, separated by a blank line. Write only the words "
-        "to be read aloud — no headings, no stage directions, no bullet points.\n\n"
+        "Cover who, what, where, when, why, and how. Do not state a story's points "
+        "or score; you may mention a comment count only when it is notably high. Put "
+        "each distinct story or topic in its own paragraph, separated by a blank "
+        "line. Write only the words to be read aloud — no headings, no stage "
+        "directions, no bullet points.\n\n"
         f"Updates:\n{updates}"
     )
 

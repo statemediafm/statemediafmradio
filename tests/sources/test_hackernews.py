@@ -56,8 +56,10 @@ def test_front_page_stories_map_to_news_items():
     assert top.id == "hn:10"
     assert top.origin == "Hacker News"
     assert top.raw["rank"] == 1
-    # Body notes score, comments, and domain (www. stripped).
-    assert "911 points and 500 comments" in top.body
+    # Body notes comments + domain (www. stripped); the score is kept out of the
+    # spoken body (it stays in raw) so bulletins don't read out story points.
+    assert "500 comments" in top.body and "points" not in top.body
+    assert top.raw["score"] == 911  # available internally, just not on air
     assert "anthropic.com" in top.body and "www." not in top.body
     assert top.refs == ["https://www.anthropic.com/news/x"]
 
