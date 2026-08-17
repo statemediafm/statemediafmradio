@@ -182,24 +182,43 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
 
 
 def _effective_llm(state, llm):
-    """Apply the UI's live news-parsing overrides to the base LLM config.
+    """The ``(client, cfg)`` for LLM news this tick, or ``None`` for the offline copy.
 
-    ``llm`` is the ``(client, base_cfg)`` wired at boot, or ``None`` when the
-    server isn't running live. The Settings tab can override the gateway model
-    (``state.news_model``) and the sampling knobs (``state.news_temperature``,
-    ``state.news_max_tokens``) for this tick, so news parsing can be tuned live
-    without a restart. Unset (``None``) overrides leave the base config's value.
+    News is live when the operator has toggled it on (``state.live``) — settable in
+    the Settings UI without a restart — or when a client was wired at boot
+    (``--live``, back-compat). The client is the wired one, else a lazily-built,
+    cached ``LiteLLMClient`` (the gateway URL/key resolve from the auth file at call
+    time). The base config is the wired/seeded ``news_cfg``, overlaid with the UI's
+    model + sampling knobs. Returns ``None`` (→ deterministic copy) when no model is
+    chosen, so a live toggle with nothing configured degrades gracefully.
     """
-    if llm is None:
+    live = getattr(state, "live", False) or (llm is not None)
+    if not live:
         return None
-    client, base_cfg = llm
+    if llm is not None:
+        client, base_cfg = llm
+    else:
+        from .newsroom.llm import LLMConfig
+
+        base_cfg = getattr(state, "news_cfg", None) or LLMConfig(
+            model=getattr(state, "news_model", None) or ""
+        )
+        client = getattr(state, "_llm_client", None)
+        if client is None:
+            from .newsroom.llm import LiteLLMClient
+
+            client = LiteLLMClient()
+            state._llm_client = client
     overrides = {
         "model": getattr(state, "news_model", None),
         "temperature": getattr(state, "news_temperature", None),
         "max_tokens": getattr(state, "news_max_tokens", None),
     }
     overrides = {k: v for k, v in overrides.items() if v is not None}
-    return (client, replace(base_cfg, **overrides)) if overrides else llm
+    cfg = replace(base_cfg, **overrides) if overrides else base_cfg
+    if not getattr(cfg, "model", None):
+        return None  # live on but no model picked yet → stay on the deterministic copy
+    return (client, cfg)
 
 
 def _quiet_lead(signature: tuple) -> float:
@@ -356,6 +375,12 @@ def run(
     quiet_mode: bool = False,
     mix: dict | None = None,
     persist: bool = False,
+    live: bool = False,
+    news_cfg=None,
+    news_model: str | None = None,
+    news_temperature: float | None = None,
+    news_max_tokens: int | None = None,
+    open_browser: bool = False,
 ) -> int:
     """Boot the FastAPI app and drive ``refresh_once`` on an interval.
 
@@ -428,18 +453,29 @@ def run(
         state.mix_generators = bool(mix.get("generators", state.mix_generators))
         state.mix_models = list(mix.get("models", state.mix_models))
         state.mix_spotify = bool(mix.get("spotify", state.mix_spotify))
-    # News-parsing model selection (Settings tab). Seed the current pick with the
-    # wired model and offer the configured list (plus the current one) as options.
-    if llm is not None:
-        _client, base_cfg = llm
-        state.news_model = base_cfg.model
-        state.news_cfg = base_cfg  # lets the Settings tab auto-discover gateway models
-        state.news_temperature = base_cfg.temperature
-        state.news_max_tokens = base_cfg.max_tokens
-        options = list(news_models or [])
-        if base_cfg.model not in options:
-            options.insert(0, base_cfg.model)
-        state.news_models = options
+    # News-parsing (Settings tab). `live` may be set by --live OR persisted; it can
+    # also be toggled at runtime from the UI (see /news-live). A base `news_cfg` is
+    # always seeded (even when off) so the model picker + gateway Discover work; the
+    # gateway URL/key resolve from the auth file at call time. A wired boot `llm`
+    # (legacy --live) still supplies the base config.
+    if llm is not None and news_cfg is None:
+        _client, news_cfg = llm
+    state.live = bool(live)
+    if news_cfg is not None:
+        state.news_cfg = news_cfg
+        state.news_model = news_model or news_cfg.model
+        state.news_temperature = (
+            news_temperature if news_temperature is not None else news_cfg.temperature
+        )
+        state.news_max_tokens = (
+            news_max_tokens if news_max_tokens is not None else news_cfg.max_tokens
+        )
+    elif news_model:
+        state.news_model = news_model
+    options = list(news_models or [])
+    if state.news_model and state.news_model not in options:
+        options.insert(0, state.news_model)
+    state.news_models = options
     # The rhythm-of-the-day director: news bulletins on a 17-min cadence, song
     # slots + idents between, over a session clock the /schedule endpoint reads.
     from .core.director import Director
@@ -451,9 +487,11 @@ def run(
     # Persist UI changes to the settings file so they survive a restart (the
     # persist middleware in create_app calls this after each successful mutation).
     if persist:
-        from .configstore import save_config, state_to_config
+        from .configstore import config_path, save_config, state_to_config
 
         state.on_change = lambda: save_config(state_to_config(state))
+        if not config_path().exists():
+            state.on_change()  # first run: capture the default roster (Hacker News) + settings
     security = new_security_policy(host=host)
     app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}
@@ -485,8 +523,19 @@ def run(
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
 
+    async def _open_when_up() -> None:
+        import webbrowser
+
+        from .web.app import _host_only
+
+        await asyncio.sleep(1.2)  # let uvicorn bind before opening the tab
+        shown = "127.0.0.1" if _host_only(host) in ("0.0.0.0", "") else host
+        await asyncio.to_thread(webbrowser.open, f"http://{shown}:{port}")
+
     async def _main() -> None:
         task = asyncio.create_task(_loop())
+        if open_browser:
+            asyncio.create_task(_open_when_up())
         try:
             await server.serve()
         finally:

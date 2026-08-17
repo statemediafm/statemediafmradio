@@ -145,6 +145,7 @@ class _State:
         self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 2 min
         self.demo_topics: list[str] = []  # source topics Demo Mode added (to remove on off)
         self.last_signal = None  # last ActivitySignal, for immediate model/tuning switches
+        self.live: bool = False  # LLM writes the news (vs the deterministic offline copy)
         self.news_model: str | None = None  # LLM model for news parsing (None → offline copy)
         self.news_models: list[str] = []  # gateway models the Settings tab offers
         self.news_cfg = None  # base LLMConfig (for gateway model auto-discovery)
@@ -498,16 +499,51 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         save_license(key)
         return license_status()
 
+    def _gateway_configured() -> bool:
+        """Is there something for a live LLM to call — a configured gateway slot or
+        an Anthropic key in the environment?"""
+        import os
+
+        from ..auth import source_endpoint, source_token
+
+        return bool(
+            source_endpoint("llm-gateway")
+            or source_token("llm-gateway")
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        )
+
+    @app.get("/news-live")
+    def news_live() -> dict:
+        """Whether the LLM writes the news, and whether anything is configured to
+        call. Toggled from Settings — no restart needed."""
+        return {
+            "live": bool(getattr(store, "live", False)),
+            "gateway_configured": _gateway_configured(),
+            "model": store.news_model,
+        }
+
+    @app.post("/news-live")
+    def set_news_live(on: bool) -> dict:
+        """Turn LLM news on/off at runtime. When on with nothing configured (or a
+        model the gateway can't serve), each tick degrades gracefully to the
+        deterministic copy, so this can't take the news off air."""
+        store.live = bool(on)
+        return {
+            "live": store.live,
+            "gateway_configured": _gateway_configured(),
+            "model": store.news_model,
+        }
+
     @app.get("/news-model")
     def news_model() -> dict:
         """The gateway model used for news parsing: the current pick, the offered
-        options, and whether news parsing is live at all (``live`` is False when
-        the server was started without ``--live`` — the news is the deterministic
-        offline copy and the selector is hidden)."""
+        options, and whether news parsing is live (toggle it under Settings ›
+        News-parsing model)."""
         return {
             "current": store.news_model,
             "models": list(store.news_models),
-            "live": store.news_model is not None,
+            "live": bool(getattr(store, "live", False)),
             "temperature": store.news_temperature,
             "max_tokens": store.news_max_tokens,
         }
@@ -518,9 +554,7 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
     ) -> dict:
         """Switch the news-parsing model and (optionally) its sampling knobs — any
         model the gateway serves, plus ``temperature`` / ``max_tokens``. Applies to
-        the next news cycle; only meaningful when the server is running live."""
-        if store.news_model is None:
-            raise HTTPException(status_code=409, detail="news parsing is not live")
+        the next news cycle (used when Live news is on)."""
         if temperature is not None and not 0.0 <= temperature <= 2.0:
             raise HTTPException(status_code=400, detail="temperature must be 0..2")
         if max_tokens is not None and max_tokens <= 0:
@@ -545,11 +579,9 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         """Auto-discover models the gateway serves (OpenAI-compatible
         ``GET {base}/models``) and merge them into the selectable options.
         Best-effort: an unreachable gateway just adds nothing."""
-        if store.news_model is None:
-            raise HTTPException(status_code=409, detail="news parsing is not live")
         from ..newsroom.llm import LLMConfig, discover_models
 
-        cfg = store.news_cfg or LLMConfig(model=store.news_model)
+        cfg = store.news_cfg or LLMConfig(model=store.news_model or "")
         found = discover_models(cfg)
         merged = list(store.news_models)
         merged.extend(m for m in found if m not in merged)
@@ -1072,11 +1104,16 @@ return of(u,o);};})();</script>
       <button id='sp-test'>Test connection</button>
       <span class='muted' id='sp-status'></span>
     </div>
+    <h3>News-parsing model</h3>
+    <div class='authrow'>
+      <label class='switch'><input type='checkbox' id='news-live'><span class='track'></span>
+        <strong>Live news (LLM)</strong></label>
+      <span class='muted' id='news-live-status'></span>
+    </div>
     <div id='newsmodel-wrap' hidden>
-      <h3>News-parsing model</h3>
-      <p class='muted'>Which model on the <code>llm-gateway</code> writes the news.
-      Pick one the gateway serves, or type a model string. Applies to the next news
-      cycle.</p>
+      <p class='muted'>Which model the <code>llm-gateway</code> uses to write the news.
+      Pick one the gateway serves (↻ Discover), or type a model string. Applies to
+      the next news cycle. Off → the deterministic offline copy.</p>
       <div class='authrow'>
         <select id='newsmodel'></select>
         <input id='newsmodel-custom' placeholder='or type a model, e.g. openai/gpt-4o-mini'>
@@ -1787,9 +1824,15 @@ const newsModelSel=document.getElementById('newsmodel');
 const newsModelCustom=document.getElementById('newsmodel-custom');
 async function loadNewsModel(){
   try{
+    const lv=await (await fetch('/news-live')).json();
+    document.getElementById('news-live').checked = !!lv.live;
+    document.getElementById('news-live-status').textContent = lv.live
+      ? (lv.gateway_configured ? '· LLM writes the news'
+         : '· no gateway/key yet — set one in Config, or export ANTHROPIC_API_KEY (falls back to the offline copy until then)')
+      : '· deterministic offline copy';
+    document.getElementById('newsmodel-wrap').hidden = !lv.live;
+    if(!lv.live) return;
     const d=await (await fetch('/news-model')).json();
-    document.getElementById('newsmodel-wrap').hidden = !d.live;
-    if(!d.live) return;
     newsModelSel.innerHTML='';
     for(const m of (d.models||[])){
       const o=document.createElement('option'); o.value=m; o.textContent=m;
@@ -1800,6 +1843,13 @@ async function loadNewsModel(){
     document.getElementById('newsmodel-status').textContent='current: '+esc(d.current||'');
   }catch(e){}
 }
+document.getElementById('news-live').addEventListener('change', async (e)=>{
+  const st=document.getElementById('news-live-status'); st.textContent='saving…';
+  try{
+    await fetch('/news-live?on='+(e.target.checked?'true':'false'), {method:'POST'});
+    await loadNewsModel(); loadNewsBadge();
+  }catch(err){ st.textContent='error'; }
+});
 document.getElementById('newsmodel-save').addEventListener('click', async ()=>{
   const name=(newsModelCustom.value.trim())||newsModelSel.value;
   if(!name) return;

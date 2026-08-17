@@ -58,7 +58,7 @@ def _dump(data: dict) -> str:
     """Serialize the settings dict — the ``[station]``/``[mix]`` tables and the
     ``[[sources]]`` array-of-tables — to TOML."""
     lines: list[str] = []
-    for section in ("station", "mix"):
+    for section in ("station", "news", "mix"):
         table = data.get(section)
         if isinstance(table, dict) and table:
             lines.append(f"[{section}]")
@@ -97,6 +97,14 @@ def state_to_config(state) -> dict:
     Demo-Mode sources are transient and deliberately excluded."""
     demo = set(getattr(state, "demo_topics", []) or [])
     sources = [dict(s) for s in getattr(state, "segments", []) or [] if s.get("topic") not in demo]
+    news = {
+        "live": bool(getattr(state, "live", False)),
+        "model": getattr(state, "news_model", None) or "",
+    }
+    if getattr(state, "news_temperature", None) is not None:
+        news["temperature"] = float(state.news_temperature)
+    if getattr(state, "news_max_tokens", None) is not None:
+        news["max_tokens"] = int(state.news_max_tokens)
     return {
         "station": {
             "generator": getattr(state, "model", None),
@@ -105,6 +113,7 @@ def state_to_config(state) -> dict:
             "base_intensity": float(getattr(state, "base_intensity", 0.25)),
             "quiet_mode": bool(getattr(state, "quiet_mode", False)),
         },
+        "news": news,
         "mix": {
             "generators": bool(getattr(state, "mix_generators", False)),
             "models": list(getattr(state, "mix_models", []) or []),

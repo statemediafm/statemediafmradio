@@ -83,17 +83,25 @@ def test_models_list_and_switch():
     assert client.post("/model", params={"name": "Nope"}).status_code == 400
 
 
-def test_news_model_not_live_by_default():
-    client = TestClient(create_app(_State()))
-    d = client.get("/news-model").json()
-    assert d["live"] is False and d["current"] is None
-    # Selecting a model is rejected when news parsing isn't live.
-    assert client.post("/news-model", params={"name": "openai/x"}).status_code == 409
+def test_news_live_off_by_default_and_toggles_without_restart():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.get("/news-live").json()["live"] is False
+    assert client.get("/news-model").json()["live"] is False
+
+    # Toggle live on at runtime — no 409, no restart.
+    r = client.post("/news-live", params={"on": True}).json()
+    assert r["live"] is True and state.live is True
+    assert client.get("/news-model").json()["live"] is True
+    # Setting a model works regardless of live (stored for when it's used).
+    resp = client.post("/news-model", params={"name": "openai/x"})
+    assert resp.status_code == 200 and state.news_model == "openai/x"
 
 
 def test_news_model_select_when_live():
     state = _State()
-    state.news_model = "anthropic/claude-opus-4-8"  # seeded live by serve.run
+    state.live = True
+    state.news_model = "anthropic/claude-opus-4-8"
     state.news_models = ["anthropic/claude-opus-4-8", "openai/gpt-4o-mini"]
     client = TestClient(create_app(state))
 
@@ -131,9 +139,17 @@ def test_news_model_discovery_merges_gateway_models(monkeypatch):
     assert state.news_models == ["openai/gpt-4o-mini", "openai/o1"]
 
 
-def test_news_model_discovery_rejected_when_not_live():
-    client = TestClient(create_app(_State()))
-    assert client.post("/news-model/discover").status_code == 409
+def test_news_model_discovery_works_without_live(monkeypatch):
+    # Discovery is available regardless of the live toggle, so the operator can
+    # populate the model list before switching news on.
+    import statemediafm.newsroom.llm as llm_pkg
+
+    monkeypatch.setattr(llm_pkg, "discover_models", lambda cfg, **kw: ["m/a", "m/b"])
+    state = _State()  # live off, no model
+    client = TestClient(create_app(state))
+    d = client.post("/news-model/discover").json()
+    assert d["discovered"] == ["m/a", "m/b"]
+    assert "m/a" in state.news_models
 
 
 def test_sources_list_add_and_remove():

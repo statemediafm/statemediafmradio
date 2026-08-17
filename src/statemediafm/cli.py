@@ -375,6 +375,7 @@ def _serve(args: argparse.Namespace) -> int:
     persisted = load_station_config()
     pstation = persisted.get("station", {}) if persisted else {}
     pmix = persisted.get("mix", {}) if persisted else {}
+    pnews = persisted.get("news", {}) if persisted else {}
     segments = _resolve_segments(args, persisted)
     if not segments:
         print("Give a roster: --config FILE, or --hn and/or --repo.", file=sys.stderr)
@@ -393,12 +394,13 @@ def _serve(args: argparse.Namespace) -> int:
     # The ambient generator: --generator > persisted > [genmusic] config > default.
     gm = genmusic_settings(config)
     generator = args.generator or pstation.get("generator") or gm["generator"]
-    # --live: the LLM writes the news (via the llm-gateway). The [llm] `models`
-    # list becomes the Settings tab's selectable news-parsing models.
-    llm = news_models = None
-    if getattr(args, "live", False):
-        llm = (LiteLLMClient(), _llm_config(args))
-        news_models = llm_settings(config).get("models") or []
+    # LLM news. `live` may come from --live OR the persisted toggle; either way it's
+    # also switchable at runtime from Settings (/news-live). A base news_cfg is
+    # always built (a plain LLMConfig — no litellm needed) so the model picker +
+    # gateway Discover work; the client is constructed lazily only when live.
+    live = bool(getattr(args, "live", False)) or bool(pnews.get("live", False))
+    news_cfg = _llm_config(args)
+    news_models = llm_settings(config).get("models") or []
     return serve_mod.run(
         roster,
         tts,
@@ -410,7 +412,6 @@ def _serve(args: argparse.Namespace) -> int:
         generator=generator,
         show_selector=gm["selector"],
         generators_dir=gm["generators_dir"],
-        llm=llm,
         news_models=news_models,
         segments=segments,
         voice=voice,
@@ -419,6 +420,12 @@ def _serve(args: argparse.Namespace) -> int:
         quiet_mode=bool(pstation.get("quiet_mode", False)),
         mix=pmix,
         persist=True,  # write UI changes back to statemediafm.config.toml
+        live=live,
+        news_cfg=news_cfg,
+        news_model=pnews.get("model") or None,
+        news_temperature=pnews.get("temperature"),
+        news_max_tokens=pnews.get("max_tokens"),
+        open_browser=not getattr(args, "no_open", False),
     )
 
 
@@ -512,7 +519,17 @@ def _rundown(args: argparse.Namespace) -> int:
     return 0
 
 
+_SUBCOMMANDS = ("demo", "genmusic", "broadcast", "serve", "rundown")
+
+
 def main(argv: list[str] | None = None) -> int:
+    # Zero-config: `statemediafm` (no subcommand) runs the station. If the first
+    # token isn't a subcommand or a help/exit flag, default to `serve` so bare
+    # flags (e.g. `statemediafm --port 8150`) work too.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or (argv[0] not in _SUBCOMMANDS and argv[0] not in ("-h", "--help")):
+        argv = ["serve", *argv]
+
     parser = argparse.ArgumentParser(prog="statemediafm")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -601,6 +618,11 @@ def main(argv: list[str] | None = None) -> int:
         "--news-every",
         default="17m",
         help="Rhythm-of-the-day news cadence — how often a bulletin airs (default 17m).",
+    )
+    sv.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't open the player in a browser on start (default: open on loopback).",
     )
     sv.set_defaults(func=_serve)
 

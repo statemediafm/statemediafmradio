@@ -43,6 +43,34 @@ def test_state_config_roundtrips(tmp_path):
     assert st2.mix_spotify is True
 
 
+def test_news_settings_roundtrip():
+    st = _State()
+    st.live = True
+    st.news_model = "openai/gpt-4o-mini"
+    st.news_temperature = 0.4
+    st.news_max_tokens = 512
+    cfg = cs.state_to_config(st)
+    assert cfg["news"] == {"live": True, "model": "openai/gpt-4o-mini",
+                           "temperature": 0.4, "max_tokens": 512}
+
+
+def test_default_subcommand_is_serve(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli, "_serve", lambda args: seen.update(serve=args) or 0)
+    monkeypatch.setattr(cli, "_genmusic", lambda args: seen.update(gm=args) or 0)
+
+    # No subcommand → serve.
+    assert cli.main([]) == 0 and "serve" in seen
+    # A bare flag (no subcommand) also routes to serve, parsed as serve args.
+    seen.clear()
+    assert cli.main(["--port", "9999", "--no-open"]) == 0
+    assert seen["serve"].port == 9999 and seen["serve"].no_open is True
+    # An explicit other subcommand is not hijacked.
+    seen.clear()
+    assert cli.main(["genmusic", "--repo", "/tmp/x"]) == 0
+    assert "gm" in seen and "serve" not in seen
+
+
 def test_demo_sources_are_not_persisted():
     st = _State()
     st.segments = [

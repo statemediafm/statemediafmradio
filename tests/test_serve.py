@@ -7,7 +7,7 @@ import urllib.error
 from statemediafm.core.models import NewsItem
 from statemediafm.core.schedule import Cadence
 from statemediafm.newsroom.tts import ToneWavTTS
-from statemediafm.serve import _publish_plan, _voice_rotation, refresh_once
+from statemediafm.serve import _effective_llm, _publish_plan, _voice_rotation, refresh_once
 from statemediafm.web.app import _State
 
 
@@ -24,6 +24,41 @@ def _items():
         NewsItem(id="1", source="hackernews", kind="story", title="Big story",
                  origin="Hacker News", actors=["a"]),
     ]
+
+
+def test_effective_llm_off_when_not_live_and_no_boot_client():
+    state = _State()  # live off, no boot llm
+    assert _effective_llm(state, None) is None
+
+
+def test_effective_llm_builds_lazily_when_toggled_live():
+    from statemediafm.newsroom.llm import LLMConfig
+
+    state = _State()
+    state.live = True  # toggled on from the UI, no --live at boot
+    state.news_cfg = LLMConfig(model="openai/gpt-4o-mini")
+    state.news_model = "openai/gpt-4o-mini"
+    eff = _effective_llm(state, None)
+    assert eff is not None
+    client, cfg = eff
+    assert cfg.model == "openai/gpt-4o-mini"
+    # The lazily-built client is cached on the state (not rebuilt each tick).
+    assert _effective_llm(state, None)[0] is client
+
+
+def test_effective_llm_live_without_a_model_stays_deterministic():
+    state = _State()
+    state.live = True  # on, but nothing picked and no base cfg
+    assert _effective_llm(state, None) is None
+
+
+def test_effective_llm_honours_a_wired_boot_client_for_backcompat():
+    # A boot client (legacy --live) is used even if state.live wasn't set.
+    from statemediafm.newsroom.llm import LLMConfig
+
+    sentinel = object()
+    eff = _effective_llm(_State(), (sentinel, LLMConfig(model="base/model")))
+    assert eff is not None and eff[0] is sentinel and eff[1].model == "base/model"
 
 
 def test_voice_rotation_leads_with_base_then_distinct_voices():

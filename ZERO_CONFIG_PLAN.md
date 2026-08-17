@@ -143,7 +143,9 @@ Decouple LLM news from the `--live` flag (`app.py:506` 409, `serve.py:394` seeds
 
 ## 3. Phased implementation
 
-**Phase 1 — Persistence spine (unblocks everything).**
+> **Status:** Phases 1–3 shipped. Phase 4 (cadence UI + README rewrite) remains.
+
+**Phase 1 — Persistence spine (unblocks everything). ✅**
 1. `configstore.py`: `load_config_file()/save_config_file()` (stdlib TOML r/w), shared
    `_dump_toml`. `examples/config.toml` + gitignore `statemediafm.config.toml`.
 2. Seed `_State` from the file at `create_app`/`serve.run`; add a `persist(state)`
@@ -151,12 +153,12 @@ Decouple LLM news from the `--live` flag (`app.py:506` 409, `serve.py:394` seeds
 3. Persist + restore the **roster** (`[[sources]]`), rebuilding via `build_segment`.
    → *Deliverable:* UI-set sources/generator/voice/cadence survive restart.
 
-**Phase 2 — Live-from-UI.**
+**Phase 2 — Live-from-UI. ✅**
 4. `state.live` + `[news].live`; lazy LLM client in `refresh_once`; drop the
    `/news-model` 409; show the panel when live; persist model/temp/max_tokens.
    → *Deliverable:* toggle LLM news on and pick a model without restarting.
 
-**Phase 3 — No-flags boot.**
+**Phase 3 — No-flags boot (Hacker News on by default + browser auto-open). ✅**
 5. Default subcommand → `serve`; load-order precedence; empty-state Settings banner;
    optional `webbrowser.open` + `--no-open`. Standardize default port.
    → *Deliverable:* `statemediafm` alone runs and is fully configurable in the UI.
