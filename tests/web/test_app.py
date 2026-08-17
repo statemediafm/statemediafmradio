@@ -37,6 +37,26 @@ def test_news_now_no_hook_is_safe():
     assert client.post("/news-now").json() == {"aired": False}
 
 
+def test_next_news_countdown():
+    import time
+
+    from statemediafm.core.director import Director
+    from statemediafm.core.schedule import Cadence
+
+    state = _State()
+    state.director = Director(news=Cadence(600))  # a bulletin every 10 min
+    state.session_t0 = time.monotonic() - 60  # 60 s into the session
+    d = TestClient(create_app(state)).get("/next-news").json()
+    assert d["every_s"] == 600
+    # next slot is at 600 s; ~540 s remain
+    assert 530 <= d["in_s"] <= 600
+
+
+def test_next_news_none_without_a_director():
+    d = TestClient(create_app(_State())).get("/next-news").json()
+    assert d["in_s"] is None
+
+
 def test_cadence_get_set_and_live_retime():
     from statemediafm.core.director import Director
 

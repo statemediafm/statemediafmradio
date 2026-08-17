@@ -508,6 +508,7 @@ def run(
     state.news_every_s = director.news.every_s
     state.refresh_s = float(refresh)
     start = time.monotonic()
+    state.session_t0 = start  # monotonic session clock, for the "next update in" countdown
     # Persist UI changes to the settings file so they survive a restart (the
     # persist middleware in create_app calls this after each successful mutation).
     if persist:

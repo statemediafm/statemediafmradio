@@ -163,6 +163,7 @@ class _State:
         self.roster: list = []  # (topic, source, cadence, headlines) entries
         self.segments: list[dict] = []  # the segment dicts behind roster (for display)
         self.director = None  # rhythm-of-the-day clock (Director), set by serve.run
+        self.session_t0 = None  # monotonic session start, for the "next update in" countdown
         # Persistence hook: serve.run sets this to write the settings file after a
         # UI change (see configstore); None in tests/embedders → nothing persists.
         self.on_change = None
@@ -437,6 +438,30 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.base_intensity = level
         _recompose(store)
         return {"current": store.base_intensity, "band": band_for_intensity(level)}
+
+    @app.get("/next-news")
+    def next_news() -> dict:
+        """Seconds until the next scheduled news slot (the Director's news cadence
+        against the session clock), for the player's 'next update in' countdown.
+        ``in_s`` is ``None`` when there's no director/session yet."""
+        import math
+        import time as _time
+
+        t0 = getattr(store, "session_t0", None)
+        director = getattr(store, "director", None)
+        if t0 is None or director is None:
+            return {"in_s": None, "every_s": None}
+        if getattr(store, "demo_mode", False):
+            from ..serve import DEMO_NEWS_EVERY_S
+
+            every, offset = float(DEMO_NEWS_EVERY_S), 0.0
+        else:
+            every, offset = float(director.news.every_s), float(director.news.offset_s)
+        elapsed = _time.monotonic() - t0
+        nxt = offset + (math.floor((elapsed - offset) / every) + 1) * every
+        while nxt <= elapsed:  # guard against a slot landing exactly on now
+            nxt += every
+        return {"in_s": max(0.0, nxt - elapsed), "every_s": every}
 
     @app.get("/cadence")
     def cadence() -> dict:
@@ -983,6 +1008,7 @@ return of(u,o);};})();</script>
     <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>Newscast now</button>
     <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
     <span class='muted grow' id='status'>press Play</span>
+    <span class='muted' id='next-update'></span>
   </div>
 
   <!-- The bed the news plays over: generative Flow State, or your Spotify. -->
@@ -1247,6 +1273,23 @@ tuningSel.addEventListener('change', async ()=>{
   }catch(e){}
 });
 
+// "Next update in Nm": time until the next scheduled news slot. Fetch the server's
+// countdown, then tick it down locally between fetches.
+let nextNewsAt=0;
+function renderNextNews(){
+  const el=document.getElementById('next-update'); if(!el) return;
+  if(!nextNewsAt){ el.textContent=''; return; }
+  const m=Math.max(0, Math.ceil((nextNewsAt-Date.now())/60000));
+  el.textContent='Next update in '+m+'m';
+}
+async function loadNextNews(){
+  try{
+    const d=await (await fetch('/next-news')).json();
+    nextNewsAt = d.in_s==null ? 0 : (Date.now()+d.in_s*1000);
+    renderNextNews();
+  }catch(e){}
+}
+
 // Quiet mode — music only around the news, silent between.
 const quietBox=document.getElementById('quiet');
 async function loadQuiet(){
@@ -1404,6 +1447,7 @@ async function pollNews(){
     if((started || spMode) && first && first.audio_url!==lastNewsUrl){
       lastNewsUrl=first.audio_url; newsPlayer.src=first.audio_url;
       newsPlayer.play().catch(e=>console.warn('news play:',e));
+      loadNextNews();  // a bulletin just aired → re-sync the countdown to the next slot
     }
   }catch(e){}
 }
@@ -1618,7 +1662,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
-  if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); pollMusic(); pollSong(); }
+  if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNextNews(); pollMusic(); pollSong(); }
 }));
 
 // ── Voice selection (feature-flagged off for now) ─────────────────────────────
@@ -1872,11 +1916,13 @@ async function loadGateways(){
     for(const g of (d.gateways||[])) wrap.appendChild(authRow(g,(d.config&&d.config[g])||{},'URL (base endpoint)'));
   }catch(e){ wrap.textContent='Could not load gateways.'; }
 }
-loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
+loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNextNews(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
 setPlayerMode((function(){ try{ return localStorage.getItem('smfm-mode')||'flow'; }catch(e){ return 'flow'; } })());
 setInterval(pollMusic, 8000);
 setInterval(pollNews, 15000);
 setInterval(pollSong, 15000);
+setInterval(loadNextNews, 30000);  // re-sync the countdown
+setInterval(renderNextNews, 15000);  // tick it down between syncs
 
 // Incidental visualizer: bars pulsing with intensity, hue by brainwave band.
 const cv=document.getElementById('viz'), ctx=cv.getContext('2d');
