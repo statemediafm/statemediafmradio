@@ -517,7 +517,11 @@ def run(
         state.on_change = lambda: save_config(state_to_config(state))
         if not config_path().exists():
             state.on_change()  # first run: capture the default roster (Hacker News) + settings
-    security = new_security_policy(host=host)
+    # Extra Host/Origin names the control API answers to — needed to reach a
+    # non-loopback bind from another machine (browse via the server's hostname/IP).
+    # Comma-separated in $STATEMEDIAFM_ALLOWED_HOSTS.
+    extra_hosts = [h for h in os.environ.get("STATEMEDIAFM_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    security = new_security_policy(host=host, extra_hosts=extra_hosts)
     app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}
 

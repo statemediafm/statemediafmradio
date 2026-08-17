@@ -112,6 +112,14 @@ def test_new_security_policy_has_a_token_and_loopback_hosts():
     assert {"127.0.0.1", "localhost", "::1"} <= p.allowed_hosts
 
 
+def test_new_security_policy_includes_extra_hosts():
+    # Reaching a non-loopback bind from another machine needs its host allowed.
+    p = new_security_policy(host="0.0.0.0", extra_hosts=["radio.corp.example", "10.0.0.5", ""])
+    assert {"radio.corp.example", "10.0.0.5"} <= p.allowed_hosts
+    assert "127.0.0.1" in p.allowed_hosts  # loopback still allowed
+    assert "" not in p.allowed_hosts
+
+
 def test_new_security_policy_drops_wildcard_bind_host():
     p = new_security_policy(host="0.0.0.0")
     assert "0.0.0.0" not in p.allowed_hosts  # not a valid Host value

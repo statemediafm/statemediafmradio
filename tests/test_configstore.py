@@ -80,6 +80,19 @@ def test_news_settings_roundtrip():
                            "model": "openai/gpt-4o-mini", "temperature": 0.4, "max_tokens": 512}
 
 
+def test_default_news_backend_falls_back_to_gateway(monkeypatch):
+    monkeypatch.setenv("STATEMEDIAFM_CLAUDE_BIN", "/nonexistent/claude-xyz")
+    assert cli._default_news_backend() == "gateway"
+
+
+def test_default_news_backend_uses_cli_when_available(monkeypatch, tmp_path):
+    stub = tmp_path / "claude"
+    stub.write_text("#!/bin/sh\ncat\n")
+    stub.chmod(0o755)
+    monkeypatch.setenv("STATEMEDIAFM_CLAUDE_BIN", str(stub))
+    assert cli._default_news_backend() == "claude-cli"
+
+
 def test_default_subcommand_is_serve(monkeypatch):
     seen = {}
     monkeypatch.setattr(cli, "_serve", lambda args: seen.update(serve=args) or 0)

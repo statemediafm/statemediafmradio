@@ -369,6 +369,14 @@ def _broadcast(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_news_backend() -> str:
+    """The news writer to use when none is persisted: the local Claude CLI if it's
+    installed (zero-key), else the LLM gateway."""
+    from .newsroom.llm import ClaudeCliClient
+
+    return "claude-cli" if ClaudeCliClient().available() else "gateway"
+
+
 def _serve(args: argparse.Namespace) -> int:
     # Persisted UI settings (statemediafm.config.toml) — the memory that makes a
     # no-flags run reproduce the last session. Flags still win (see below).
@@ -432,8 +440,9 @@ def _serve(args: argparse.Namespace) -> int:
         mix=pmix,
         persist=True,  # write UI changes back to statemediafm.config.toml
         live=live,
-        # Shipped default: the local Claude CLI (the operator's own login, no key).
-        news_backend=pnews.get("backend") or "claude-cli",
+        # Default: the local Claude CLI when it's installed (the operator's own login,
+        # no key), else the gateway — so a fresh box doesn't silently write no news.
+        news_backend=pnews.get("backend") or _default_news_backend(),
         news_cfg=news_cfg,
         news_model=pnews.get("model") or None,
         news_temperature=pnews.get("temperature"),

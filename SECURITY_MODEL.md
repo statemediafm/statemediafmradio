@@ -55,8 +55,11 @@ The model is only sound if these hold:
 3. **The control API is loopback-first.** It binds to `127.0.0.1` by default and is
    protected by a **per-session token plus a Host/Origin allowlist** (§6). A
    non-loopback bind is **refused** unless you explicitly opt in
-   (`STATEMEDIAFM_ALLOW_NONLOOPBACK=1`), and auth stays enforced even then. Prefer
-   not to expose it to untrusted networks regardless.
+   (`STATEMEDIAFM_ALLOW_NONLOOPBACK=1`), and auth stays enforced even then. To reach
+   it from another machine (browse via the server's hostname/IP), add those names to
+   the allowlist with `STATEMEDIAFM_ALLOWED_HOSTS=host1,host2` — otherwise the
+   Host/Origin check returns 403. Prefer not to expose it to untrusted networks
+   regardless.
 
 ## 4. Secret & token storage
 
