@@ -275,6 +275,23 @@ def test_refresh_once_reads_a_live_edited_roster():
     assert {s.title for s in state.plan.segments} == {"HN", "Chat"}
 
 
+def test_refresh_once_skips_disabled_sources():
+    hn = NewsItem(id="h", source="hackernews", kind="story", title="HN", origin="Hacker News", actors=["a"])
+    ch = NewsItem(id="c", source="slack", kind="message", title="Chat", origin="Chat", actors=["b"])
+    state = _State()
+    state.segments = [
+        {"topic": "HN", "source": "hackernews", "enabled": False},  # turned off
+        {"topic": "Chat", "source": "slack"},
+    ]
+    roster = [
+        ("HN", _FakeSource([hn]), Cadence(900, 0), 5),
+        ("Chat", _FakeSource([ch]), Cadence(900, 0), 5),
+    ]
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
+    # The disabled Hacker News source neither polls nor airs; only Chat is on air.
+    assert {s.title for s in state.plan.segments} == {"Chat"}
+
+
 def test_refresh_once_skips_failing_sources():
     class _Bad:
         def poll(self, since=None):

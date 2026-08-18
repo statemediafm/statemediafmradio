@@ -301,7 +301,12 @@ def refresh_once(
     per_topic: list[tuple] = []
     all_items: list = []
     # Snapshot: the Settings tab can add/remove sources on another thread mid-tick.
-    for topic, source, cadence, headlines in list(roster):
+    segs = list(getattr(state, "segments", []))
+    for i, (topic, source, cadence, headlines) in enumerate(list(roster)):
+        # A source can be turned OFF without removing it (e.g. Hacker News): skip
+        # disabled ones so they neither poll nor air.
+        if i < len(segs) and segs[i].get("enabled", True) is False:
+            continue
         try:
             items = source.poll()
         except OSError:  # network / API failure — skip this source this tick

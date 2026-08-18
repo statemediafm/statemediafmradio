@@ -228,6 +228,28 @@ def test_source_edit_replaces_in_place():
     assert client.put("/sources/9", json={"source": "hackernews"}).status_code == 404
 
 
+def test_source_enable_disable_toggle_persists():
+    from statemediafm.roster import build_segment
+
+    state = _State()
+    state.segments = [{"topic": "HN", "source": "hackernews"}]
+    state.roster = [build_segment(state.segments[0])]
+    client = TestClient(create_app(state))
+
+    assert client.get("/sources").json()["sources"][0]["enabled"] is True
+    r = client.post("/sources/0/enabled", params={"on": False})
+    assert r.json() == {"index": 0, "enabled": False}
+    assert state.segments[0]["enabled"] is False
+    assert client.get("/sources").json()["sources"][0]["enabled"] is False
+    # The disabled flag is snapshotted for persistence.
+    from statemediafm.configstore import state_to_config
+
+    assert state_to_config(state)["sources"][0]["enabled"] is False
+    # Back on.
+    assert client.post("/sources/0/enabled", params={"on": True}).json()["enabled"] is True
+    assert client.post("/sources/9/enabled", params={"on": False}).status_code == 404
+
+
 def test_source_test_reports_success_and_errors():
     import urllib.error
 

@@ -615,6 +615,7 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
                 "topic": entry[0],
                 "kind": seg.get("source"),
                 "every": seg.get("every", "15m"),
+                "enabled": seg.get("enabled", True),
                 "config": {k: v for k, v in seg.items() if k != "token"},
             }
             for i, (seg, entry) in enumerate(zip(store.segments, store.roster))
@@ -656,6 +657,16 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.roster[index] = entry
         store.segments[index] = dict(seg)
         return {"index": index, "topic": entry[0]}
+
+    @app.post("/sources/{index}/enabled")
+    def set_source_enabled(index: int, on: bool) -> dict:
+        """Turn a source on/off without removing it — a disabled source neither
+        polls nor airs (e.g. to silence the Hacker News front page), and the flag
+        persists. Kept in the segment dict so it survives a restart."""
+        if not 0 <= index < len(store.segments):
+            raise HTTPException(status_code=404, detail="no such source")
+        store.segments[index]["enabled"] = bool(on)
+        return {"index": index, "enabled": store.segments[index]["enabled"]}
 
     @app.post("/sources/{index}/test")
     def test_source(index: int) -> dict:
@@ -1004,6 +1015,11 @@ return of(u,o);};})();</script>
           padding:.35rem 0;border-top:1px solid #eee}
   .srcrow .grow{flex:1;min-width:10rem} .srcrow .kind{font-variant:small-caps;color:#666}
   .srcrow .src-result{font-style:italic}
+  .srcrow.off{opacity:.55} .srcrow.off .grow{text-decoration:line-through}
+  /* compact toggle for the source rows */
+  .srcrow .switch .track{width:2rem;height:1.1rem}
+  .srcrow .switch .track::after{width:.85rem;height:.85rem}
+  .srcrow .switch input:checked + .track::after{transform:translateX(.9rem)}
   .srcrow button{margin:0;padding:.25rem .6rem;font-size:.8rem;background:transparent;
                  color:inherit;border:1px solid #bbb;border-radius:2px}
   #newsbadge{margin-left:1rem}
@@ -1817,18 +1833,25 @@ async function loadSources(){
     list.innerHTML='';
     for(const s of (d.sources||[])){
       const row=document.createElement('div'); row.className='srcrow';
-      const cfg=s.config||{};
+      const cfg=s.config||{}; const on=s.enabled!==false;
+      if(!on) row.classList.add('off');
       const extra=[cfg.headlines!=null?('headlines '+cfg.headlines):'',
                    cfg.max_count!=null?('max '+cfg.max_count):'',
                    cfg.max_age!=null?('≤'+cfg.max_age):''].filter(Boolean).join(' · ');
-      row.innerHTML='<span class="kind">'+esc(s.kind||'?')+'</span>'+
+      row.innerHTML='<label class="switch" title="on/off"><input type="checkbox" class="src-on"'+
+          (on?' checked':'')+'><span class="track"></span></label>'+
+        '<span class="kind">'+esc(s.kind||'?')+'</span>'+
         '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
-        (extra?(' · '+esc(extra)):'')+'</span></span>'+
+        (extra?(' · '+esc(extra)):'')+(on?'':' · off')+'</span></span>'+
         '<span class="muted src-result"></span>'+
         '<button class="src-test">Test</button>'+
         '<button class="src-edit">Edit</button>'+
         '<button class="src-remove">Remove</button>';
       const res=row.querySelector('.src-result');
+      row.querySelector('.src-on').addEventListener('change', async (e)=>{
+        try{ await fetch('/sources/'+s.index+'/enabled?on='+(e.target.checked?'true':'false'),
+          {method:'POST'}); await loadSources(); }catch(err){ await loadSources(); }
+      });
       row.querySelector('.src-test').addEventListener('click', async (e)=>{
         const b=e.target; b.disabled=true; res.textContent='testing…';
         try{
