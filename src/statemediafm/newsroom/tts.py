@@ -53,6 +53,17 @@ def voice_names() -> list[str]:
     return list(_VOICE_ALIASES)
 
 
+def _silence_wav(rate: int, ms: int = 120, *, channels: int = 1, width: int = 2) -> bytes:
+    """A short silent WAV (mono 16-bit by default) — a safe fallback clip."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(b"\x00" * (int(rate * ms / 1000) * channels * width))
+    return buf.getvalue()
+
+
 def _assemble_wavs(clips: list[AudioRef], gaps_ms: list[int]) -> AudioRef:
     """Join WAV clips with a per-clip *leading* silence (``gaps_ms[i]`` before
     clip ``i``; the first clip's gap is ignored). All clips must share format."""
@@ -280,10 +291,26 @@ class PiperTTS(TTSProvider):
     def render(self, script: Script, voice: str | None = None) -> AudioRef:
         name = voice or self.voice_name
         loaded = self._load(name)
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as w:
-            loaded.synthesize_wav(script.text, w)
-        data = buf.getvalue()
+        rate = getattr(getattr(loaded, "config", None), "sample_rate", 22050)
+        text = (script.text or "").strip()
+        data = b""
+        if text:
+            buf = io.BytesIO()
+            try:
+                with wave.open(buf, "wb") as w:
+                    loaded.synthesize_wav(text, w)
+                data = buf.getvalue()
+                with wave.open(io.BytesIO(data)) as r:  # validate it's playable
+                    if r.getnframes() == 0:
+                        data = b""
+                    else:
+                        rate = r.getframerate()
+            except Exception:  # noqa: BLE001 — Piper produced nothing usable for this text
+                data = b""
+        if not data:
+            # A short silence so one empty/odd read can't take the whole bulletin off
+            # air (an unguarded wave error here previously 500'd the news).
+            data = _silence_wav(rate, ms=120)
         with wave.open(io.BytesIO(data)) as r:
             duration_ms = round(r.getnframes() / r.getframerate() * 1000)
         clip_id = hashlib.sha256(f"{name}:{script.text}".encode()).hexdigest()[:16]

@@ -317,6 +317,7 @@ def refresh_once(
         all_items.extend(items)
 
     if not all_items:
+        cache["last_per_topic"] = []  # nothing live now → "Newscast now" reports no activity
         return
     cache["last_per_topic"] = per_topic  # so "Newscast now" can re-air without re-polling
 
@@ -532,14 +533,20 @@ def run(
 
     def _air_news_now() -> bool:
         """Re-air a bulletin from the most recent activity (set by refresh_once),
-        without polling sources or touching the poll/news timers."""
+        without polling sources or touching the poll/news timers. Any writer/TTS
+        error is swallowed (returns False) so an on-demand press can't 500 or take
+        the broadcast off air."""
         per_topic = cache.get("last_per_topic")
         if not per_topic:
             return False
         eff_style = getattr(state, "style", None) or style
-        _publish_plan(
-            state, per_topic, tts, eff_style, headline_pause_ms, _effective_llm(state, llm), cache
-        )
+        try:
+            _publish_plan(
+                state, per_topic, tts, eff_style, headline_pause_ms, _effective_llm(state, llm), cache
+            )
+        except Exception as exc:  # noqa: BLE001 — on-demand air must not crash the request
+            print(f"news-now failed: {exc}", file=sys.stderr)
+            return False
         return True
 
     state.air_news_now = _air_news_now

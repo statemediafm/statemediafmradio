@@ -141,6 +141,31 @@ def test_render_reads_fractional_pause_keeps_22050hz_frame_aligned():
     assert {s for s in samples if s != 0} == {1000}
 
 
+def test_piper_render_falls_back_to_silence_when_synth_is_empty():
+    # A voice whose synth writes nothing (or fails) must yield a valid silent clip,
+    # not crash — a single odd read previously 500'd the whole bulletin.
+    import wave
+
+    from statemediafm.core.models import Script
+    from statemediafm.newsroom.tts import PiperTTS
+
+    tts = PiperTTS.__new__(PiperTTS)  # bypass __init__ (no model download)
+
+    class _NoOpVoice:
+        class config:
+            sample_rate = 22050
+
+        def synthesize_wav(self, text, w):
+            pass  # writes nothing → an invalid WAV without the guard
+
+    tts._loaded = {"x": _NoOpVoice()}
+    tts.voice_name = "x"
+    tts._voices_dir = None
+    ref = tts.render(Script(text="anything", style="s"))
+    with wave.open(__import__("io").BytesIO(ref.data)) as r:
+        assert r.getframerate() == 22050 and r.getnframes() > 0  # real, playable silence
+
+
 def test_render_reads_switches_voice_per_origin():
     base = ToneWavTTS()
     other = ToneWavTTS(frequency=180.0)  # same 8 kHz format → concatenates
