@@ -580,7 +580,8 @@ def test_quiet_endpoint_toggle():
     client = TestClient(create_app(state))
     assert client.get("/quiet").json() == {"quiet_mode": False, "music_on": True}
     assert client.post("/quiet", params={"on": True}).json()["quiet_mode"] is True
-    assert state.quiet_mode is True and client.get("/genmusic").json()["play"] is True
+    # Quiet mode is silent between bulletins → the music gate closes immediately.
+    assert state.quiet_mode is True and client.get("/genmusic").json()["play"] is False
     # turning quiet off resumes continuous play
     client.post("/quiet", params={"on": False})
     assert state.music_on is True
@@ -649,6 +650,18 @@ def test_demo_mode_re_reads_every_two_minutes_even_when_unchanged():
     # shows the rhythm; normal mode would hold on unchanged activity).
     refresh_once(state, roster, ToneWavTTS(), cache=cache, now=1000.0 + 120 + 1, llm=llm)
     assert state.plan is not first
+
+
+def test_quiet_toggle_silences_immediately():
+    state = _State()
+    state.music_on = True
+    client = TestClient(create_app(state))
+    # Turning quiet ON silences now (quiet mode is silent between bulletins).
+    r = client.post("/quiet", params={"on": True}).json()
+    assert r["quiet_mode"] is True and r["music_on"] is False and state.music_on is False
+    # Off resumes continuous play.
+    r = client.post("/quiet", params={"on": False}).json()
+    assert r["quiet_mode"] is False and r["music_on"] is True
 
 
 def test_quiet_mode_gates_music_around_the_news():

@@ -279,10 +279,11 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
 
     @app.post("/quiet")
     def set_quiet(on: bool) -> dict:
-        """Turn quiet mode on/off. Off resumes continuous play immediately."""
+        """Turn quiet mode on/off. On silences the music immediately (quiet mode is
+        silent between bulletins — the loop brings it back to lead in before the next
+        news); off resumes continuous play."""
         store.quiet_mode = on
-        if not on:
-            store.music_on = True
+        store.music_on = not on
         return {"quiet_mode": store.quiet_mode, "music_on": store.music_on}
 
     @app.get("/demo")

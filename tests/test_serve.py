@@ -308,6 +308,20 @@ def test_refresh_once_skips_failing_sources():
     assert {s.title for s in state.plan.segments} == {"HN"}
 
 
+def test_quiet_mode_silences_between_windows_even_if_music_was_on():
+    from statemediafm.core.director import Director
+
+    state = _State()
+    state.quiet_mode = True
+    state.music_on = True  # e.g. Play/resume left the music on before/outside a window
+    director = Director()  # 17-min news cadence
+    roster = [("HN", _FakeSource(_items()), Cadence(900, 0), 5)]
+    # A tick between news slots (elapsed 300→600, next slot at 1020) → no window.
+    cache = {"t0": 1000.0, "last_elapsed": 300.0}
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1600.0)
+    assert state.music_on is False  # quiet mode is silent between bulletins
+
+
 def test_poll_fault_reports_actionable_hints(capsys):
     class _Http:
         def __init__(self, code):

@@ -392,7 +392,6 @@ def refresh_once(
         # after the lead-in.
         cache["news_sig"] = signature
         cache["q_pending"] = per_topic
-        state.music_on = True
         cache["q_air_at"] = now + _quiet_lead(signature)
         cache["q_off_at"] = None
     if cache.get("q_pending") and now >= cache.get("q_air_at", now):
@@ -400,8 +399,13 @@ def refresh_once(
         cache["q_pending"] = None
         cache["q_off_at"] = now + _QUIET_TAIL  # then a 1-minute tail
     if cache.get("q_off_at") is not None and now >= cache["q_off_at"]:
-        state.music_on = False  # silence until the next news cycle
-        cache["q_off_at"] = None
+        cache["q_off_at"] = None  # tail over
+    # The music sounds ONLY inside an active window — the lead-in (news pending) or
+    # the ~1-minute tail after it. Recomputed each tick so quiet mode is reliably
+    # silent between bulletins no matter how ``music_on`` got set (a toggle, Play,
+    # a resume) — this is the between-news silence.
+    in_window = cache.get("q_pending") is not None or cache.get("q_off_at") is not None
+    state.music_on = bool(in_window)
 
 
 def run(
