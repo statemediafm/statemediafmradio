@@ -141,6 +141,9 @@ class ForgeSource(Source):
     """Read issues + merge/pull requests (with latest comments) from a forge."""
 
     name = "forge"
+    # Consumed by poll(): the recency cursor + the comment-degrade flag. probe()
+    # (the non-destructive Test) snapshots and restores these — see Source.probe.
+    _PROBE_STATE = ("_last_poll", "_comments_ok")
 
     def __init__(
         self,

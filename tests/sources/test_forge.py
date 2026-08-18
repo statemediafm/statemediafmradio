@@ -70,6 +70,24 @@ def test_forge_default_window_is_12h():
     assert [n.title for n in src.poll()] == ["recent"]
 
 
+def test_probe_does_not_consume_the_recency_window():
+    # A probe (the non-destructive Test) must not advance _last_poll, so a real poll
+    # afterward still sees the same items — otherwise Test makes the broadcast miss them.
+    t0 = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+    issue = {"number": 1, "title": "A", "user": {"login": "a"}, "comments": 0,
+             "updated_at": (t0 - timedelta(hours=2)).isoformat(), "state": "open", "html_url": "u"}
+    src = ForgeSource("https://github.com/o/r", get=lambda url: [issue], now=lambda: t0)
+
+    # Probe twice: each still returns the item (state restored), and _last_poll unmoved.
+    assert [n.title for n in src.probe()] == ["A"]
+    assert src._last_poll is None  # not consumed
+    assert [n.title for n in src.probe()] == ["A"]
+    assert src._last_poll is None
+    # A real poll now still sees it, then consumes (advances) the window.
+    assert [n.title for n in src.poll()] == ["A"]
+    assert src._last_poll == t0  # poll DID consume
+
+
 def test_forge_returns_only_updates_since_last_poll():
     t0 = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
     state = {"now": t0, "issues": [

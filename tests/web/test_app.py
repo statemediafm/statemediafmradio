@@ -254,12 +254,17 @@ def test_source_test_reports_success_and_errors():
     import urllib.error
 
     from statemediafm.core.models import NewsItem
+    from statemediafm.sources.base import Source
 
-    class _Ok:
+    class _Ok(Source):
+        name = "ok"
+
         def poll(self, since=None):
             return [NewsItem(id="1", source="x", kind="story", title="t", actors=["a"])]
 
-    class _Http:
+    class _Http(Source):
+        name = "http"
+
         def poll(self, since=None):
             raise urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
 

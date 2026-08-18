@@ -28,6 +28,10 @@ from .newsroom.tts import TTSProvider, render_reads
 _QUIET_LEAD_MIN, _QUIET_LEAD_MAX = 60, 180
 _QUIET_TAIL = 60  # keep the music ~1 minute after the news, then go silent
 
+# Per-topic cap on the between-bulletin item buffer — a guardrail so a very busy
+# window can't flood the summarizer; the most-recent items are kept.
+_BUFFER_CAP = 80
+
 # Demo Mode: reproduce the earlier-milestone feel — read Hacker News + a repo's
 # git issues on a brisk 5-minute cadence, music in between. The toggle in
 # Settings flips ``state.demo_mode`` (see the web app) and adds these sources.
@@ -324,8 +328,13 @@ def refresh_once(
         publish_song(state, song_resolver)
     cache["last_elapsed"] = elapsed
     style = getattr(state, "style", None) or style  # live-selectable writing style
-    per_topic: list[tuple] = []
-    all_items: list = []
+    # Poll each enabled source and MERGE this tick's items into a per-topic buffer in
+    # the cache. A source returns only what changed since *its* last poll, but a
+    # bulletin airs on a slower cadence — so buffering across ticks means the bulletin
+    # includes everything gathered since the last one aired (else between-tick items
+    # are polled, dropped, and the broadcast misses them). Cleared when a bulletin airs.
+    buffer: dict = cache.setdefault("buffer", {})
+    tick_items: list = []  # this tick's fresh poll — drives the music signal
     # Snapshot: the Settings tab can add/remove sources on another thread mid-tick.
     segs = list(getattr(state, "segments", []))
     for i, (topic, source, cadence, headlines) in enumerate(list(roster)):
@@ -340,36 +349,49 @@ def refresh_once(
             continue
         if not items:
             continue
-        per_topic.append((topic, items, cadence, headlines))
-        all_items.extend(items)
+        tick_items.extend(items)
+        slot = buffer.setdefault(topic, {"items": {}, "cadence": cadence, "headlines": headlines})
+        slot["cadence"], slot["headlines"] = cadence, headlines  # track live config edits
+        for it in items:
+            slot["items"][it.id] = it  # dedup by id; a re-poll refreshes the item
 
-    if not all_items:
-        cache["last_per_topic"] = []  # nothing live now → "Newscast now" reports no activity
-        return
-    cache["last_per_topic"] = per_topic  # so "Newscast now" can re-air without re-polling
+    # The bulletin material: everything buffered since the last air, per topic,
+    # newest-first and capped so a very busy window can't flood the summarizer.
+    def _recent_first(slot: dict) -> list:
+        ordered = sorted(
+            slot["items"].values(),
+            key=lambda n: n.timestamp.timestamp() if n.timestamp else 0.0,
+            reverse=True,
+        )
+        return ordered[:_BUFFER_CAP]
 
-    # Remember the latest activity so a live model/tuning switch can recompose.
-    signal = activity(all_items)
-    state.last_signal = signal
-    # HOLD the journey once it is playing: a news/activity update must not
-    # republish the program and restart the piece mid-stream (regenerated only
-    # when there isn't one yet, or explicitly on a model/tuning switch).
-    #
-    # MIX MODE: when the user opts to mix ambient generators, rotate through the
-    # selected generators on a slow cadence (a DJ-style change of bed), recomposing
-    # at each turn. Otherwise a single generator holds.
+    buffered_topics = [
+        (t, _recent_first(s), s["cadence"], s["headlines"]) for t, s in buffer.items() if s["items"]
+    ]
+    buffered_items = [it for _, its, _, _ in buffered_topics for it in its]
+    cache["last_per_topic"] = buffered_topics  # "Newscast now" airs the accumulated set
+
+    # Music tracks THIS tick's fresh activity (held once playing). Recompute the
+    # signal only when something was polled this tick; always run the mix rotation so
+    # a DJ-style generator change isn't missed on an otherwise-quiet tick.
+    if tick_items:
+        state.last_signal = activity(tick_items)
     gen = _mix_generator(state, elapsed, cache)
-    if gen is not None or state.program is None:
+    sig = state.last_signal
+    if sig is not None and (gen is not None or state.program is None):
         state.set_program(
             compose(
-                signal,
+                sig,
                 style=gen or getattr(state, "model", "Entrainment 0.1"),
                 tuning_a=getattr(state, "tuning", 440.0),
                 base_intensity=getattr(state, "base_intensity", THETA_START),
             )
         )
 
-    signature = tuple(sorted(item.id for item in all_items))
+    if not buffered_items:
+        return  # nothing accumulated since the last bulletin → nothing to air
+
+    signature = tuple(sorted(it.id for it in buffered_items))
     changed = cache.get("news_sig") != signature
     # Apply the UI's live news-model selection to the wired LLM config.
     eff_llm = _effective_llm(state, llm)
@@ -383,17 +405,19 @@ def refresh_once(
         state.music_on = True
         if air_news:
             cache["news_sig"] = signature
-            _publish_plan(state, per_topic, tts, style, headline_pause_ms, eff_llm, cache)
+            _publish_plan(state, buffered_topics, tts, style, headline_pause_ms, eff_llm, cache)
+            cache["buffer"] = {}  # aired → start a fresh accumulation window
         return
 
     # ── Quiet mode: gate the music around the news broadcast ─────────────────
     if air_news and not cache.get("q_pending"):
-        # New news → start a cycle: the music leads in now; hold the news to air
-        # after the lead-in.
+        # New news → start a cycle: the music leads in now; hold the (buffered) news
+        # to air after the lead-in, and start a fresh accumulation window meanwhile.
         cache["news_sig"] = signature
-        cache["q_pending"] = per_topic
+        cache["q_pending"] = buffered_topics
         cache["q_air_at"] = now + _quiet_lead(signature)
         cache["q_off_at"] = None
+        cache["buffer"] = {}
     if cache.get("q_pending") and now >= cache.get("q_air_at", now):
         _publish_plan(state, cache["q_pending"], tts, style, headline_pause_ms, eff_llm, cache)
         cache["q_pending"] = None

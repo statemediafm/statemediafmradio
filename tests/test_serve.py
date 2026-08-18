@@ -308,6 +308,37 @@ def test_refresh_once_skips_failing_sources():
     assert {s.title for s in state.plan.segments} == {"HN"}
 
 
+def test_bulletin_includes_items_buffered_across_ticks():
+    # A source returns only its per-tick delta, but a bulletin airs on a slower
+    # cadence — the buffer must accumulate the deltas so none are missed.
+    from statemediafm.core.director import Director
+
+    class _Delta:
+        """Returns a different single item on each poll (like a forge recency delta)."""
+        def __init__(self):
+            self.n = 0
+        def poll(self, since=None):
+            self.n += 1
+            return [NewsItem(id=f"i{self.n}", source="forge", kind="issue",
+                             title=f"Item {self.n}", origin="app", actors=["a"])]
+
+    state = _State()
+    director = Director()  # 17-min news cadence
+    roster = [("Eng", _Delta(), Cadence(900, 0), 5)]
+    cache: dict = {}
+    # Opening bulletin at t=0 airs item i1 and clears the buffer.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0, llm=_llm())
+    # Three between-slot ticks accumulate i2, i3, i4 into the buffer (no air).
+    for k, t in enumerate((60.0, 120.0, 180.0), start=1):
+        refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0 + t, llm=_llm())
+    # At the next news slot, the bulletin airs ALL buffered deltas, not just the last.
+    refresh_once(state, roster, ToneWavTTS(), cache=cache, director=director, now=1000.0 + 17 * 60 + 1, llm=_llm())
+    heads = {h[0] for h in state.plan.segments[0].headlines}
+    assert {"Item 2", "Item 3", "Item 4", "Item 5"} <= heads  # all deltas, none missed
+    # Airing cleared the buffer → the next quiet tick has nothing new to re-air.
+    assert cache["buffer"] == {}
+
+
 def test_quiet_mode_silences_between_windows_even_if_music_was_on():
     from statemediafm.core.director import Director
 

@@ -673,14 +673,15 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
     def test_source(index: int) -> dict:
         """Poll the source once and report the outcome — ``{ok, count}`` on success,
         or ``{ok: false, detail, status}`` with the HTTP status code when the
-        provider returns an error. Does not change the roster or the news."""
+        provider returns an error. **Non-consuming**: it ``probe``s (snapshots and
+        restores the recency window), so a Test never makes the broadcast miss items."""
         import urllib.error
 
         if not 0 <= index < len(store.roster):
             raise HTTPException(status_code=404, detail="no such source")
         source = store.roster[index][1]
         try:
-            items = source.poll()
+            items = source.probe()
             return {"ok": True, "count": len(items)}
         except urllib.error.HTTPError as exc:
             return {"ok": False, "status": exc.code, "detail": f"HTTP {exc.code} {exc.reason}"}

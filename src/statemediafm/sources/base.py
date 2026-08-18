@@ -8,6 +8,7 @@ touching call sites.
 
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -19,10 +20,28 @@ class Source(ABC):
 
     name: str
 
+    # Instance attributes that ``poll`` *consumes* — e.g. a recency cursor that
+    # advances so the next poll only sees newer items. ``probe`` snapshots and
+    # restores these so a non-destructive "Test" can't eat the recency window.
+    # Stateless sources leave it empty (probe == poll).
+    _PROBE_STATE: tuple[str, ...] = ()
+
     @abstractmethod
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
         """Return recent NewsItems, optionally only those newer than ``since``."""
         raise NotImplementedError
+
+    def probe(self, since: datetime | None = None) -> list[NewsItem]:
+        """Poll **without consuming** the recency window — for the Settings "Test"
+        button. Snapshots/restores ``_PROBE_STATE`` around the poll so a subsequent
+        real poll still returns the same items (a Test must not make the broadcast
+        miss them)."""
+        saved = {k: copy.copy(getattr(self, k)) for k in self._PROBE_STATE if hasattr(self, k)}
+        try:
+            return self.poll(since)
+        finally:
+            for k, v in saved.items():
+                setattr(self, k, v)
 
 
 _REGISTRY: dict[str, type[Source]] = {}
