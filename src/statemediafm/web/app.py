@@ -638,6 +638,45 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.roster.append(entry)
         return {"index": len(store.roster) - 1, "topic": entry[0]}
 
+    @app.put("/sources/{index}")
+    def edit_source(index: int, seg: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body)
+        """Replace the source at ``index`` with a new segment (the Edit-and-save
+        flow). Rebuilt like an add, so a bad config is rejected without disturbing
+        the running roster."""
+        from ..roster import build_segment
+
+        if not 0 <= index < len(store.roster):
+            raise HTTPException(status_code=404, detail="no such source")
+        if not isinstance(seg, dict) or not seg.get("source"):
+            raise HTTPException(status_code=400, detail="a 'source' kind is required")
+        try:
+            entry = build_segment(seg, index)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        store.roster[index] = entry
+        store.segments[index] = dict(seg)
+        return {"index": index, "topic": entry[0]}
+
+    @app.post("/sources/{index}/test")
+    def test_source(index: int) -> dict:
+        """Poll the source once and report the outcome — ``{ok, count}`` on success,
+        or ``{ok: false, detail, status}`` with the HTTP status code when the
+        provider returns an error. Does not change the roster or the news."""
+        import urllib.error
+
+        if not 0 <= index < len(store.roster):
+            raise HTTPException(status_code=404, detail="no such source")
+        source = store.roster[index][1]
+        try:
+            items = source.poll()
+            return {"ok": True, "count": len(items)}
+        except urllib.error.HTTPError as exc:
+            return {"ok": False, "status": exc.code, "detail": f"HTTP {exc.code} {exc.reason}"}
+        except urllib.error.URLError as exc:
+            return {"ok": False, "status": None, "detail": f"connection failed: {exc.reason}"}
+        except Exception as exc:  # noqa: BLE001 — surface any poll error to the operator
+            return {"ok": False, "status": None, "detail": str(exc) or type(exc).__name__}
+
     @app.delete("/sources/{index}")
     def remove_source(index: int) -> dict:
         """Remove a source from the live roster by index."""
@@ -961,9 +1000,10 @@ return of(u,o);};})();</script>
   .switch input:focus-visible + .track{outline:2px solid #3a7;outline-offset:2px}
   .chip{font:inherit;font-size:.8rem;padding:.2rem .5rem;margin:.15rem .3rem .15rem 0;
         background:transparent;color:inherit;border:1px solid #bbb;border-radius:999px}
-  .srcrow{display:flex;align-items:baseline;gap:.5rem;margin:.3rem 0;padding:.35rem 0;
-          border-top:1px solid #eee}
-  .srcrow .grow{flex:1} .srcrow .kind{font-variant:small-caps;color:#666}
+  .srcrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;margin:.3rem 0;
+          padding:.35rem 0;border-top:1px solid #eee}
+  .srcrow .grow{flex:1;min-width:10rem} .srcrow .kind{font-variant:small-caps;color:#666}
+  .srcrow .src-result{font-style:italic}
   .srcrow button{margin:0;padding:.25rem .6rem;font-size:.8rem;background:transparent;
                  color:inherit;border:1px solid #bbb;border-radius:2px}
   #newsbadge{margin-left:1rem}
@@ -1121,6 +1161,7 @@ return of(u,o);};})();</script>
       <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
       <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
       <button id='src-add'>Add source</button>
+      <button id='src-cancel' hidden>Cancel</button>
       <span class='muted' id='src-status'></span>
     </div>
   </details>
@@ -1760,6 +1801,7 @@ const ADD_OPTIONS=[
 const srcKind=document.getElementById('src-kind');
 const srcParam=document.getElementById('src-param');
 let addOptions=[];  // ADD_OPTIONS plus any extra server kinds (e.g. plugins)
+let editingIndex=null;  // the source index being edited, or null when adding
 function currentAddOption(){ return addOptions[srcKind.value] || {}; }
 async function loadSources(){
   const list=document.getElementById('sourcelist');
@@ -1782,8 +1824,22 @@ async function loadSources(){
       row.innerHTML='<span class="kind">'+esc(s.kind||'?')+'</span>'+
         '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
         (extra?(' · '+esc(extra)):'')+'</span></span>'+
-        '<button>Remove</button>';
-      row.querySelector('button').addEventListener('click', async ()=>{
+        '<span class="muted src-result"></span>'+
+        '<button class="src-test">Test</button>'+
+        '<button class="src-edit">Edit</button>'+
+        '<button class="src-remove">Remove</button>';
+      const res=row.querySelector('.src-result');
+      row.querySelector('.src-test').addEventListener('click', async (e)=>{
+        const b=e.target; b.disabled=true; res.textContent='testing…';
+        try{
+          const r=await (await fetch('/sources/'+s.index+'/test',{method:'POST'})).json();
+          res.textContent = r.ok ? ('OK · '+r.count+' item'+(r.count===1?'':'s'))
+                                 : ('error: '+(r.detail||('status '+r.status)));
+        }catch(err){ res.textContent='error'; }
+        b.disabled=false;
+      });
+      row.querySelector('.src-edit').addEventListener('click', ()=>startEditSource(s));
+      row.querySelector('.src-remove').addEventListener('click', async ()=>{
         try{ await fetch('/sources/'+s.index,{method:'DELETE'}); await loadSources(); }catch(e){}
       });
       list.appendChild(row);
@@ -1791,6 +1847,38 @@ async function loadSources(){
     if(!(d.sources||[]).length) list.innerHTML='<p class="muted">No sources yet.</p>';
   }catch(e){ list.textContent='Could not load sources.'; }
 }
+// Populate the form with an existing source's config and switch to edit mode.
+function startEditSource(s){
+  const cfg=s.config||{};
+  // Pick the first add-option matching this kind (repo has GitHub/GitLab variants).
+  let optIdx=addOptions.findIndex(o=>o.kind===s.kind);
+  if(optIdx<0) optIdx=0;
+  srcKind.value=optIdx; updateSrcPlaceholder();
+  const opt=currentAddOption();
+  if(opt.key){ const v=cfg[opt.key];
+    srcParam.value = Array.isArray(v) ? v.join(',') : (v!=null?String(v):''); }
+  const set=(id,v)=>{ document.getElementById(id).value = v!=null?String(v):''; };
+  set('src-topic', cfg.topic); set('src-every', cfg.every || '15m');
+  set('src-headlines', cfg.headlines); set('src-maxcount', cfg.max_count);
+  set('src-offset', cfg.offset); set('src-maxage', cfg.max_age);
+  editingIndex=s.index;
+  document.getElementById('src-add').textContent='Save changes';
+  document.getElementById('src-cancel').hidden=false;
+  document.getElementById('src-status').textContent='editing '+(cfg.topic||s.kind);
+  srcKind.disabled=true;  // keep the kind stable while editing; Remove+re-add to change it
+  document.getElementById('src-topic').scrollIntoView({block:'nearest'});
+}
+function resetSourceForm(){
+  editingIndex=null;
+  document.getElementById('src-add').textContent='Add source';
+  document.getElementById('src-cancel').hidden=true;
+  srcKind.disabled=false;
+  for(const id of ['src-param','src-maxage','src-topic','src-headlines','src-maxcount','src-offset'])
+    document.getElementById(id).value='';
+  document.getElementById('src-every').value='15m';
+  document.getElementById('src-status').textContent='';
+}
+document.getElementById('src-cancel').addEventListener('click', resetSourceForm);
 function updateSrcPlaceholder(){
   const opt=currentAddOption();
   srcParam.placeholder = opt.ph || '—'; srcParam.style.display = opt.key ? '' : 'none';
@@ -1812,13 +1900,15 @@ document.getElementById('src-add').addEventListener('click', async ()=>{
   if(val('src-maxcount')) seg.max_count=parseInt(val('src-maxcount'),10);
   if(val('src-offset')) seg.offset=val('src-offset');
   if(opt.kind==='repo' && val('src-maxage')) seg.max_age=val('src-maxage');
-  st.textContent='adding…';
+  // PUT to replace when editing an existing source, else POST to add a new one.
+  const editing = editingIndex!=null;
+  const url = editing ? ('/sources/'+editingIndex) : '/sources';
+  st.textContent = editing ? 'saving…' : 'adding…';
   try{
-    const r=await fetch('/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(seg)});
+    const r=await fetch(url,{method: editing?'PUT':'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(seg)});
     if(!r.ok){ const e=await r.json().catch(()=>({})); st.textContent='error: '+(e.detail||r.status); return; }
-    for(const id of ['src-param','src-maxage','src-topic','src-headlines','src-maxcount','src-offset'])
-      document.getElementById(id).value='';
-    st.textContent=''; await loadSources();
+    resetSourceForm(); await loadSources();
   }catch(e){ st.textContent='error'; }
 });
 

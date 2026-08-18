@@ -208,6 +208,51 @@ def test_sources_add_honours_headlines_and_max_count():
     assert listed["headlines"] == 3 and listed["max_count"] == 7
 
 
+def test_source_edit_replaces_in_place():
+    from statemediafm.roster import build_segment
+
+    state = _State()
+    state.segments = [{"topic": "HN", "source": "hackernews", "every": "15m"}]
+    state.roster = [build_segment(state.segments[0])]
+    client = TestClient(create_app(state))
+
+    r = client.put("/sources/0", json={"source": "hackernews", "topic": "HN (edited)",
+                                       "every": "5m", "headlines": 4})
+    assert r.status_code == 200
+    listed = client.get("/sources").json()["sources"][0]
+    assert listed["topic"] == "HN (edited)" and listed["every"] == "5m"
+    assert state.roster[0][3] == 4  # rebuilt entry reflects the new headlines cap
+    # A bad edit is rejected without disturbing the running source.
+    assert client.put("/sources/0", json={"source": "repo"}).status_code == 400
+    assert client.get("/sources").json()["sources"][0]["topic"] == "HN (edited)"
+    assert client.put("/sources/9", json={"source": "hackernews"}).status_code == 404
+
+
+def test_source_test_reports_success_and_errors():
+    import urllib.error
+
+    from statemediafm.core.models import NewsItem
+
+    class _Ok:
+        def poll(self, since=None):
+            return [NewsItem(id="1", source="x", kind="story", title="t", actors=["a"])]
+
+    class _Http:
+        def poll(self, since=None):
+            raise urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+
+    state = _State()
+    state.segments = [{"topic": "ok", "source": "hackernews"},
+                      {"topic": "bad", "source": "hackernews"}]
+    state.roster = [("ok", _Ok(), None, None), ("bad", _Http(), None, None)]
+    client = TestClient(create_app(state))
+
+    assert client.post("/sources/0/test").json() == {"ok": True, "count": 1}
+    err = client.post("/sources/1/test").json()
+    assert err["ok"] is False and err["status"] == 403 and "403" in err["detail"]
+    assert client.post("/sources/9/test").status_code == 404
+
+
 def test_voice_endpoint():
     state = _State()
     client = TestClient(create_app(state))
