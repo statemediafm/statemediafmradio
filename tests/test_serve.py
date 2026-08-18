@@ -306,3 +306,28 @@ def test_refresh_once_skips_failing_sources():
     assert state.program is not None
     # The window airs the topic several times; only the good source appears.
     assert {s.title for s in state.plan.segments} == {"HN"}
+
+
+def test_poll_fault_reports_actionable_hints(capsys):
+    class _Http:
+        def __init__(self, code):
+            self.code = code
+        def poll(self, since=None):
+            raise urllib.error.HTTPError("u", self.code, "Boom", {}, None)
+
+    class _Down:
+        def poll(self, since=None):
+            raise urllib.error.URLError("name resolution failed")
+
+    state = _State()
+    roster = [
+        ("GitLab", _Http(403), Cadence(900, 0), 5),
+        ("Missing", _Http(404), Cadence(900, 0), 5),
+        ("Offline", _Down(), Cadence(900, 0), 5),
+    ]
+    refresh_once(state, roster, ToneWavTTS(), cache={}, llm=_llm())
+    err = capsys.readouterr().err
+    # Each failure is surfaced with an actionable hint (not silently swallowed).
+    assert "'GitLab' poll failed: HTTP 403" in err and "token scope" in err
+    assert "'Missing' poll failed: HTTP 404" in err and "self-hosted GitLab" in err
+    assert "'Offline' poll failed" in err and "reachability" in err

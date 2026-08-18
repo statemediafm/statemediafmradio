@@ -1807,7 +1807,7 @@ const ADD_OPTIONS=[
   {label:'GitHub work items (URL)', kind:'repo', key:'repo',
    ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
   {label:'GitLab work items (URL)', kind:'repo', key:'repo',
-   ph:'https://gitlab.com/group/project  (or an issue/MR URL)'},
+   ph:'https://gitlab.com/group/project  (a group /groups/… also works, or an issue/MR URL)'},
   {label:'Hacker News', kind:'hackernews', key:null, ph:null},
   {label:'Slack channel', kind:'slack', key:'channel', ph:'channel name or ID'},
   {label:'Jira project', kind:'jira', key:'project', ph:'project key, e.g. OPS'},

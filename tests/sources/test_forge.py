@@ -235,3 +235,64 @@ def test_gitlab_poll_uses_configured_instance_base():
     assert fake.calls
     assert all(u.startswith("https://gitlab.corp.example/api/v4/projects/") for u in fake.calls)
     assert "team%2Fapp" in fake.calls[0]  # URL-encoded full project path
+
+
+# ── GitLab groups ────────────────────────────────────────────────────────────
+
+
+def test_detect_forge_consumes_the_groups_marker():
+    # A group URL: the ``groups/`` marker is consumed; segments name the group.
+    assert detect_forge("https://gitlab.com/groups/team") == ("gitlab", "team")
+    assert detect_forge("https://gitlab.com/groups/team/sub") == ("gitlab", "team/sub")
+    # A group work-item URL normalizes to the group root.
+    assert detect_forge("https://gitlab.com/groups/team/sub/-/issues") == ("gitlab", "team/sub")
+    # A plain project is unchanged (not a group).
+    assert detect_forge("https://gitlab.com/team/project") == ("gitlab", "team/project")
+
+
+def test_parse_forge_url_flags_group_vs_project():
+    from statemediafm.sources.forge import _parse_forge_url
+
+    assert _parse_forge_url("https://gitlab.com/groups/team/sub") == ("gitlab", ["team", "sub"], True)
+    assert _parse_forge_url("https://gitlab.com/team/project") == ("gitlab", ["team", "project"], False)
+    # GitHub has no groups; a "groups" owner is just a normal repo path.
+    assert _parse_forge_url("https://github.com/groups/repo") == ("github", ["groups", "repo"], False)
+
+
+def test_gitlab_group_poll_hits_group_endpoints_and_dedupes_by_id():
+    routes = {
+        "/groups/": None,  # marker only; matched by substring below via full URL
+        "/issues?": [{"id": 900, "iid": 1, "title": "Group issue", "author": {"name": "Ana"},
+                      "description": "d", "user_notes_count": 0, "project_id": 7,
+                      "updated_at": "2026-07-24T10:00:00Z", "state": "opened", "web_url": "w1"}],
+        "/merge_requests?": [{"id": 901, "iid": 1, "title": "Group MR", "author": {"name": "Bo"},
+                              "description": "m", "user_notes_count": 0, "project_id": 8,
+                              "updated_at": "2026-07-24T09:00:00Z", "state": "opened", "web_url": "w2"}],
+    }
+    # Remove the placeholder route (it would shadow the real ones by substring).
+    routes.pop("/groups/")
+    fake = _FakeGet(routes)
+    src = ForgeSource("https://gitlab.com/groups/team/sub", get=fake, max_age=None)
+    assert src.is_group is True and src.project == "sub"
+    items = src.poll()
+    assert {i.title for i in items} == {"Group issue", "Group MR"}
+    # Distinct ids even though both share iid=1 (global id, not per-project iid).
+    assert len({i.id for i in items}) == 2
+    # The listing hit the GROUP endpoints, URL-encoded nested path.
+    assert all("/api/v4/groups/team%2Fsub/" in u for u in fake.calls)
+
+
+def test_gitlab_group_comment_fetch_uses_item_project_id():
+    routes = {
+        "/issues?": [{"id": 900, "iid": 5, "title": "I", "author": {"name": "Ana"},
+                      "description": "d", "user_notes_count": 2, "project_id": 42,
+                      "updated_at": "2026-07-24T10:00:00Z", "state": "opened", "web_url": "w"}],
+        "/merge_requests?": [],
+        "/notes?": [{"author": {"name": "Cal"}, "body": "latest note"}],
+    }
+    fake = _FakeGet(routes)
+    src = ForgeSource("https://gitlab.com/groups/team", get=fake, max_age=None)
+    items = src.poll()
+    assert items[0].body == "latest note" and "Cal" in items[0].actors
+    # Notes are fetched under the item's PROJECT (project_id=42), not the group.
+    assert any("/api/v4/projects/42/issues/5/notes" in u for u in fake.calls)

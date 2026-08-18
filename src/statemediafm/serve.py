@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import urllib.error
 from dataclasses import replace
 
 from .core.models import Script
@@ -98,6 +99,31 @@ def _demo_director():
         from .core.schedule import Cadence
         _DEMO_DIRECTOR = Director(news=Cadence(DEMO_NEWS_EVERY_S))
     return _DEMO_DIRECTOR
+
+
+# HTTP status → an actionable hint for a failed source poll.
+_POLL_HINTS = {
+    401: "check the source's token under Settings > Auth (a valid read-only key)",
+    403: "check the token scope (read-only api) and that it can see this project/group",
+    404: "check the project/group URL — for self-hosted GitLab, set its instance endpoint under Auth",
+    429: "rate-limited: add or scope a token, or lengthen the poll interval",
+}
+
+
+def _report_poll_fault(topic: str, exc: OSError) -> None:
+    """Report a source poll failure to stderr with an actionable hint. The tick
+    just skips this source (it stays on air); this makes the fault visible instead
+    of silently swallowed."""
+    if isinstance(exc, urllib.error.HTTPError):
+        hint = _POLL_HINTS.get(exc.code, "check the source configuration")
+        print(f"source {topic!r} poll failed: HTTP {exc.code} {exc.reason} — {hint}", file=sys.stderr)
+    else:  # DNS / TLS / connection — URLError and friends
+        reason = getattr(exc, "reason", exc)
+        print(
+            f"source {topic!r} poll failed: {reason} — check the endpoint URL and "
+            "network/DNS/TLS reachability",
+            file=sys.stderr,
+        )
 
 
 def _segment_reads(items, style, headlines, llm, *, ident=None, signoff=None) -> list[Read]:
@@ -309,7 +335,8 @@ def refresh_once(
             continue
         try:
             items = source.poll()
-        except OSError:  # network / API failure — skip this source this tick
+        except OSError as exc:  # network / API failure — report + skip this source this tick
+            _report_poll_fault(topic, exc)
             continue
         if not items:
             continue

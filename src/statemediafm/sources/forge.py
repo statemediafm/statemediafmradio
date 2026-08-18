@@ -2,7 +2,8 @@
 
 Unlike commits (which live in git itself), issues, work items, and MR/PR
 comments live in the hosting platform's API. This source reads a GitHub or
-GitLab project's most-recently-updated issues and merge/pull requests, attaches
+GitLab **project's** — or a GitLab **group's** (``…/groups/team``, aggregating
+its projects) — most-recently-updated issues and merge/pull requests, attaches
 the *latest comment* on each, and normalizes them to ``NewsItem``s.
 
 Design notes:
@@ -64,17 +65,23 @@ def normalize_gitlab_base(url: str | None) -> str:
     return u if "://" in u else "https://" + u
 
 
-def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str] | None:
-    """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL.
+def _parse_forge_url(
+    repo: str, *, gitlab_base: str | None = None
+) -> tuple[str, list[str], bool] | None:
+    """Parse a forge URL into ``(platform, path_segments, is_group)``, or ``None``.
 
-    Recognizes github.com / gitlab.com — and, when ``gitlab_base`` names a
-    **self-hosted GitLab** instance, that host too — in https or scp-like form,
-    normalizing a pasted **work-item URL** (an issue / PR / MR link) to its project
-    root: e.g. ``github.com/o/r/issues/12`` → ``o/r`` and
-    ``gitlab.mycorp.com/g/p/-/merge_requests/3`` → ``g/p``. Matches on the exact
-    host (not a substring, so ``gitlab.company.com`` is not mistaken for
-    gitlab.com). Returns ``None`` for anything else (e.g. a local path), so callers
-    fall back to the git source.
+    Shared by :func:`detect_forge` and :class:`ForgeSource`. Recognizes github.com /
+    gitlab.com — and, when ``gitlab_base`` names a **self-hosted GitLab** instance,
+    that host too — in https or scp-like form, matching on the exact host (so
+    ``gitlab.company.com`` is not mistaken for gitlab.com). A pasted **work-item
+    URL** (an issue / PR / MR link) normalizes to its project/group root
+    (``…/g/p/-/merge_requests/3`` → ``g/p``).
+
+    The GitLab **``groups/`` marker** is consumed: ``gitlab.com/groups/team/sub``
+    yields ``("gitlab", ["team", "sub"], True)`` — a group — while
+    ``gitlab.com/team/project`` yields ``("gitlab", ["team", "project"], False)`` —
+    a project. Either way the returned ``path_segments`` name the group or project.
+    GitHub has no groups (``is_group`` is always ``False``; owner/repo only).
     """
     hosts = dict(_HOSTS)
     if gitlab_base:
@@ -87,15 +94,37 @@ def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str
         return None
     # The path after the host, for https or scp-like (git@host:owner/repo) forms.
     path = repo.split(host, 1)[1].lstrip(":/").split("#", 1)[0].split("?", 1)[0]
-    path = path.split("/-/", 1)[0]  # GitLab work-item URLs: project sits before /-/
+    path = path.split("/-/", 1)[0]  # work-item URLs: project/group sits before /-/
     path = path.removesuffix("/").removesuffix(".git")
     parts = [p for p in path.split("/") if p]
-    if len(parts) < 2:
+    # GitLab group URLs carry a leading ``groups/`` marker — consume it so the
+    # remaining segments name the group (nested subgroups keep their full path).
+    is_group = platform == "gitlab" and len(parts) >= 2 and parts[0] == "groups"
+    if is_group:
+        parts = parts[1:]
+    elif platform == "github":
+        # owner/repo are the first two segments (drop /issues/123, /pull/5, …).
+        # GitLab projects keep the full (possibly nested) path — the API takes it whole.
+        parts = parts[:2]
+    # A group needs at least its own name; a project needs namespace/name.
+    if len(parts) < (1 if is_group else 2):
         return None
-    # GitHub: owner/repo are the first two segments (drop /issues/123, /pull/5, …).
-    # GitLab: keep the full (possibly nested) project path — the API takes it whole.
-    slug = "/".join(parts[:2] if platform == "github" else parts)
-    return platform, slug
+    return platform, parts, is_group
+
+
+def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str] | None:
+    """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL, else
+    ``None`` (so callers fall back to the git source).
+
+    A thin wrapper over :func:`_parse_forge_url` that joins the segments into a
+    slug — the group or project path either way (the ``groups/`` marker is already
+    consumed). Public signature is intentionally the ``(platform, slug)`` tuple.
+    """
+    parsed = _parse_forge_url(repo, gitlab_base=gitlab_base)
+    if parsed is None:
+        return None
+    platform, parts, _is_group = parsed
+    return platform, "/".join(parts)
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -123,15 +152,16 @@ class ForgeSource(Source):
         now: Callable[[], datetime] | None = None,
         gitlab_base: str | None = None,
     ) -> None:
-        detected = detect_forge(repo, gitlab_base=gitlab_base)
-        if detected is None:
+        parsed = _parse_forge_url(repo, gitlab_base=gitlab_base)
+        if parsed is None:
             raise ValueError(f"{repo!r} is not a recognized GitHub/GitLab URL.")
         self.repo = repo
-        self.platform, self.slug = detected
+        self.platform, parts, self.is_group = parsed
+        self.slug = "/".join(parts)
         # For GitLab, the API base — a self-hosted instance (``gitlab_base``) or
         # gitlab.com. GitHub always uses api.github.com.
         self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
-        self.project = self.slug.split("/")[-1]  # repo name, for on-air attribution
+        self.project = parts[-1]  # group or project name, for on-air attribution
         self.max_count = max_count
         # The recency cap (seconds); None = no age limit. Combined with the last
         # poll time so each poll airs only what has changed since — but never
@@ -233,18 +263,27 @@ class ForgeSource(Source):
         return items
 
     def _poll_gitlab(self) -> list[NewsItem]:
-        pid = urllib.parse.quote(self.slug, safe="")
-        base = f"{self.api_base}/api/v4/projects/{pid}"
+        # A group aggregates issues/MRs across its projects (``/groups/:id/…``); a
+        # project reads its own (``/projects/:id/…``). ``self.slug`` names either.
+        scope = "groups" if self.is_group else "projects"
+        gid = urllib.parse.quote(self.slug, safe="")
+        base = f"{self.api_base}/api/v4/{scope}/{gid}"
+        api_v4 = f"{self.api_base}/api/v4"
         items: list[NewsItem] = []
-        for kind, path, ref in (("issue", "issues", "issues"), ("merge_request", "merge_requests", "merge_requests")):
+        for kind, path in (("issue", "issues"), ("merge_request", "merge_requests")):
             listing = self._get(
                 f"{base}/{path}?per_page={self.max_count}&order_by=updated_at&sort=desc"
             )
             for it in listing:
                 comment = None
                 if it.get("user_notes_count"):
+                    # Notes live under the item's *project*, so a group listing (whose
+                    # items span projects) fetches via each item's ``project_id``.
+                    proj = it.get("project_id") if self.is_group else self.slug
+                    proj_q = urllib.parse.quote(str(proj), safe="") if self.is_group else gid
                     comment = self._latest_comment(
-                        f"{base}/{path}/{it['iid']}/notes?per_page=1&sort=desc&order_by=created_at"
+                        f"{api_v4}/projects/{proj_q}/{path}/{it['iid']}/notes"
+                        "?per_page=1&sort=desc&order_by=created_at"
                     )
                 actors = [it["author"]["name"]]
                 body = it.get("description") or ""
@@ -253,7 +292,9 @@ class ForgeSource(Source):
                     body = comment["body"] or ""
                 items.append(
                     NewsItem(
-                        id=f"gitlab:{kind}:{it['iid']}",
+                        # ``id`` is globally unique in GitLab (``iid`` is only unique
+                        # per project, so it would collide across a group's projects).
+                        id=f"gitlab:{kind}:{it.get('id', it['iid'])}",
                         source=self.name,
                         kind=kind,
                         title=it["title"],
@@ -262,7 +303,8 @@ class ForgeSource(Source):
                         actors=list(dict.fromkeys(actors)),
                         timestamp=_parse_ts(it.get("updated_at")),
                         refs=[it.get("web_url", "")],
-                        raw={"platform": "gitlab", "iid": it["iid"], "state": it.get("state")},
+                        raw={"platform": "gitlab", "iid": it["iid"], "state": it.get("state"),
+                             "project_id": it.get("project_id")},
                     )
                 )
         # Interleave by recency across issues and MRs, newest first. Sort by
