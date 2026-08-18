@@ -1397,8 +1397,8 @@ let newsVolume=1, newsFading=false;
 try{ const v=parseFloat(localStorage.getItem('smfm-newsvol')); if(!isNaN(v)) newsVolume=Math.max(0,Math.min(1,v)); }catch(e){}
 
 // Ducking — the radio-production principles applied within the browser's limits.
-//   DEPTH: shallow, ~6-9 dB (gain 0.45 ≈ -7 dB), not the -12/-15 dB that makes
-//     the bed feel like it left the room.
+//   DEPTH: the bed drops to 15% under the voice (gain 0.15 ≈ -16 dB) so the news
+//     sits clearly on top, then swells back after.
 //   ATTACK fast (immediate on the first syllable), RELEASE slow and musical: the
 //     bed swells back ~600 ms AFTER the last word, not under it — the news tail is
 //     faded so it tapers into the returning music (never a hard stop = an exit).
@@ -1406,9 +1406,9 @@ try{ const v=parseFloat(localStorage.getItem('smfm-newsvol')); if(!isNaN(v)) new
 // Honest limits of @strudel/web 1.0.3: gain is set by re-evaluating the pattern
 // (no master-gain automation, and a re-eval mid-note glitches), so a true ramped
 // or midrange-only (1-4 kHz) sidechain isn't possible here — those, plus on-air
-// processor AGC compensation, await a server-side mix. We do the shallow full-band
-// duck + a faded, delayed release, which is the audible 80%.
-const DUCK={GAIN:0.45, RELEASE_MS:600, NEWS_FADE_MS:500};
+// processor AGC compensation, await a server-side mix. We do the full-band duck +
+// a faded, delayed release, which is the audible 80%.
+const DUCK={GAIN:0.15, RELEASE_MS:600, NEWS_FADE_MS:500};
 let releaseTimer=null;
 async function playCurrent(fresh){
   if(!currentProg) return;
