@@ -42,10 +42,11 @@ _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
 # Default GitLab API base when no self-hosted instance is configured.
 GITLAB_DEFAULT_BASE = "https://gitlab.com"
 
-# Default recency window: a radio reports *recent* news, so a forge airs work
-# items updated since the last poll, and — on the first poll or after a long gap
-# — never reaches back further than this (12 hours), not yesterday's activity.
-DEFAULT_MAX_AGE = 12 * 3600.0
+# Default age cap: a forge airs work items updated since the last poll, but only
+# while the item is still young — opened within this window (60 days). So a long-
+# running issue that just got a comment is not resurfaced; the newscast stays on
+# recently-opened work. See ``_recent``.
+DEFAULT_MAX_AGE = 60 * 86400.0
 
 # GitLab to-do ``action_name`` → a spoken phrase, so the newscast reads *why* an
 # item landed on your list. ``mentioned``/``directly_addressed`` are the @-ping
@@ -193,9 +194,9 @@ class ForgeSource(Source):
         self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
         self.project = "to-dos" if self.is_todos else parts[-1]  # on-air attribution
         self.max_count = max_count
-        # The recency cap (seconds); None = no age limit. Combined with the last
-        # poll time so each poll airs only what has changed since — but never
-        # older than max_age. See ``_recent``.
+        # The age cap (seconds), measured from when an item was opened; None = no
+        # age limit. Combined with the last poll time so each poll airs what has
+        # changed since — but only for items opened within max_age. See ``_recent``.
         self.max_age = max_age
         self._now = now or (lambda: datetime.now(UTC))
         self._last_poll: datetime | None = None
@@ -247,20 +248,34 @@ class ForgeSource(Source):
     def _recent(
         self, items: list[NewsItem], now: datetime, since: datetime | None
     ) -> list[NewsItem]:
-        """Keep only items updated since the effective cutoff — the more recent of
-        the last poll (or an explicit ``since``) and ``now - max_age``. So a busy
-        repo yields just what changed since last time, while the first poll (no
-        prior time) is bounded to the ``max_age`` window. No cutoff → unchanged;
-        items with an unknown update time are dropped once a cutoff applies."""
-        cutoff: float | None = None
-        if self.max_age is not None:
-            cutoff = now.timestamp() - self.max_age
-        prev = since or self._last_poll
-        if prev is not None:
-            cutoff = prev.timestamp() if cutoff is None else max(cutoff, prev.timestamp())
-        if cutoff is None:
-            return items
-        return [n for n in items if n.timestamp is not None and n.timestamp.timestamp() >= cutoff]
+        """Keep items on two independent tests:
+
+        - **delta** — updated since the last poll (or an explicit ``since``), so a
+          busy repo yields just what changed since last time. No prior time (first
+          poll / full-window probe) → this test is skipped.
+        - **age** — *opened* within ``max_age`` (measured from the item's created
+          time, not its last update), so a long-running issue that just got a
+          comment is not resurfaced. ``max_age`` None → this test is skipped.
+
+        An item must pass every test that applies. With neither cutoff, all items
+        pass. An item missing the timestamp a cutoff needs is dropped."""
+        updated_cutoff = (since or self._last_poll)
+        age_cutoff = now.timestamp() - self.max_age if self.max_age is not None else None
+
+        def keep(n: NewsItem) -> bool:
+            if updated_cutoff is not None and (
+                n.timestamp is None or n.timestamp.timestamp() < updated_cutoff.timestamp()
+            ):
+                return False
+            if age_cutoff is not None:
+                # Age is measured from when the item was opened; fall back to the
+                # update time when the payload carried no created time.
+                opened = _parse_ts(n.raw.get("opened_at")) or n.timestamp
+                if opened is None or opened.timestamp() < age_cutoff:
+                    return False
+            return True
+
+        return [n for n in items if keep(n)]
 
     def _poll_github(self) -> list[NewsItem]:
         base = f"https://api.github.com/repos/{self.slug}"
@@ -292,7 +307,8 @@ class ForgeSource(Source):
                     actors=list(dict.fromkeys(actors)),
                     timestamp=_parse_ts(it.get("updated_at")),
                     refs=[it.get("html_url", "")],
-                    raw={"platform": "github", "number": it["number"], "state": it["state"]},
+                    raw={"platform": "github", "number": it["number"], "state": it["state"],
+                         "opened_at": it.get("created_at")},
                 )
             )
         return items
@@ -339,7 +355,8 @@ class ForgeSource(Source):
                         timestamp=_parse_ts(it.get("updated_at")),
                         refs=[it.get("web_url", "")],
                         raw={"platform": "gitlab", "iid": it["iid"], "state": it.get("state"),
-                             "project_id": it.get("project_id")},
+                             "project_id": it.get("project_id"),
+                             "opened_at": it.get("created_at")},
                     )
                 )
         # Interleave by recency across issues and MRs, newest first. Sort by
@@ -383,7 +400,8 @@ class ForgeSource(Source):
                     timestamp=_parse_ts(td.get("updated_at") or td.get("created_at")),
                     refs=[td.get("target_url") or ""],
                     raw={"platform": "gitlab", "todo_id": td.get("id"),
-                         "action": action, "target_type": ttype},
+                         "action": action, "target_type": ttype,
+                         "opened_at": td.get("created_at")},
                 )
             )
         return items

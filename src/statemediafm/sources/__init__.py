@@ -24,8 +24,8 @@ def open_source(
     A GitHub/GitLab URL → ``ForgeSource`` (issues + merge/pull requests with
     their latest comments). Anything else (a local path, a bare remote) →
     ``GitSource`` (recent commits), which is all that is available without a
-    forge API. ``max_age`` (seconds) caps a forge to recently-updated items
-    (default 12h — see ``ForgeSource``); ``None`` removes the cap. ``gitlab_base``
+    forge API. ``max_age`` (seconds) caps a forge to items opened within the
+    window (default 60d — see ``ForgeSource``); ``None`` removes the cap. ``gitlab_base``
     names a **self-hosted GitLab** instance so its URLs are recognized + polled
     via its API (from the Settings ``[gitlab] endpoint`` config).
     """

@@ -116,8 +116,8 @@ def _build_repo(topic: str, seg: dict) -> Source:
         forge = detect_forge(repo, gitlab_base=gitlab_base)  # (platform, slug) | None
         if forge is not None and forge[0] in ("github", "gitlab"):
             token = source_token(forge[0])
-    # max_age (e.g. "7d", "48h") caps how far back a forge reaches; omitted →
-    # the 12h radio-recent default (see ForgeSource).
+    # max_age (e.g. "60d", "48h") caps a forge to items opened within the window;
+    # omitted → the 60-day default (see ForgeSource).
     max_age = parse_duration(seg["max_age"]) if seg.get("max_age") else FORGE_DEFAULT_MAX_AGE
     return open_source(
         repo,

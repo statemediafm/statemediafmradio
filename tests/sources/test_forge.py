@@ -57,17 +57,38 @@ def test_forge_max_age_keeps_only_recent_updates():
     assert {n.title for n in src2.poll()} == {"fresh", "stale"}
 
 
-def test_forge_default_window_is_12h():
+def test_forge_default_window_is_60d():
     now = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
     issues = [
         {"number": 1, "title": "recent", "user": {"login": "a"}, "comments": 0,
+         "created_at": (now - timedelta(days=10)).isoformat(),
          "updated_at": (now - timedelta(hours=6)).isoformat(), "state": "open", "html_url": "u1"},
-        {"number": 2, "title": "yesterday", "user": {"login": "b"}, "comments": 0,
-         "updated_at": (now - timedelta(hours=20)).isoformat(), "state": "open", "html_url": "u2"},
+        {"number": 2, "title": "ancient", "user": {"login": "b"}, "comments": 0,
+         "created_at": (now - timedelta(days=90)).isoformat(),  # opened 90d ago
+         "updated_at": (now - timedelta(hours=1)).isoformat(),  # ...but touched today
+         "state": "open", "html_url": "u2"},
     ]
-    # No max_age given → the 12h radio-recent default; 20h-old item is dropped.
+    # No max_age given → the 60-day default, measured from when the issue OPENED:
+    # the 90-day-old issue is dropped even though it was just updated.
     src = ForgeSource("https://github.com/o/r", get=lambda url: issues, now=lambda: now)
     assert [n.title for n in src.poll()] == ["recent"]
+
+
+def test_forge_max_age_is_measured_from_opened_not_updated():
+    now = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+    # Opened long ago, commented on just now: excluded by an opened-date cap.
+    old_but_active = {"number": 1, "title": "old", "user": {"login": "a"}, "comments": 0,
+                      "created_at": (now - timedelta(days=40)).isoformat(),
+                      "updated_at": (now - timedelta(minutes=5)).isoformat(),
+                      "state": "open", "html_url": "u1"}
+    # Opened recently: included.
+    fresh = {"number": 2, "title": "new", "user": {"login": "b"}, "comments": 0,
+             "created_at": (now - timedelta(days=2)).isoformat(),
+             "updated_at": (now - timedelta(minutes=5)).isoformat(),
+             "state": "open", "html_url": "u2"}
+    src = ForgeSource("https://github.com/o/r", get=lambda url: [old_but_active, fresh],
+                      max_age=7 * 86400, now=lambda: now)
+    assert [n.title for n in src.poll()] == ["new"]
 
 
 def test_probe_does_not_consume_the_recency_window():
