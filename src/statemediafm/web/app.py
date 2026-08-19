@@ -140,7 +140,7 @@ class _State:
         self.tuning: float = 433.0  # concert-A reference (Hz) for all notes
         self.base_intensity: float = 0.25  # user base energy 0..1 (THETA_START); news lifts it
         self.news_every_s: float | None = None  # news-bulletin cadence (s); None → Director default
-        self.refresh_s: float = 60.0  # source-poll interval (s); the serve loop reads this live
+        self.refresh_s: float = 1200.0  # source-poll interval (s, 20 min); the serve loop reads this live
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)

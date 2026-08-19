@@ -31,7 +31,7 @@ def test_state_config_roundtrips(tmp_path):
     assert loaded["station"]["voice"] == "alba"
     assert loaded["station"]["base_intensity"] == 0.6
     assert loaded["station"]["quiet_mode"] is True
-    assert loaded["station"]["refresh_s"] == 60.0
+    assert loaded["station"]["refresh_s"] == 1200.0  # default poll interval, 20 min
     assert loaded["mix"]["models"] == ["Space Dub", "Entrainment 0.1"]
     assert [s["topic"] for s in loaded["sources"]] == ["HN", "Eng"]
 

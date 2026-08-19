@@ -14,7 +14,7 @@ voice = "alan"                  # narration voice (alan/alba/…)
 base_intensity = 0.25           # resting energy 0..1 (theta start)
 quiet_mode = false              # music only around the news, silent between
 news_every_s = 1020.0           # news-bulletin cadence in seconds (1020 = 17m)
-refresh_s = 60.0                # how often sources are polled, in seconds
+refresh_s = 1200.0              # how often sources are polled, in seconds (1200 = 20m)
 
 [mix]
 generators = false              # rotate through several ambient generators

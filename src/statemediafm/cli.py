@@ -409,7 +409,7 @@ def _serve(args: argparse.Namespace) -> int:
     live = bool(getattr(args, "live", False)) or bool(pnews.get("live", False))
     news_cfg = _llm_config(args)
     news_models = llm_settings(config).get("models") or []
-    # Cadences: flag > persisted > default (news 17m, refresh 60s).
+    # Cadences: flag > persisted > default (news 17m, poll 20m).
     if args.news_every:
         news_every_s = parse_duration(args.news_every)
     elif pstation.get("news_every_s"):
@@ -419,7 +419,7 @@ def _serve(args: argparse.Namespace) -> int:
     if args.refresh is not None:
         refresh = float(args.refresh)
     else:
-        refresh = float(pstation.get("refresh_s") or 60.0)
+        refresh = float(pstation.get("refresh_s") or 1200.0)
     return serve_mod.run(
         roster,
         tts,
@@ -637,7 +637,7 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--port", type=int, default=8150, help="Bind port (default 8150).")
     sv.add_argument(
         "--refresh", type=float, default=None,
-        help="Seconds between source refreshes (default 60; persisted/editable in Settings).",
+        help="Seconds between source polls (default 1200 = 20 min; persisted/editable in Settings).",
     )
     sv.add_argument(
         "--news-every",

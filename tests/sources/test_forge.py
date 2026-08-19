@@ -88,6 +88,24 @@ def test_probe_does_not_consume_the_recency_window():
     assert src._last_poll == t0  # poll DID consume
 
 
+def test_probe_full_window_returns_the_whole_max_age_window():
+    # After a consuming poll, a plain poll returns nothing new (delta), but a
+    # full-window probe (Newscast now) resets the cursor and returns the whole
+    # max_age window again — without consuming.
+    t0 = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
+    issue = {"number": 1, "title": "A", "user": {"login": "a"}, "comments": 0,
+             "updated_at": (t0 - timedelta(hours=2)).isoformat(), "state": "open", "html_url": "u"}
+    src = ForgeSource("https://github.com/o/r", get=lambda url: [issue],
+                      now=lambda: t0, max_age=12 * 3600)
+    assert [n.title for n in src.poll()] == ["A"]  # consumes; _last_poll = t0
+    assert src.poll() == []  # a plain poll now sees only the (empty) delta
+    # Full-window probe still returns the item (within the 12 h window)...
+    assert [n.title for n in src.probe(full_window=True)] == ["A"]
+    # ...and does not consume — the scheduled cursor is unchanged.
+    assert src._last_poll == t0
+    assert src.poll() == []  # still just the delta for the scheduled loop
+
+
 def test_forge_returns_only_updates_since_last_poll():
     t0 = datetime(2026, 7, 25, 12, 0, 0, tzinfo=UTC)
     state = {"now": t0, "issues": [

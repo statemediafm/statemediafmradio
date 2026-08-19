@@ -144,6 +144,9 @@ class ForgeSource(Source):
     # Consumed by poll(): the recency cursor + the comment-degrade flag. probe()
     # (the non-destructive Test) snapshots and restores these — see Source.probe.
     _PROBE_STATE = ("_last_poll", "_comments_ok")
+    # A full-window probe (Newscast now) resets the recency cursor so the source
+    # yields its whole ``max_age`` window, not just the delta since the last poll.
+    _WINDOW_RESET = ("_last_poll",)
 
     def __init__(
         self,

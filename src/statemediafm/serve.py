@@ -438,7 +438,7 @@ def run(
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
-    refresh: float = 60.0,
+    refresh: float = 1200.0,
     headline_pause_ms: int = 1000,
     style: str = "newsroom",
     generator: str = "Entrainment 0.1",
@@ -587,11 +587,22 @@ def run(
     cache: dict = {"t0": start, "last_elapsed": -1.0}
 
     def _air_news_now() -> bool:
-        """Re-air a bulletin from the most recent activity (set by refresh_once),
-        without polling sources or touching the poll/news timers. Any writer/TTS
-        error is swallowed (returns False) so an on-demand press can't 500 or take
-        the broadcast off air."""
-        per_topic = cache.get("last_per_topic")
+        """Air a bulletin on demand: **poll every enabled source now** for its last
+        full window (non-consuming — ``probe(full_window=True)`` restores the recency
+        cursor, so the scheduled poll/news timers are untouched). Any writer/TTS
+        error is swallowed (returns False) so a press can't 500 or take air off."""
+        per_topic: list = []
+        segs = list(getattr(state, "segments", []))
+        for i, (topic, source, cadence, headlines) in enumerate(list(state.roster)):
+            if i < len(segs) and segs[i].get("enabled", True) is False:
+                continue
+            try:
+                items = source.probe(full_window=True)
+            except OSError as exc:  # network / API failure — report + skip
+                _report_poll_fault(topic, exc)
+                continue
+            if items:
+                per_topic.append((topic, items, cadence, headlines))
         if not per_topic:
             return False
         eff_style = getattr(state, "style", None) or style

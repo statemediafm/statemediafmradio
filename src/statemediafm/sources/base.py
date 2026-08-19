@@ -25,19 +25,31 @@ class Source(ABC):
     # restores these so a non-destructive "Test" can't eat the recency window.
     # Stateless sources leave it empty (probe == poll).
     _PROBE_STATE: tuple[str, ...] = ()
+    # A subset of ``_PROBE_STATE``: the recency cursor(s) to RESET (to ``None``,
+    # their first-poll value) for a full-window probe, so the source returns its
+    # whole window (``max_age``) rather than just the delta since the last poll.
+    _WINDOW_RESET: tuple[str, ...] = ()
 
     @abstractmethod
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
         """Return recent NewsItems, optionally only those newer than ``since``."""
         raise NotImplementedError
 
-    def probe(self, since: datetime | None = None) -> list[NewsItem]:
-        """Poll **without consuming** the recency window — for the Settings "Test"
-        button. Snapshots/restores ``_PROBE_STATE`` around the poll so a subsequent
-        real poll still returns the same items (a Test must not make the broadcast
-        miss them)."""
+    def probe(self, since: datetime | None = None, *, full_window: bool = False) -> list[NewsItem]:
+        """Poll **without consuming** the recency window. Snapshots/restores
+        ``_PROBE_STATE`` around the poll so a subsequent real poll still returns the
+        same items (a Test / an on-demand read must not make the broadcast miss them).
+
+        With ``full_window`` the recency cursor(s) in ``_WINDOW_RESET`` are reset
+        first, so the source yields its **whole window** (``max_age``, e.g. the last
+        12 h) rather than only what changed since the last poll — used by "Newscast
+        now" to present each source's last full window."""
         saved = {k: copy.copy(getattr(self, k)) for k in self._PROBE_STATE if hasattr(self, k)}
         try:
+            if full_window:
+                for k in self._WINDOW_RESET:
+                    if hasattr(self, k):
+                        setattr(self, k, None)
             return self.poll(since)
         finally:
             for k, v in saved.items():

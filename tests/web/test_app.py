@@ -65,7 +65,7 @@ def test_cadence_get_set_and_live_retime():
     client = TestClient(create_app(state))
 
     d = client.get("/cadence").json()
-    assert d["refresh_s"] == 60.0
+    assert d["refresh_s"] == 1200.0  # default poll interval, 20 min
 
     # A duration string re-times the live Director and the poll interval.
     r = client.post("/cadence", params={"news_every": "5m", "refresh": "30s"}).json()
