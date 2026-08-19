@@ -332,3 +332,61 @@ def test_gitlab_group_comment_fetch_uses_item_project_id():
     assert items[0].body == "latest note" and "Cal" in items[0].actors
     # Notes are fetched under the item's PROJECT (project_id=42), not the group.
     assert any("/api/v4/projects/42/issues/5/notes" in u for u in fake.calls)
+
+
+def test_dashboard_todos_url_flags_the_todos_mode():
+    from statemediafm.sources.forge import _parse_forge_url
+
+    # The reserved /dashboard/todos route is recognized as GitLab (not a project).
+    assert _parse_forge_url("https://gitlab.com/dashboard/todos") == (
+        "gitlab", ["dashboard", "todos"], False)
+    src = ForgeSource("https://gitlab.com/dashboard/todos", get=lambda url: [], max_age=None)
+    assert src.is_todos is True and src.project == "to-dos"
+
+
+def test_gitlab_todos_name_the_item_and_summarize_the_mention():
+    routes = {
+        "/api/v4/todos": [
+            {
+                "id": 900,
+                "action_name": "directly_addressed",
+                "target_type": "Issue",
+                "target": {"title": "Payment retries loop"},
+                "target_url": "https://gitlab.com/team/app/-/issues/12#note_1",
+                "project": {"name": "app"},
+                "author": {"name": "Dana"},
+                "body": "@you can you take a look at the retry backoff here?",
+                "updated_at": "2026-08-19T09:00:00Z",
+            },
+            {
+                "id": 901,
+                "action_name": "review_requested",
+                "target_type": "MergeRequest",
+                "target": {"title": "Add idempotency keys"},
+                "target_url": "https://gitlab.com/team/app/-/merge_requests/7",
+                "project": {"name": "app"},
+                "author": {"name": "Eli"},
+                "body": "",
+                "updated_at": "2026-08-19T08:30:00Z",
+            },
+        ]
+    }
+    fake = _FakeGet(routes)
+    items = ForgeSource("https://gitlab.com/dashboard/todos", get=fake, max_age=None).poll()
+    # Hits the user-scoped todos endpoint, not project/group listings.
+    assert any("/api/v4/todos" in u for u in fake.calls)
+    assert not any("/issues?" in u or "/merge_requests?" in u for u in fake.calls)
+
+    mention = items[0]
+    assert mention.kind == "issue"
+    assert mention.title == "Payment retries loop"  # names the work item
+    assert "Dana mentioned you directly" in mention.body  # who + why
+    assert "retry backoff" in mention.body  # summarizes the comment @'ing you
+    assert mention.actors == ["Dana"]
+    assert mention.raw["action"] == "directly_addressed"
+    assert mention.id == "gitlab:todo:900"
+
+    review = items[1]
+    assert review.kind == "merge_request"
+    assert review.title == "Add idempotency keys"
+    assert review.body == "Eli asked you to review."  # no comment → still says why

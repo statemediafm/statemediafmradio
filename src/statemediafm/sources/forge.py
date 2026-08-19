@@ -6,6 +6,11 @@ GitLab **project's** — or a GitLab **group's** (``…/groups/team``, aggregati
 its projects) — most-recently-updated issues and merge/pull requests, attaches
 the *latest comment* on each, and normalizes them to ``NewsItem``s.
 
+It also reads a GitLab user's **to-do list** (``…/dashboard/todos``): the items
+you've been @-mentioned in, assigned, or asked to review. Each airs the work
+item's title plus a summary of the comment that pinged you. This mode is
+user-scoped, so it needs the account's own ``read_api`` PAT.
+
 Design notes:
 - **stdlib only** (``urllib`` + ``json``), so it still runs inside the
   zero-dependency zipapp.
@@ -41,6 +46,22 @@ GITLAB_DEFAULT_BASE = "https://gitlab.com"
 # items updated since the last poll, and — on the first poll or after a long gap
 # — never reaches back further than this (12 hours), not yesterday's activity.
 DEFAULT_MAX_AGE = 12 * 3600.0
+
+# GitLab to-do ``action_name`` → a spoken phrase, so the newscast reads *why* an
+# item landed on your list. ``mentioned``/``directly_addressed`` are the @-ping
+# cases whose ``body`` carries the comment we summarize.
+_TODO_ACTIONS = {
+    "mentioned": "mentioned you",
+    "directly_addressed": "mentioned you directly",
+    "assigned": "assigned this to you",
+    "review_requested": "asked you to review",
+    "approval_required": "needs your approval",
+    "marked": "flagged this for you",
+    "build_failed": "reported a failed pipeline",
+    "unmergeable": "flagged this as unmergeable",
+    "merge_train_removed": "dropped this from the merge train",
+    "member_access_requested": "requested access",
+}
 
 
 def _host_of(url: str) -> str:
@@ -164,10 +185,13 @@ class ForgeSource(Source):
         self.repo = repo
         self.platform, parts, self.is_group = parsed
         self.slug = "/".join(parts)
+        # GitLab's per-user to-do feed (``/dashboard/todos``): items you've been
+        # @-mentioned in, assigned, asked to review, etc. — not a project/group.
+        self.is_todos = self.platform == "gitlab" and parts == ["dashboard", "todos"]
         # For GitLab, the API base — a self-hosted instance (``gitlab_base``) or
         # gitlab.com. GitHub always uses api.github.com.
         self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
-        self.project = parts[-1]  # group or project name, for on-air attribution
+        self.project = "to-dos" if self.is_todos else parts[-1]  # on-air attribution
         self.max_count = max_count
         # The recency cap (seconds); None = no age limit. Combined with the last
         # poll time so each poll airs only what has changed since — but never
@@ -210,7 +234,12 @@ class ForgeSource(Source):
     # --- polling ----------------------------------------------------------
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
         now = self._now()
-        items = self._poll_github() if self.platform == "github" else self._poll_gitlab()
+        if self.platform == "github":
+            items = self._poll_github()
+        elif self.is_todos:
+            items = self._poll_gitlab_todos()
+        else:
+            items = self._poll_gitlab()
         items = self._recent(items, now, since)
         self._last_poll = now
         return items
@@ -317,3 +346,44 @@ class ForgeSource(Source):
         # epoch so tz-aware and tz-naive timestamps stay mutually comparable.
         items.sort(key=lambda n: n.timestamp.timestamp() if n.timestamp else 0.0, reverse=True)
         return items[: self.max_count]
+
+    def _poll_gitlab_todos(self) -> list[NewsItem]:
+        """The signed-in user's pending to-dos (``/dashboard/todos``).
+
+        Each to-do names the work item it points at (``target.title``) and — for
+        an @-mention (``mentioned``/``directly_addressed``) — carries the comment
+        text that pinged you in ``body``, which the newsroom then summarizes. This
+        endpoint is user-scoped, so it needs the account's own ``read_api`` PAT.
+        """
+        listing = self._get(
+            f"{self.api_base}/api/v4/todos?per_page={self.max_count}&state=pending"
+        )
+        items: list[NewsItem] = []
+        for td in listing:
+            target = td.get("target") or {}
+            author = (td.get("author") or {}).get("name") or "someone"
+            action = td.get("action_name") or "flagged"
+            phrase = _TODO_ACTIONS.get(action, action.replace("_", " "))
+            note = (td.get("body") or "").strip()
+            # The @-mention comment is the payload; other actions have no comment,
+            # so we still say who did what. Either way the LLM sees the "why".
+            body = f"{author} {phrase}: {note}" if note else f"{author} {phrase}."
+            ttype = td.get("target_type") or ""
+            kind = {"Issue": "issue", "MergeRequest": "merge_request"}.get(ttype, "todo")
+            proj = td.get("project") or {}
+            items.append(
+                NewsItem(
+                    id=f"gitlab:todo:{td.get('id')}",
+                    source=self.name,
+                    kind=kind,
+                    title=target.get("title") or note[:80] or "a to-do",
+                    body=body.strip()[:800],
+                    origin=proj.get("name") or self.project,
+                    actors=[author],
+                    timestamp=_parse_ts(td.get("updated_at") or td.get("created_at")),
+                    refs=[td.get("target_url") or ""],
+                    raw={"platform": "gitlab", "todo_id": td.get("id"),
+                         "action": action, "target_type": ttype},
+                )
+            )
+        return items

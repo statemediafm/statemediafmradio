@@ -1201,7 +1201,9 @@ return of(u,o);};})();</script>
           <em>read-only</em> Contents + Issues + Pull&nbsp;requests (classic: <code>public_repo</code>
           for public repos, or <code>repo</code> read-only). No write, no admin, no org scopes.</li>
         <li><strong>GitLab</strong> — a personal/project token with only <code>read_api</code>
-          (or <code>read_repository</code>). Nothing write.</li>
+          (or <code>read_repository</code>). Nothing write. The <em>to-dos</em> source
+          (<code>/dashboard/todos</code>) is user-scoped, so it needs that account's own
+          <code>read_api</code> PAT.</li>
         <li><strong>Jira</strong> — an API token on a <em>least-privileged account</em> that can only
           <em>Browse projects</em> (read). The token inherits the account's permissions, so scope the
           account, not just the token.</li>
@@ -1810,6 +1812,8 @@ const ADD_OPTIONS=[
    ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
   {label:'GitLab work items (URL)', kind:'repo', key:'repo',
    ph:'https://gitlab.com/group/project  (a group /groups/… also works, or an issue/MR URL)'},
+  {label:'GitLab to-dos (@mentions)', kind:'repo', key:'repo',
+   ph:'https://gitlab.com/dashboard/todos  (or https://gitlab.mycorp.com/dashboard/todos)'},
   {label:'Hacker News', kind:'hackernews', key:null, ph:null},
   {label:'Slack channel', kind:'slack', key:'channel', ph:'channel name or ID'},
   {label:'Jira project', kind:'jira', key:'project', ph:'project key, e.g. OPS'},
