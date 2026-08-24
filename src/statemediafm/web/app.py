@@ -1177,7 +1177,70 @@ return of(u,o);};})();</script>
   html[data-theme='analog'] .newslist a{ color:var(--an-ink); border-bottom-color:#5a6570 }
   html[data-theme='analog'] .warn{ color:#f0d38a; background:#2a2410; border-color:#5c4f1f }
 
-  html[data-theme='vapor']{ /* TODO: neon vaporwave look */ }
+  /* ── Vapor: vaporwave — neon sunset + grid, magenta/cyan glow, translucent panels ── */
+  html[data-theme='vapor']{
+    --vw-pink:#ff71ce; --vw-cyan:#01cdfe; --vw-purple:#b967ff; --vw-mint:#05ffa1; --vw-yellow:#fffb96;
+    --vw-ink:#f4ecff; --vw-dim:#c9b3ff; --vw-panel:rgba(38,18,74,.62); --vw-edge:rgba(1,205,254,.55);
+    /* neon grid floating over a purple→magenta sunset */
+    background:
+      repeating-linear-gradient(transparent 0 38px, rgba(1,205,254,.07) 38px 40px),
+      repeating-linear-gradient(90deg, transparent 0 38px, rgba(255,113,206,.06) 38px 40px),
+      linear-gradient(180deg,#160a2e,#3a1f6e 45%,#8a2d8f 72%,#e15aa5 100%);
+    background-attachment:fixed;
+  }
+  html[data-theme='vapor'] body{
+    background:var(--vw-panel); color:var(--vw-ink);
+    border:1px solid var(--vw-edge); border-radius:10px; padding:1rem 1.4rem 1.6rem;
+    box-shadow:0 0 22px rgba(1,205,254,.35), 0 0 44px rgba(255,113,206,.22), inset 0 0 30px rgba(185,103,255,.12);
+    backdrop-filter:blur(2px);
+  }
+  /* Neon lettering. */
+  html[data-theme='vapor'] h1,html[data-theme='vapor'] h2,html[data-theme='vapor'] h3,
+  html[data-theme='vapor'] summary{
+    color:#fff; text-transform:uppercase; letter-spacing:.14em;
+    text-shadow:0 0 6px var(--vw-pink),0 0 14px var(--vw-purple),0 0 22px var(--vw-cyan);
+  }
+  html[data-theme='vapor'] h1{ text-align:center; letter-spacing:.3em; font-weight:600 }
+  html[data-theme='vapor'] label{ color:var(--vw-cyan); letter-spacing:.05em }
+  html[data-theme='vapor'] .muted{ color:var(--vw-dim) }
+  html[data-theme='vapor'] a{ color:var(--vw-cyan) }
+  /* Translucent neon panels. */
+  html[data-theme='vapor'] details.section,html[data-theme='vapor'] article{
+    background:linear-gradient(180deg,rgba(58,31,110,.55),rgba(138,45,143,.35));
+    border:1px solid var(--vw-edge); border-radius:8px; margin:.6rem 0; padding:.5rem .85rem;
+    box-shadow:0 0 12px rgba(1,205,254,.25), inset 0 0 18px rgba(255,113,206,.10);
+  }
+  html[data-theme='vapor'] details.section>summary::before{ color:var(--vw-mint) }
+  html[data-theme='vapor'] .authrow{ border-top:1px solid rgba(1,205,254,.25) }
+  html[data-theme='vapor'] .bar{ border-color:rgba(1,205,254,.3) }
+  /* Neon buttons. */
+  html[data-theme='vapor'] button,html[data-theme='vapor'] #modes button{
+    background:linear-gradient(90deg,var(--vw-pink),var(--vw-cyan)); color:#1b0b2e;
+    border:0; border-radius:6px; text-transform:uppercase; letter-spacing:.08em; font-weight:700;
+    box-shadow:0 0 10px rgba(255,113,206,.5),0 0 18px rgba(1,205,254,.35);
+  }
+  html[data-theme='vapor'] button:hover{ filter:brightness(1.12) }
+  html[data-theme='vapor'] button:active{ transform:translateY(1px); filter:brightness(.95) }
+  html[data-theme='vapor'] button[disabled]{ opacity:.5; filter:grayscale(.3) }
+  html[data-theme='vapor'] #modes button.active{ outline:2px solid var(--vw-mint) }
+  html[data-theme='vapor'] .chip{ background:linear-gradient(90deg,rgba(255,113,206,.9),rgba(1,205,254,.9));
+    color:#1b0b2e; border:0 }
+  /* Glowing inset fields. */
+  html[data-theme='vapor'] input,html[data-theme='vapor'] select,
+  html[data-theme='vapor'] textarea,html[data-theme='vapor'] .authrow input{
+    background:rgba(20,10,42,.7); color:var(--vw-ink); border:1px solid var(--vw-edge); border-radius:5px;
+  }
+  html[data-theme='vapor'] input:focus,html[data-theme='vapor'] select:focus,
+  html[data-theme='vapor'] .authrow input:focus{ outline:0; border-color:var(--vw-pink);
+    box-shadow:0 0 10px rgba(255,113,206,.6) }
+  /* Tabs lit in neon. */
+  html[data-theme='vapor'] #tabs{ border-bottom-color:rgba(1,205,254,.4) }
+  html[data-theme='vapor'] #tabs a{ color:var(--vw-dim); text-transform:uppercase; letter-spacing:.08em }
+  html[data-theme='vapor'] #tabs a.active{ color:#fff; border-bottom-color:var(--vw-pink);
+    text-shadow:0 0 8px var(--vw-pink) }
+  html[data-theme='vapor'] .newslist a{ color:var(--vw-cyan); border-bottom-color:rgba(1,205,254,.5) }
+  html[data-theme='vapor'] .warn{ color:#1b0b2e; background:var(--vw-yellow); border-color:#e0d060 }
+
   html[data-theme='skeuomorphic']{ /* TODO: textured skeuomorphic look */ }
 </style>
 <h1>State Media FM</h1>
@@ -1382,8 +1445,8 @@ return of(u,o);};})();</script>
   <details class='section'>
     <summary>Theme</summary>
     <p class='muted'>The look of the whole app, saved in this browser. <em>Adequate</em>
-    (the default) and <em>Analog</em> are styled; <em>Vapor</em> and <em>Skeuomorphic</em>
-    are placeholders for now.</p>
+    (the default), <em>Analog</em>, and <em>Vapor</em> are styled; <em>Skeuomorphic</em>
+    is a placeholder for now.</p>
     <div class='authrow'>
       <label class='muted'>theme
         <select id='theme-sel'>
