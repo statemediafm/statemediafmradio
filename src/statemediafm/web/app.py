@@ -1889,6 +1889,11 @@ document.getElementById('sp-skip').addEventListener('click', async ()=>{
     {method:'POST', headers:{'Authorization':'Bearer '+t}}); spMsg('skipped'); }
   catch(e){ spMsg('skip failed'); }
 });
+// Change the playlist live: if we're already playing, switch to the newly chosen
+// one right away; otherwise the new selection just applies on the next Play.
+document.getElementById('sp-playlist').addEventListener('change', ()=>{
+  if(spMode) spPlay();
+});
 // Fade the Spotify music down and pause it for the news, then resume + fade up.
 function spFade(to, ms, then){
   if(!spPlayer){ if(then) then(); return; }
