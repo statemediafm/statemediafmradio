@@ -1018,6 +1018,9 @@ return of(u,o);};})();</script>
   button{font:inherit;padding:.5rem 1rem;margin:1rem 0;cursor:pointer;
          background:#111;color:#fffff8;border:0;border-radius:2px}
   button[disabled]{opacity:.6;cursor:default}
+  /* Transport icon buttons (Play/Pause/Stop): uniform width, larger glyph. */
+  button.icon{min-width:2.8rem;font-size:1.05rem;line-height:1;text-align:center;
+              padding-left:.6rem;padding-right:.6rem}
   #modelwrap,#tuningwrap,#quietwrap,#intensitywrap{display:inline-block;margin-left:1rem}
   #intensity{vertical-align:middle;width:6rem}
   select{font:inherit;font-size:.85rem;margin-left:.35rem}
@@ -1116,8 +1119,9 @@ return of(u,o);};})();</script>
   <!-- Primary transport, shared across both modes: play the radio, stop it, air a
        bulletin on demand, and toggle quiet mode. -->
   <div id='transport'>
-    <button id='play'>Play</button>
-    <button id='stop'>Stop</button>
+    <button id='play' class='icon' aria-label='Play' title='Play'>▶</button>
+    <button id='pause' class='icon' aria-label='Pause' title='Pause'>▮▮</button>
+    <button id='stop' class='icon' aria-label='Stop' title='Stop'>■</button>
     <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>Newscast now</button>
     <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
     <span class='muted grow' id='status'>press Play</span>
@@ -1333,11 +1337,13 @@ const modelSel=document.getElementById('model');
 // generative bed, or your Spotify playlist); Stop halts it. Newscast-now airs a
 // bulletin on demand. Play requires a user gesture (browsers block audio until one).
 let broadcasting=true;
+let paused=false;        // Pause halts audio but keeps the session so Play resumes
 let strudelReady=false;  // the generative engine is initialised + warmed
 function updateTransport(){
   const playing = started && broadcasting;
   btn.disabled = playing;                     // Play is a no-op while already playing
-  const stop=document.getElementById('stop'); if(stop) stop.disabled = !playing;
+  const pause=document.getElementById('pause'); if(pause) pause.disabled = !playing;      // Pause: only while playing
+  const stop=document.getElementById('stop'); if(stop) stop.disabled = !(playing||paused); // Stop: while playing or paused
 }
 async function loadBroadcast(){
   try{ broadcasting=(await (await fetch('/broadcast')).json()).broadcasting; }catch(e){}
@@ -1738,6 +1744,7 @@ document.querySelectorAll('#modes button').forEach(b=>
 // your Spotify playlist. The news airs over whichever you pick.
 btn.addEventListener('click', async ()=>{
   btn.disabled=true;
+  const resuming = paused; paused=false;   // resuming from Pause vs a fresh start
   try{
     broadcasting=true;
     try{ await fetch('/broadcast?on=true',{method:'POST'}); }catch(e){}
@@ -1745,7 +1752,9 @@ btn.addEventListener('click', async ()=>{
       if(!spConnected){ statusEl.textContent='connect Spotify below, then press Play';
         spMsg('Connect Spotify to play a playlist'); broadcasting=false; return; }
       started=true; pollNews(); pollSong();
-      await spPlay();  // starts your playlist; spMode=true. News ducks it.
+      // Resume where Pause left off if we can; otherwise (re)start the playlist.
+      if(resuming && spPlayer){ try{ await spPlayer.resume(); spMode=true; }catch(e){ await spPlay(); } }
+      else{ await spPlay(); }  // starts your playlist; spMode=true. News ducks it.
     }else{
       if(!(await ensureStrudel())){ broadcasting=false; return; }
       started=true;
@@ -1753,9 +1762,20 @@ btn.addEventListener('click', async ()=>{
     }
   } finally { updateTransport(); }
 });
-// Stop: halt the radio (music/playlist + news). Play resumes.
+// Pause: halt audio but keep the session (Spotify pauses in place; the generative
+// bed goes silent). Play resumes. Unlike Stop, spMode is kept so Spotify resumes.
+document.getElementById('pause').addEventListener('click', async ()=>{
+  if(!(started && broadcasting)) return;     // nothing to pause
+  broadcasting=false; paused=true;
+  try{ await fetch('/broadcast?on=false',{method:'POST'}); }catch(e){}
+  if(spMode){ try{ if(spPlayer) await spPlayer.pause(); }catch(e){} }
+  else if(strudelReady){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
+  viz.on=false; statusEl.textContent='paused';
+  updateTransport();
+});
+// Stop: halt the radio (music/playlist + news) and reset. Play restarts.
 document.getElementById('stop').addEventListener('click', async ()=>{
-  broadcasting=false;
+  broadcasting=false; paused=false;
   try{ await fetch('/broadcast?on=false',{method:'POST'}); }catch(e){}
   if(spMode){ spMode=false; try{ if(spPlayer) await spPlayer.pause(); }catch(e){} }
   else if(strudelReady){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
