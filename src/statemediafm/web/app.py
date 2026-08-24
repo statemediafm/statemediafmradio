@@ -1297,6 +1297,8 @@ return of(u,o);};})();</script>
       <select id='sp-playlist' hidden></select>
       <button id='sp-skip' hidden>Skip</button>
       <button id='sp-logout' hidden>Disconnect</button>
+      <label class='muted' id='spvolwrap' hidden title='Background playlist volume, relative to the news voice'>music
+        <input type='range' id='spvol' min='0' max='1' step='0.05'></label>
       <span class='muted grow' id='sp-msg'></span>
     </div>
     <p class='muted' id='playlist-note'>Plays your Spotify playlists in this tab (needs
@@ -1692,6 +1694,22 @@ voiceVol.addEventListener('input', ()=>{
 newsPlayer.addEventListener('ended', scheduleRelease);
 newsPlayer.addEventListener('pause', scheduleRelease);
 
+// Playlist (Spotify) background volume — the music level under/between bulletins,
+// relative to the news voice above. Used as the resume-after-news target and
+// applied live while playing. Remembered per browser. (Only relevant in Playlist mode.)
+let spVolume=0.8;
+try{ const v=parseFloat(localStorage.getItem('smfm-spvol')); if(!isNaN(v)) spVolume=Math.max(0,Math.min(1,v)); }catch(e){}
+const spVol=document.getElementById('spvol');
+if(spVol){
+  spVol.value=spVolume;
+  spVol.addEventListener('input', ()=>{
+    spVolume=parseFloat(spVol.value);
+    try{ localStorage.setItem('smfm-spvol', spVolume); }catch(e){}
+    // Apply live unless a bulletin is currently ducking the music to silence.
+    if(spPlayer && spMode && !spDuckedForNews){ try{ spPlayer.setVolume(spVolume); }catch(e){} }
+  });
+}
+
 let musicSilenced=false;
 async function pollMusic(){
   try{
@@ -1781,6 +1799,7 @@ async function loadSpotifyBar(){
     document.getElementById('sp-logout').hidden=!spConnected;
     document.getElementById('sp-playlist').hidden=!spConnected;
     document.getElementById('sp-skip').hidden=!spConnected;
+    document.getElementById('spvolwrap').hidden=!spConnected;
     document.getElementById('sp-who').textContent = spConnected
       ? (esc(me.name)+(me.premium?' · Premium':' · NOT Premium — in-tab playback needs Premium')) : '';
     // Only reset the ready state when there's no player yet — re-running this (e.g.
@@ -1850,6 +1869,7 @@ async function spPlay(){
       {method:'PUT', headers:H, body:JSON.stringify({context_uri:uri})});
     if(!r.ok){ const b=await r.text(); spMsg('play failed ('+r.status+') '+b.slice(0,140)); return; }
     spMode=true; try{ if(strudelReady) await evaluate('silence'); }catch(e){}  // Spotify is the music now
+    try{ if(spPlayer) await spPlayer.setVolume(spVolume); }catch(e){}  // at the user's music level
     spMsg('playing your playlist');
   }catch(e){ spMsg('play error: '+((e&&e.message)||e)); }
 }
@@ -1879,7 +1899,7 @@ function spFade(to, ms, then){
 newsPlayer.addEventListener('play', ()=>{ if(spMode){ spDuckedForNews=true;
   spFade(0.0, 500, ()=>{ try{ spPlayer.pause(); }catch(e){} }); } });
 function spResumeAfterNews(){ if(spDuckedForNews){ spDuckedForNews=false;
-  setTimeout(()=>{ try{ spPlayer.resume(); }catch(e){}; spFade(0.8, 700); }, 600); } }
+  setTimeout(()=>{ try{ spPlayer.resume(); }catch(e){}; spFade(spVolume, 700); }, 600); } }
 newsPlayer.addEventListener('ended', spResumeAfterNews);
 newsPlayer.addEventListener('pause', spResumeAfterNews);
 // Player modes: reveal the Flow State (generative) or Playlist (Spotify) controls.
