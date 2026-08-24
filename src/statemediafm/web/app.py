@@ -1112,6 +1112,11 @@ return of(u,o);};})();</script>
   h1,h2,h3,h4,summary,label,button,select,textarea,input,.authrow input,
   .chip,#tabs a,#modes button{
     font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  /* Themes (Settings › Theme) apply via <html data-theme="…">. The default look is
+     the base styling above; these are stubs where each theme's overrides will go. */
+  html[data-theme='analog']{ /* TODO: warm, tactile analog look */ }
+  html[data-theme='vapor']{ /* TODO: neon vaporwave look */ }
+  html[data-theme='skeuomorphic']{ /* TODO: textured skeuomorphic look */ }
 </style>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
@@ -1310,6 +1315,22 @@ return of(u,o);};})();</script>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
     <div id='presets'></div>
+  </details>
+
+  <details class='section'>
+    <summary>Theme</summary>
+    <p class='muted'>The look of the whole app, saved in this browser. Only
+    <em>Adequate</em> is styled today; the others are placeholders.</p>
+    <div class='authrow'>
+      <label class='muted'>theme
+        <select id='theme-sel'>
+          <option value='adequate'>Adequate (Default)</option>
+          <option value='analog'>Analog</option>
+          <option value='vapor'>Vapor</option>
+          <option value='skeuomorphic'>Skeuomorphic</option>
+        </select></label>
+      <span class='muted' id='theme-status'></span>
+    </div>
   </details>
 
   <details class='section'>
@@ -1803,7 +1824,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadTheme(); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNextNews(); pollMusic(); pollSong(); }
@@ -2040,6 +2061,25 @@ document.getElementById('news-backend').addEventListener('change', async (e)=>{
   try{ await fetch('/news-backend?backend='+encodeURIComponent(e.target.value), {method:'POST'});
     await loadNewsBackend(); }catch(err){}
 });
+
+// ── Theme (app-wide look, saved per browser) ─────────────────────────────────
+// Only the default is styled today; the rest are stubs applied via <html
+// data-theme="…"> so their CSS can be filled in later without more wiring.
+const THEME_NAMES={adequate:'Adequate (Default)',analog:'Analog',vapor:'Vapor',skeuomorphic:'Skeuomorphic'};
+function currentTheme(){ try{ return localStorage.getItem('smfm-theme')||'adequate'; }catch(e){ return 'adequate'; } }
+function applyTheme(t){ document.documentElement.dataset.theme = THEME_NAMES[t]?t:'adequate'; }
+function loadTheme(){
+  const t=currentTheme(); applyTheme(t);
+  const sel=document.getElementById('theme-sel'); if(sel) sel.value=t;
+  const st=document.getElementById('theme-status'); if(st) st.textContent=THEME_NAMES[t]||'';
+}
+document.getElementById('theme-sel').addEventListener('change', (e)=>{
+  const t=THEME_NAMES[e.target.value]?e.target.value:'adequate';
+  try{ localStorage.setItem('smfm-theme', t); }catch(err){}
+  applyTheme(t);
+  const st=document.getElementById('theme-status'); if(st) st.textContent=THEME_NAMES[t]||'';
+});
+applyTheme(currentTheme());  // apply immediately on load, before the Settings tab opens
 
 // ── LLM gateway presets ──────────────────────────────────────────────────────
 async function loadPresets(){
