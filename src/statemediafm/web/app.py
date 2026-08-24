@@ -1113,8 +1113,67 @@ return of(u,o);};})();</script>
   .chip,#tabs a,#modes button{
     font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
   /* Themes (Settings › Theme) apply via <html data-theme="…">. The default look is
-     the base styling above; these are stubs where each theme's overrides will go. */
-  html[data-theme='analog']{ /* TODO: warm, tactile analog look */ }
+     the base styling above; reverting to Adequate simply drops these overrides. */
+
+  /* ── Analog: dark slate faceplate, white Letraset lettering, early-synth panels ── */
+  html[data-theme='analog']{
+    --an-desk:#1b2125; --an-face1:#333c44; --an-face2:#283037;
+    --an-panel1:#39424a; --an-panel2:#2c343b; --an-groove:#0f1417;
+    --an-ink:#f4f4ef; --an-dim:#98a4ad; --an-led:#e8a13a;
+    background:var(--an-desk);
+  }
+  /* The whole column is a device faceplate sitting on a dark desk. */
+  html[data-theme='analog'] body{
+    background:linear-gradient(180deg,var(--an-face1),var(--an-face2));
+    color:var(--an-ink); border:1px solid var(--an-groove); border-radius:8px;
+    padding:1rem 1.4rem 1.6rem;
+    box-shadow:0 10px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  /* Letraset lettering: white, uppercase, letter-spaced, lifted off the panel. */
+  html[data-theme='analog'] h1,html[data-theme='analog'] h2,html[data-theme='analog'] h3,
+  html[data-theme='analog'] summary,html[data-theme='analog'] label,
+  html[data-theme='analog'] #tabs a{
+    color:var(--an-ink); text-transform:uppercase; letter-spacing:.12em;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; text-shadow:0 1px 0 rgba(0,0,0,.6);
+  }
+  html[data-theme='analog'] h1{ letter-spacing:.28em; font-weight:600 }
+  html[data-theme='analog'] .muted{ color:var(--an-dim) }
+  html[data-theme='analog'] a{ color:var(--an-ink) }
+  /* Panels: bevelled synth modules — inset highlight on top, shadow below. */
+  html[data-theme='analog'] details.section,html[data-theme='analog'] article{
+    background:linear-gradient(180deg,var(--an-panel1),var(--an-panel2));
+    border:1px solid var(--an-groove); border-radius:5px; margin:.6rem 0; padding:.5rem .85rem;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.45);
+  }
+  html[data-theme='analog'] details.section>summary::before{ color:var(--an-led) }
+  html[data-theme='analog'] .authrow{ border-top:1px solid rgba(255,255,255,.06) }
+  html[data-theme='analog'] .bar{ border-color:rgba(255,255,255,.08) }
+  /* Buttons: raised metal caps; press inset. */
+  html[data-theme='analog'] button,html[data-theme='analog'] #modes button{
+    background:linear-gradient(180deg,#4b555d,#39424a); color:var(--an-ink);
+    border:1px solid var(--an-groove); border-radius:4px;
+    text-transform:uppercase; letter-spacing:.08em; font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 2px 3px rgba(0,0,0,.5);
+  }
+  html[data-theme='analog'] button:hover{ background:linear-gradient(180deg,#545f68,#3f4952) }
+  html[data-theme='analog'] button:active{ box-shadow:inset 0 2px 5px rgba(0,0,0,.6); transform:translateY(1px) }
+  html[data-theme='analog'] button[disabled]{ opacity:.45 }
+  html[data-theme='analog'] #modes button.active{ border-color:var(--an-led); color:var(--an-ink) }
+  html[data-theme='analog'] .chip{ background:linear-gradient(180deg,#414b53,#333c43); color:var(--an-ink);
+    border:1px solid var(--an-groove) }
+  /* Inset fields: recessed into the panel. */
+  html[data-theme='analog'] input,html[data-theme='analog'] select,
+  html[data-theme='analog'] textarea,html[data-theme='analog'] .authrow input{
+    background:#1a1f23; color:var(--an-ink); border:1px solid var(--an-groove); border-radius:3px;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
+  }
+  /* Tabs: a labelled front panel; the active tab is lit by an LED underline. */
+  html[data-theme='analog'] #tabs{ border-bottom-color:var(--an-groove) }
+  html[data-theme='analog'] #tabs a{ color:var(--an-dim) }
+  html[data-theme='analog'] #tabs a.active{ color:var(--an-ink); border-bottom-color:var(--an-led) }
+  html[data-theme='analog'] .newslist a{ color:var(--an-ink); border-bottom-color:#5a6570 }
+  html[data-theme='analog'] .warn{ color:#f0d38a; background:#2a2410; border-color:#5c4f1f }
+
   html[data-theme='vapor']{ /* TODO: neon vaporwave look */ }
   html[data-theme='skeuomorphic']{ /* TODO: textured skeuomorphic look */ }
 </style>
@@ -1319,8 +1378,9 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Theme</summary>
-    <p class='muted'>The look of the whole app, saved in this browser. Only
-    <em>Adequate</em> is styled today; the others are placeholders.</p>
+    <p class='muted'>The look of the whole app, saved in this browser. <em>Adequate</em>
+    (the default) and <em>Analog</em> are styled; <em>Vapor</em> and <em>Skeuomorphic</em>
+    are placeholders for now.</p>
     <div class='authrow'>
       <label class='muted'>theme
         <select id='theme-sel'>
