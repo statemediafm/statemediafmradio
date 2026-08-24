@@ -1122,7 +1122,7 @@ return of(u,o);};})();</script>
     <button id='play' class='icon' aria-label='Play' title='Play'>▶</button>
     <button id='pause' class='icon' aria-label='Pause' title='Pause'>▮▮</button>
     <button id='stop' class='icon' aria-label='Stop' title='Stop'>■</button>
-    <button id='news-now' title='Air a bulletin now from the latest activity (does not reset the source timer)'>Newscast now</button>
+    <button id='news-now' class='icon' aria-label='Newscast now' title='Newscast now — air a bulletin from the latest activity (does not reset the source timer)'>▶▶</button>
     <label class='muted' id='quietwrap'><input type='checkbox' id='quiet'> quiet mode</label>
     <span class='muted grow' id='status'>press Play</span>
     <span class='muted' id='next-update'></span>
