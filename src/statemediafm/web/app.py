@@ -1181,13 +1181,29 @@ return of(u,o);};})();</script>
   html[data-theme='vapor']{
     --vw-pink:#ff71ce; --vw-cyan:#01cdfe; --vw-purple:#b967ff; --vw-mint:#05ffa1; --vw-yellow:#fffb96;
     --vw-ink:#f4ecff; --vw-dim:#c9b3ff; --vw-panel:rgba(38,18,74,.62); --vw-edge:rgba(1,205,254,.55);
-    /* neon grid floating over a purple→magenta sunset */
+    /* Three drifting colour blobs (aurora) + a neon grid over a purple→magenta
+       sunset. Only the blobs move; the grid and sunset stay put. */
     background:
+      radial-gradient(55% 50% at 50% 50%, rgba(5,255,161,.20), transparent 70%),
+      radial-gradient(60% 55% at 50% 50%, rgba(1,205,254,.20), transparent 70%),
+      radial-gradient(65% 55% at 50% 50%, rgba(255,113,206,.18), transparent 70%),
       repeating-linear-gradient(transparent 0 38px, rgba(1,205,254,.07) 38px 40px),
       repeating-linear-gradient(90deg, transparent 0 38px, rgba(255,113,206,.06) 38px 40px),
       linear-gradient(180deg,#160a2e,#3a1f6e 45%,#8a2d8f 72%,#e15aa5 100%);
+    background-size:140% 140%,150% 150%,160% 160%,auto,auto,cover;
+    background-position:18% 28%,82% 38%,48% 78%,0 0,0 0,center;
+    background-repeat:no-repeat,no-repeat,no-repeat,repeat,repeat,no-repeat;
     background-attachment:fixed;
+    /* ~44s, so the drift is near-imperceptible — but plain if you watch a while. */
+    animation:vaporAurora 44s ease-in-out infinite alternate;
   }
+  @keyframes vaporAurora{
+    0%  { background-position:18% 28%,82% 38%,48% 78%,0 0,0 0,center }
+    50% { background-position:31% 41%,67% 53%,60% 65%,0 0,0 0,center }
+    100%{ background-position:23% 33%,77% 45%,52% 73%,0 0,0 0,center }
+  }
+  /* Honour reduced-motion: hold the aurora still. */
+  @media (prefers-reduced-motion:reduce){ html[data-theme='vapor']{ animation:none } }
   html[data-theme='vapor'] body{
     background:var(--vw-panel); color:var(--vw-ink);
     border:1px solid var(--vw-edge); border-radius:10px; padding:1rem 1.4rem 1.6rem;
