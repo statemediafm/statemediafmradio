@@ -1301,9 +1301,6 @@ return of(u,o);};})();</script>
         <input type='range' id='spvol' min='0' max='1' step='0.05'></label>
       <span class='muted grow' id='sp-msg'></span>
     </div>
-    <p class='muted' id='playlist-note'>Plays your Spotify playlists in this tab (needs
-    Spotify <strong>Premium</strong>). First set the Client ID / Secret in
-    <em>Settings › Mix › Spotify</em>, then Connect and press Play.</p>
   </div>
 
   <!-- Shared output: news-voice level, visualizer, now-playing, bulletins -->
