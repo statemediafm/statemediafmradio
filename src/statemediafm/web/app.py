@@ -1128,6 +1128,7 @@ return of(u,o);};})();</script>
     color:var(--an-ink); border:1px solid var(--an-groove); border-radius:8px;
     padding:1rem 1.4rem 1.6rem;
     box-shadow:0 10px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    display:flex; flex-direction:column;  /* lets the title drop to the footer (order) */
   }
   /* Letraset lettering: white, uppercase, letter-spaced, lifted off the panel. */
   html[data-theme='analog'] h1,html[data-theme='analog'] h2,html[data-theme='analog'] h3,
@@ -1136,7 +1137,9 @@ return of(u,o);};})();</script>
     color:var(--an-ink); text-transform:uppercase; letter-spacing:.12em;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; text-shadow:0 1px 0 rgba(0,0,0,.6);
   }
-  html[data-theme='analog'] h1{ letter-spacing:.02em; font-weight:normal; text-align:center }
+  /* Title moves to the footer: last in the flex order, set off by a groove line. */
+  html[data-theme='analog'] h1{ letter-spacing:.02em; font-weight:normal; text-align:center;
+    order:99; margin-top:1.6rem; padding-top:1rem; border-top:1px solid var(--an-groove) }
   html[data-theme='analog'] .muted{ color:var(--an-dim) }
   html[data-theme='analog'] a{ color:var(--an-ink) }
   /* Panels: bevelled synth modules — inset highlight on top, shadow below. */
