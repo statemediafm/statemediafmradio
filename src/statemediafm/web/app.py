@@ -1136,7 +1136,7 @@ return of(u,o);};})();</script>
     color:var(--an-ink); text-transform:uppercase; letter-spacing:.12em;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; text-shadow:0 1px 0 rgba(0,0,0,.6);
   }
-  html[data-theme='analog'] h1{ letter-spacing:.28em; font-weight:600; text-align:center }
+  html[data-theme='analog'] h1{ letter-spacing:.28em; font-weight:normal; text-align:center }
   html[data-theme='analog'] .muted{ color:var(--an-dim) }
   html[data-theme='analog'] a{ color:var(--an-ink) }
   /* Panels: bevelled synth modules — inset highlight on top, shadow below. */
