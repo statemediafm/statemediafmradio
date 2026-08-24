@@ -1468,7 +1468,7 @@ return of(u,o);};})();</script>
     <div class='authrow'>
       <label class='muted'>theme
         <select id='theme-sel'>
-          <option value='adequate'>Adequate (Default)</option>
+          <option value='adequate'>Adequate</option>
           <option value='analog'>Analog</option>
           <option value='vapor'>Vapor</option>
           <option value='skeuomorphic'>Skeuomorphic</option>
@@ -2232,7 +2232,7 @@ document.getElementById('news-backend').addEventListener('change', async (e)=>{
 // ── Theme (app-wide look, saved per browser) ─────────────────────────────────
 // Only the default is styled today; the rest are stubs applied via <html
 // data-theme="…"> so their CSS can be filled in later without more wiring.
-const THEME_NAMES={adequate:'Adequate (Default)',analog:'Analog',vapor:'Vapor',skeuomorphic:'Skeuomorphic'};
+const THEME_NAMES={adequate:'Adequate',analog:'Analog',vapor:'Vapor',skeuomorphic:'Skeuomorphic'};
 function currentTheme(){ try{ return localStorage.getItem('smfm-theme')||'adequate'; }catch(e){ return 'adequate'; } }
 function applyTheme(t){ document.documentElement.dataset.theme = THEME_NAMES[t]?t:'adequate'; }
 function loadTheme(){
