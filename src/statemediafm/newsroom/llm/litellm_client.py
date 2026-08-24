@@ -36,6 +36,7 @@ def discover_models(
     *,
     get: Callable[[str, str | None], Any] | None = None,
     timeout: float = 10.0,
+    strict: bool = False,
 ) -> list[str]:
     """List the models an OpenAI-compatible gateway serves via ``GET {base}/models``.
 
@@ -43,6 +44,10 @@ def discover_models(
     default Anthropic path, which has no such listing) or the request fails —
     discovery is best-effort and never fatal, so a slow or unreachable gateway
     can't break the caller. ``get(url, api_key)`` is injectable for tests.
+
+    With ``strict=True`` the request error is re-raised instead of swallowed, so a
+    caller using discovery as a *connectivity/auth test* (the Settings tab) can
+    report why the gateway is unreachable. A missing base URL still returns ``[]``.
     """
     api_base, api_key = resolve_gateway(cfg)
     if not api_base:
@@ -51,6 +56,8 @@ def discover_models(
     try:
         data = fetch(api_base.rstrip("/") + "/models", api_key)
     except (OSError, ValueError):
+        if strict:
+            raise
         return []
     items = data.get("data", []) if isinstance(data, dict) else []
     ids = {m.get("id") for m in items if isinstance(m, dict) and m.get("id")}

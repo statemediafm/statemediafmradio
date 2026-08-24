@@ -157,6 +157,61 @@ def test_news_backend_get_and_set():
     assert client.post("/news-backend", params={"backend": "nope"}).status_code == 400
 
 
+def test_gateway_models_probe_discovers_and_caches(monkeypatch):
+    from statemediafm import auth
+    from statemediafm.newsroom import llm
+
+    monkeypatch.setattr(auth, "source_endpoint",
+                        lambda src, path=None: "http://gw" if src == "llm-gateway" else None)
+    monkeypatch.setattr(llm, "discover_models", lambda cfg, **k: ["m/a", "m/b"])
+    state = _State()
+    client = TestClient(create_app(state))
+    d = client.get("/gateway-models").json()
+    assert d["ok"] is True and d["probed"] is True and d["models"] == ["m/a", "m/b"]
+    assert state.news_models == ["m/a", "m/b"]  # cached on the store for cheap re-open
+
+
+def test_gateway_models_probe_reports_failure(monkeypatch):
+    import urllib.error
+
+    from statemediafm import auth
+    from statemediafm.newsroom import llm
+
+    monkeypatch.setattr(auth, "source_endpoint", lambda src, path=None: "http://gw")
+
+    def boom(cfg, **k):
+        raise urllib.error.HTTPError("http://gw/models", 401, "unauthorized", {}, None)
+
+    monkeypatch.setattr(llm, "discover_models", boom)
+    d = TestClient(create_app(_State())).get("/gateway-models").json()
+    assert d["ok"] is False and "401" in d["error"]  # the probe doubles as the test
+
+
+def test_gateway_models_without_a_gateway_is_not_ok(monkeypatch):
+    from statemediafm import auth
+
+    monkeypatch.setattr(auth, "source_endpoint", lambda src, path=None: None)
+    d = TestClient(create_app(_State())).get("/gateway-models").json()
+    assert d["ok"] is False and d["models"] == [] and "URL" in d["error"]
+
+
+def test_gateway_models_no_probe_returns_cached_without_network():
+    state = _State()
+    state.news_models = ["x/y"]
+    state.news_model = "x/y"
+    d = TestClient(create_app(state)).get("/gateway-models", params={"probe": 0}).json()
+    assert d["probed"] is False and d["models"] == ["x/y"] and d["selected"] == "x/y"
+
+
+def test_news_model_set_and_clear():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.post("/news-model", params={"model": "openai/gpt-4o"}).json() == {"model": "openai/gpt-4o"}
+    assert state.news_model == "openai/gpt-4o"
+    assert client.post("/news-model", params={"model": ""}).json() == {"model": None}
+    assert state.news_model is None
+
+
 def test_sources_list_add_and_remove():
     from statemediafm.roster import build_segment
 

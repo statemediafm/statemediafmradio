@@ -81,6 +81,21 @@ def _token_ok(supplied: str, token: str) -> bool:
         return False
 
 
+def _describe_gateway_error(exc: Exception) -> str:
+    """A human-readable reason a gateway ``/models`` probe failed, for the UI."""
+    import urllib.error
+
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code in (401, 403):
+            return f"auth rejected (HTTP {exc.code}) — check the API key"
+        if exc.code == 404:
+            return "no /models on this URL (HTTP 404) — check the gateway URL"
+        return f"gateway returned HTTP {exc.code}"
+    if isinstance(exc, urllib.error.URLError):
+        return f"could not reach gateway — {exc.reason}"
+    return f"could not read models — {exc}"
+
+
 def _is_public_path(path: str) -> bool:
     """Routes reachable without the session token."""
     return path in _PUBLIC_EXACT or path.startswith("/audio/")
@@ -528,6 +543,40 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
             "options": list(_NEWS_BACKENDS),
             "claude_available": _claude_available(),
         }
+
+    @app.get("/gateway-models")
+    def gateway_models(probe: bool = True) -> dict:
+        """The LLM-gateway models to offer in Settings, plus the current selection.
+
+        With ``probe`` (default) this hits ``GET {gateway}/models`` live — which
+        doubles as a **connectivity/auth test** for the gateway: ``ok`` reports
+        success, ``error`` a human-readable reason on failure. ``probe=0`` skips
+        the network and returns the last-discovered list (for a cheap tab open)."""
+        selected = getattr(store, "news_model", None)
+        if not probe:
+            return {"ok": True, "probed": False, "selected": selected,
+                    "models": list(getattr(store, "news_models", []) or [])}
+        from ..auth import source_endpoint
+        from ..newsroom.llm import LLMConfig, discover_models
+
+        if not source_endpoint("llm-gateway"):
+            return {"ok": False, "probed": True, "selected": selected, "models": [],
+                    "error": "Set the gateway URL and API key above, then Save."}
+        cfg = getattr(store, "news_cfg", None) or LLMConfig(model=selected or "")
+        try:
+            models = discover_models(cfg, strict=True)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "probed": True, "selected": selected, "models": [],
+                    "error": _describe_gateway_error(exc)}
+        store.news_models = models
+        return {"ok": True, "probed": True, "selected": selected, "models": models}
+
+    @app.post("/news-model")
+    def set_news_model(model: str = "") -> dict:
+        """Choose the gateway model that writes the news (blank → none, no
+        bulletins until one is set). Applies next news cycle; persisted."""
+        store.news_model = model or None
+        return {"model": store.news_model}
 
     @app.get("/voice")
     def voice() -> dict:
@@ -1054,6 +1103,12 @@ return of(u,o);};})();</script>
   @media(prefers-color-scheme:dark){
     body{background:#111;color:#eee}.muted{color:#aaa}
     button{background:#eee;color:#111}article{border-color:#333}}
+  /* Typography: prose (body/p/li/article text) stays serif; every heading, label,
+     and control is sans-serif. Listed last so it wins the cascade — and includes
+     the higher-specificity control rules (.authrow input) it must override. */
+  h1,h2,h3,h4,summary,label,button,select,textarea,input,.authrow input,
+  .chip,#tabs a,#modes button{
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
 </style>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
@@ -1118,6 +1173,28 @@ return of(u,o);};})();</script>
   <p class='muted'>Reads the Hacker News front page and a repo's git issues every 2
   minutes, music in between. Turning it on adds those two sources; off removes them.</p>
 
+  <details class='section' open>
+    <summary>News Update Sources</summary>
+    <p class='muted'>Which activity State Media FM airs. Changes apply to the running
+    session (not written to the config file). Each source authenticates with a token
+    you set under <em>Auth</em> — grant it a <strong>read-only, least-privilege scope</strong>
+    (see the recommended scopes there).</p>
+    <div id='sourcelist'></div>
+    <div class='authrow'>
+      <select id='src-kind'></select>
+      <input id='src-topic' placeholder='topic (optional)'>
+      <input id='src-param' placeholder='—'>
+      <input id='src-maxage' placeholder='max age since issue opened (default 60d)' hidden>
+      <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
+      <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
+      <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
+      <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
+      <button id='src-add'>Add source</button>
+      <button id='src-cancel' hidden>Cancel</button>
+      <span class='muted' id='src-status'></span>
+    </div>
+  </details>
+
   <details class='section'>
     <summary>Cadence</summary>
     <p class='muted'>The rhythm of the day: how often a news bulletin airs, and how
@@ -1131,7 +1208,7 @@ return of(u,o);};})();</script>
     </div>
   </details>
 
-  <details class='section' open>
+  <details class='section'>
     <summary>Mix</summary>
     <div class='authrow' hidden>
       <label class='muted' id='modelwrap'>ambient generator
@@ -1159,28 +1236,6 @@ return of(u,o);};})();</script>
       <button id='sp-save'>Save</button>
       <button id='sp-test'>Test connection</button>
       <span class='muted' id='sp-status'></span>
-    </div>
-  </details>
-
-  <details class='section'>
-    <summary>News Update Sources</summary>
-    <p class='muted'>Which activity State Media FM airs. Changes apply to the running
-    session (not written to the config file). Each source authenticates with a token
-    you set under <em>Auth</em> — grant it a <strong>read-only, least-privilege scope</strong>
-    (see the recommended scopes there).</p>
-    <div id='sourcelist'></div>
-    <div class='authrow'>
-      <select id='src-kind'></select>
-      <input id='src-topic' placeholder='topic (optional)'>
-      <input id='src-param' placeholder='—'>
-      <input id='src-maxage' placeholder='max age since issue opened (default 60d)' hidden>
-      <input id='src-every' placeholder='every (e.g. 15m)' value='15m'>
-      <input id='src-headlines' type='number' min='1' placeholder='headlines (max read)'>
-      <input id='src-maxcount' type='number' min='1' placeholder='max_count (items polled)'>
-      <input id='src-offset' placeholder='offset (e.g. 0, 5m)'>
-      <button id='src-add'>Add source</button>
-      <button id='src-cancel' hidden>Cancel</button>
-      <span class='muted' id='src-status'></span>
     </div>
   </details>
 
@@ -1240,6 +1295,14 @@ return of(u,o);};})();</script>
     <strong>URL</strong> and <strong>API key</strong>; the model comes from your run
     config (<code>[llm]</code> / <code>model_config.yaml</code>).</p>
     <div id='gatewayform'></div>
+    <p class='muted'>Once the URL + key are saved, load the model list from the gateway
+    itself and pick which one writes the news. Loading the list <strong>tests the
+    gateway</strong> — success means it answered; an error shows why.</p>
+    <div class='authrow' id='gw-model-row'>
+      <label class='muted'>news model <select id='gw-model'><option value=''>— none —</option></select></label>
+      <button id='gw-load'>Test gateway &amp; load models</button>
+      <span class='muted' id='gw-model-status'></span>
+    </div>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
     <div id='presets'></div>
@@ -1720,7 +1783,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadLicense(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNextNews(); pollMusic(); pollSong(); }
@@ -1808,12 +1871,12 @@ document.getElementById('narration-save').addEventListener('click', async ()=>{
 // kind — a repo URL or a pasted issue/PR/MR URL), then the other sources. Each
 // option names its one extra parameter and a placeholder.
 const ADD_OPTIONS=[
-  {label:'GitHub work items (URL)', kind:'repo', key:'repo',
-   ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
   {label:'GitLab work items (URL)', kind:'repo', key:'repo',
    ph:'https://gitlab.com/group/project  (a group /groups/… also works, or an issue/MR URL)'},
   {label:'GitLab to-dos (@mentions)', kind:'repo', key:'repo',
    ph:'https://gitlab.com/dashboard/todos  (or https://gitlab.mycorp.com/dashboard/todos)'},
+  {label:'GitHub work items (URL)', kind:'repo', key:'repo',
+   ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
   {label:'Hacker News', kind:'hackernews', key:null, ph:null},
   {label:'Slack channel', kind:'slack', key:'channel', ph:'channel name or ID'},
   {label:'Jira project', kind:'jira', key:'project', ph:'project key, e.g. OPS'},
@@ -2035,6 +2098,34 @@ async function loadGateways(){
     for(const g of (d.gateways||[])) wrap.appendChild(authRow(g,(d.config&&d.config[g])||{},'URL (base endpoint)'));
   }catch(e){ wrap.textContent='Could not load gateways.'; }
 }
+// LLM-gateway model picker. `probe` hits the gateway's /models live (also the
+// gateway test); without it we just restore the last-known list + selection.
+function _fillModels(sel, models, selected){
+  const cur=selected||'';
+  sel.innerHTML='<option value="">— none (no bulletins until set) —</option>'
+    + (models||[]).map(m=>'<option'+(m===cur?' selected':'')+'>'+esc(m)+'</option>').join('');
+  if(cur && !(models||[]).includes(cur))  // keep a configured-but-unlisted model visible
+    sel.insertAdjacentHTML('beforeend','<option value="'+esc(cur)+'" selected>'+esc(cur)+' (configured)</option>');
+}
+async function loadGatewayModels(probe){
+  const sel=document.getElementById('gw-model'), st=document.getElementById('gw-model-status');
+  if(!sel) return;
+  if(probe) st.textContent='testing gateway…';
+  try{
+    const d=await (await fetch('/gateway-models'+(probe?'':'?probe=0'))).json();
+    _fillModels(sel, d.models, d.selected);
+    if(probe) st.textContent = d.ok ? ('✓ gateway OK — '+(d.models||[]).length+' models')
+                                    : ('✗ '+(d.error||'gateway error'));
+    else st.textContent='';
+  }catch(e){ if(probe) st.textContent='✗ request failed'; }
+}
+document.getElementById('gw-load').addEventListener('click', ()=>loadGatewayModels(true));
+document.getElementById('gw-model').addEventListener('change', async (e)=>{
+  const st=document.getElementById('gw-model-status');
+  try{ await fetch('/news-model?model='+encodeURIComponent(e.target.value), {method:'POST'});
+    st.textContent = e.target.value ? ('model set: '+e.target.value) : 'model cleared';
+  }catch(err){ st.textContent='could not set model'; }
+});
 loadModels(); loadTunings(); loadQuiet(); loadIntensity(); loadBroadcast(); loadNextNews(); pollMusic(); pollNews(); pollSong(); loadSpotifyBar();
 setPlayerMode((function(){ try{ return localStorage.getItem('smfm-mode')||'flow'; }catch(e){ return 'flow'; } })());
 setInterval(pollMusic, 8000);
