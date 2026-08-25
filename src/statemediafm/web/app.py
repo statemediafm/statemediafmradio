@@ -1018,9 +1018,11 @@ return of(u,o);};})();</script>
   button{font:inherit;padding:.5rem 1rem;margin:1rem 0;cursor:pointer;
          background:#111;color:#fffff8;border:0;border-radius:2px}
   button[disabled]{opacity:.6;cursor:default}
-  /* Transport icon buttons (Play/Pause/Stop): uniform width, larger glyph. */
+  /* Transport buttons (Play/Pause/Stop/Newscast): uniform, rounded "pill" outline. */
   button.icon{min-width:2.8rem;font-size:1.05rem;line-height:1;text-align:center;
-              padding-left:.6rem;padding-right:.6rem}
+              padding:.4rem 1.1rem;margin:0;background:transparent;color:inherit;
+              border:1px solid #bbb;border-radius:999px}
+  button.icon:hover:not([disabled]){border-color:#888}
   #modelwrap,#tuningwrap,#quietwrap,#intensitywrap{display:inline-block;margin-left:1rem}
   #intensity{vertical-align:middle;width:6rem}
   select{font:inherit;font-size:.85rem;font-weight:normal;margin-left:.35rem}
@@ -1083,19 +1085,20 @@ return of(u,o);};})();</script>
     .srcrow{border-color:#333} .chip,.srcrow button{border-color:#555}
     .switch .track{background:#444}}
   /* Player modes: Flow State (generative) vs Playlist (Spotify) — a segmented pick. */
-  #modes{display:flex;gap:.4rem;margin:.7rem 0}
-  #modes button{font:inherit;font-size:.95rem;padding:.4rem 1.1rem;border:1px solid #bbb;
-    border-radius:999px;background:transparent;color:inherit;cursor:pointer}
-  #modes button.active{background:#111;color:#fff;border-color:#111}
-  @media(prefers-color-scheme:dark){#modes button{border-color:#555}
-    #modes button.active{background:#eee;color:#111;border-color:#eee}}
+  /* Mode selector (Flow State / Playlist): tabs, like the Player/Settings tabs. */
+  #modes{display:flex;gap:.2rem;margin:.7rem 0;border-bottom:1px solid #ccc}
+  #modes button{font:inherit;font-size:.95rem;padding:.3rem .7rem;margin:0;cursor:pointer;
+    background:transparent;color:#666;border:0;border-bottom:2px solid transparent;border-radius:0}
+  #modes button.active{color:#111;border-bottom-color:#111}
+  @media(prefers-color-scheme:dark){#modes{border-color:#333}
+    #modes button.active{color:#eee;border-bottom-color:#eee}}
   /* Player transport + control bars: coherent rows, not a loose list. */
   #transport,.bar{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem;margin:.5rem 0}
   #transport{padding:.6rem .1rem;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
-  #transport #play{font-size:1rem;padding:.35rem .9rem}
   .bar{font-size:.9rem}
   .grow{flex:1;min-width:8rem}
-  @media(prefers-color-scheme:dark){#transport{border-color:#333}}
+  @media(prefers-color-scheme:dark){#transport{border-color:#333}
+    button.icon{border-color:#555}button.icon:hover:not([disabled]){border-color:#999}}
   #viz{display:block;width:100%;height:64px;margin:.5rem 0}
   article{border-top:1px solid #ccc;padding-top:.6rem;margin-top:1rem}
   .newslist{margin:.4rem 0;padding-left:1.2rem}
@@ -1158,7 +1161,7 @@ return of(u,o);};})();</script>
   html[data-theme='analog'] .authrow{ border-top:1px solid rgba(255,255,255,.06) }
   html[data-theme='analog'] .bar{ border-color:rgba(255,255,255,.08) }
   /* Buttons: raised metal caps; press inset. */
-  html[data-theme='analog'] button,html[data-theme='analog'] #modes button{
+  html[data-theme='analog'] button{
     background:linear-gradient(180deg,#4b555d,#39424a); color:var(--an-ink);
     border:1px solid var(--an-groove); border-radius:4px;
     text-transform:uppercase; letter-spacing:.08em; font-weight:600;
@@ -1167,7 +1170,12 @@ return of(u,o);};})();</script>
   html[data-theme='analog'] button:hover{ background:linear-gradient(180deg,#545f68,#3f4952) }
   html[data-theme='analog'] button:active{ box-shadow:inset 0 2px 5px rgba(0,0,0,.6); transform:translateY(1px) }
   html[data-theme='analog'] button[disabled]{ opacity:.45 }
-  html[data-theme='analog'] #modes button.active{ border-color:var(--an-led); color:var(--an-ink) }
+  /* Mode selector renders as tabs (LED underline), not metal buttons. */
+  html[data-theme='analog'] #modes{ border-bottom:1px solid var(--an-groove) }
+  html[data-theme='analog'] #modes button{ background:none; border:0; border-bottom:2px solid transparent;
+    border-radius:0; box-shadow:none; color:var(--an-dim); text-transform:uppercase; letter-spacing:.1em }
+  html[data-theme='analog'] #modes button:hover{ background:none }
+  html[data-theme='analog'] #modes button.active{ color:var(--an-ink); border-bottom-color:var(--an-led) }
   html[data-theme='analog'] .chip{ background:linear-gradient(180deg,#414b53,#333c43); color:var(--an-ink);
     border:1px solid var(--an-groove) }
   /* Inset fields: recessed into the panel. */
@@ -1236,7 +1244,7 @@ return of(u,o);};})();</script>
   html[data-theme='vapor'] .authrow{ border-top:1px solid rgba(1,205,254,.25) }
   html[data-theme='vapor'] .bar{ border-color:rgba(1,205,254,.3) }
   /* Neon buttons. */
-  html[data-theme='vapor'] button,html[data-theme='vapor'] #modes button{
+  html[data-theme='vapor'] button{
     background:linear-gradient(90deg,var(--vw-pink),var(--vw-cyan)); color:#1b0b2e;
     border:0; border-radius:6px; text-transform:uppercase; letter-spacing:.08em; font-weight:700;
     box-shadow:0 0 10px rgba(255,113,206,.5),0 0 18px rgba(1,205,254,.35);
@@ -1244,7 +1252,14 @@ return of(u,o);};})();</script>
   html[data-theme='vapor'] button:hover{ filter:brightness(1.12) }
   html[data-theme='vapor'] button:active{ transform:translateY(1px); filter:brightness(.95) }
   html[data-theme='vapor'] button[disabled]{ opacity:.5; filter:grayscale(.3) }
-  html[data-theme='vapor'] #modes button.active{ outline:2px solid var(--vw-mint) }
+  /* Mode selector renders as neon-lit tabs, not filled buttons. */
+  html[data-theme='vapor'] #modes{ border-bottom:1px solid rgba(1,205,254,.4) }
+  html[data-theme='vapor'] #modes button{ background:none; border:0; border-bottom:2px solid transparent;
+    border-radius:0; box-shadow:none; color:var(--vw-dim); font-weight:600;
+    text-transform:uppercase; letter-spacing:.08em }
+  html[data-theme='vapor'] #modes button:hover{ filter:none; color:#fff }
+  html[data-theme='vapor'] #modes button.active{ color:#fff; border-bottom-color:var(--vw-pink);
+    text-shadow:0 0 8px var(--vw-pink) }
   html[data-theme='vapor'] .chip{ background:linear-gradient(90deg,rgba(255,113,206,.9),rgba(1,205,254,.9));
     color:#1b0b2e; border:0 }
   /* Glowing inset fields. */
