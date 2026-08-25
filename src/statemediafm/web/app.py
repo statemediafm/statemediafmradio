@@ -1481,7 +1481,7 @@ return of(u,o);};})();</script>
   </details>
 
   <details class='section'>
-    <summary>Commercial Features</summary>
+    <summary>Premium</summary>
     <p class='muted'>Commercial modules (e.g. themed voice personas) unlock with a
     license key — stored locally in a gitignored file, owner-only, never sent
     anywhere but your own server.</p>
@@ -2056,15 +2056,15 @@ document.getElementById('sp-test').addEventListener('click', async ()=>{
     st.textContent = d.ok ? 'connection OK' : ('failed: '+(d.detail||'unknown'));
   }catch(e){ st.textContent='error'; }
 });
-// Commercial Features — the registered modules and whether each is unlocked.
+// Premium — the registered modules and whether each is unlocked.
 async function loadLicense(){
   try{
     const d=await (await fetch('/license')).json();
     const wrap=document.getElementById('license-modules');
     wrap.innerHTML=(d.modules||[]).map(m=>
-      '<div class="srcrow"><span class="grow">'+esc(m.name)+' — '+esc(m.description||'')+
+      '<div class="srcrow"><span class="grow">'+esc(m.name)+
       '</span><span class="kind">'+(m.entitled?'unlocked':'locked')+'</span></div>').join('')
-      || '<p class="muted">No commercial modules registered.</p>';
+      || '<p class="muted">No premium modules registered.</p>';
   }catch(e){}
 }
 document.getElementById('narration-save').addEventListener('click', async ()=>{
