@@ -1031,6 +1031,10 @@ return of(u,o);};})();</script>
           color:#666;border-bottom:2px solid transparent}
   #tabs a.active{color:#111;border-bottom-color:#111}
   .authrow{margin:.4rem 0;padding:.6rem 0;border-top:1px solid #eee}
+  /* Premium feature list — each item prefixed with a padlock (locked). */
+  .locked-list{list-style:none;margin:.4rem 0;padding-left:.2rem}
+  .locked-list li{margin:.3rem 0}
+  .locked-list li::before{content:'🔒';margin-right:.5rem;opacity:.75}
   /* "?" token-path helper (native tooltip on hover). */
   .help{display:inline-block;width:1.15em;height:1.15em;line-height:1.15em;text-align:center;
         border:1px solid #999;border-radius:50%;font-size:.72rem;color:#666;cursor:help;
@@ -1498,6 +1502,13 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Premium</summary>
+    <ul class='locked-list'>
+      <li>Enterprise streaming-service mode</li>
+      <li>SSO</li>
+      <li>Commuter mobile app</li>
+      <li>Team playlists</li>
+      <li>Personas</li>
+    </ul>
     <div class='authrow' id='license-row'>
       <input id='license-key' type='password' autocomplete='off' placeholder='premium key'>
       <button id='license-save'>Activate</button>

@@ -36,7 +36,7 @@ its own, just visit that address.)
 1. Click **▶ Start** — browsers stay silent until you click, so this begins the audio.
    It's already playing generative music with a Hacker News bulletin on a timer.
 2. To add your own team's activity, open the **Settings** tab:
-   - **Config** — paste your GitLab (or GitHub) address and a **read-only** access
+   - **Auth** — paste your GitLab (or GitHub) address and a **read-only** access
      token. Optionally add an **AI gateway** URL + key for smarter news writing.
    - **News Update Sources** — add your project's URL.
    - **News writer** — bulletins are written by an LLM, so you need **one** of:
