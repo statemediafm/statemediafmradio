@@ -1023,7 +1023,7 @@ return of(u,o);};})();</script>
               padding-left:.6rem;padding-right:.6rem}
   #modelwrap,#tuningwrap,#quietwrap,#intensitywrap{display:inline-block;margin-left:1rem}
   #intensity{vertical-align:middle;width:6rem}
-  select{font:inherit;font-size:.85rem;margin-left:.35rem}
+  select{font:inherit;font-size:.85rem;font-weight:normal;margin-left:.35rem}
   #tabs{margin:.3rem 0 1rem;border-bottom:1px solid #ccc}
   #tabs a{cursor:pointer;display:inline-block;padding:.3rem .7rem;margin-right:.2rem;
           color:#666;border-bottom:2px solid transparent}
