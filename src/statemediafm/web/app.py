@@ -1155,6 +1155,9 @@ return of(u,o);};})();</script>
   html[data-theme='analog'] h1{ letter-spacing:.02em; font-weight:normal; text-align:center;
     order:99; margin-top:1.6rem; padding-top:1rem; border-top:1px solid var(--an-groove) }
   html[data-theme='analog'] .muted{ color:var(--an-dim) }
+  /* Energy + News-voice labels/states read upright, not italic. */
+  html[data-theme='analog'] #intensitywrap,html[data-theme='analog'] #voicewrap,
+  html[data-theme='analog'] #intensity-band{ font-style:normal }
   html[data-theme='analog'] a{ color:var(--an-ink) }
   /* Panels: bevelled synth modules — inset highlight on top, shadow below. */
   html[data-theme='analog'] details.section,html[data-theme='analog'] article{
