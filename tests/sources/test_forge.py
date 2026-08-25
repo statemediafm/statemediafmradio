@@ -458,3 +458,49 @@ def test_github_mentions_reads_the_mentioned_filter():
     assert first.actors == ["octocat"]
     assert first.raw["mention"] is True and first.id == "github:mention:5001"
     assert items[1].kind == "pull_request" and items[1].origin == "acme/api"
+
+
+def test_detect_forge_github_enterprise():
+    from statemediafm.sources.forge import _parse_forge_url
+
+    base = "https://ghe.corp.example"
+    # Unknown host without github_base → not recognized as a forge.
+    assert detect_forge("https://ghe.corp.example/team/app") is None
+    # With the configured GHE endpoint, its host is recognized as GitHub.
+    assert detect_forge("https://ghe.corp.example/team/app", github_base=base) == ("github", "team/app")
+    assert _parse_forge_url("https://ghe.corp.example/o/r", github_base=base) == (
+        "github", ["o", "r"], False)
+    # A lookalike public host is not mistaken for GitHub.
+    assert detect_forge("https://github.company.com/a/b") is None
+
+
+def test_github_enterprise_poll_uses_api_v3_base():
+    routes = {"/api/v3/repos/o/r/issues?": [
+        {"number": 1, "title": "GHE issue", "state": "open", "comments": 0,
+         "user": {"login": "ann"}, "body": "b",
+         "created_at": "2026-08-24T09:00:00Z", "updated_at": "2026-08-25T09:00:00Z",
+         "html_url": "https://ghe.corp.example/o/r/issues/1"}]}
+    fake = _FakeGet(routes)
+    src = ForgeSource("https://ghe.corp.example/o/r", get=fake, max_age=None,
+                      github_base="https://ghe.corp.example")
+    assert src.platform == "github"
+    items = src.poll()
+    assert items[0].title == "GHE issue"
+    # Polls the GHE instance's REST v3 base, not api.github.com.
+    assert any("https://ghe.corp.example/api/v3/repos/o/r/issues" in u for u in fake.calls)
+    assert not any("api.github.com" in u for u in fake.calls)
+
+
+def test_github_enterprise_mentions_use_api_v3():
+    routes = {"/api/v3/issues?filter=mentioned": [
+        {"id": 9, "number": 3, "title": "ping", "state": "open",
+         "user": {"login": "bo"}, "body": "@you", "repository": {"full_name": "o/r"},
+         "created_at": "2026-08-24T09:00:00Z", "updated_at": "2026-08-25T09:00:00Z",
+         "html_url": "https://ghe.corp.example/o/r/issues/3"}]}
+    fake = _FakeGet(routes)
+    src = ForgeSource("https://ghe.corp.example/issues?q=is:issue+state:open+mentions:@me",
+                      get=fake, max_age=None, github_base="https://ghe.corp.example")
+    assert src.is_mentions is True
+    items = src.poll()
+    assert items[0].id == "github:mention:9"
+    assert any("https://ghe.corp.example/api/v3/issues?filter=mentioned" in u for u in fake.calls)

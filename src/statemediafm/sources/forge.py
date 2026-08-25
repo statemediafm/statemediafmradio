@@ -42,6 +42,10 @@ _HOSTS = {"github.com": "github", "gitlab.com": "gitlab"}
 # Default GitLab API base when no self-hosted instance is configured.
 GITLAB_DEFAULT_BASE = "https://gitlab.com"
 
+# GitHub API base: the public one, or — for **GitHub Enterprise Server** (GHE) —
+# ``https://<host>/api/v3``, derived from the configured ``github_base``.
+GITHUB_DEFAULT_API = "https://api.github.com"
+
 # Default age cap: a forge airs work items updated since the last poll, but only
 # while the item is still young — opened within this window (60 days). So a long-
 # running issue that just got a comment is not resurfaced; the newscast stays on
@@ -87,8 +91,22 @@ def normalize_gitlab_base(url: str | None) -> str:
     return u if "://" in u else "https://" + u
 
 
+def normalize_github_base(url: str | None) -> str:
+    """A GitHub REST API base URL: default to ``api.github.com``; for a configured
+    **GitHub Enterprise Server** host, its REST v3 base ``https://<host>/api/v3``.
+    An already-``/api/…`` URL (or api.github.com) is used as-is."""
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return GITHUB_DEFAULT_API
+    if "://" not in u:
+        u = "https://" + u
+    if _host_of(u) == "github.com" or "/api/" in u:
+        return u
+    return u + "/api/v3"
+
+
 def _parse_forge_url(
-    repo: str, *, gitlab_base: str | None = None
+    repo: str, *, gitlab_base: str | None = None, github_base: str | None = None
 ) -> tuple[str, list[str], bool] | None:
     """Parse a forge URL into ``(platform, path_segments, is_group)``, or ``None``.
 
@@ -107,9 +125,13 @@ def _parse_forge_url(
     """
     hosts = dict(_HOSTS)
     if gitlab_base:
-        gh = _host_of(gitlab_base)
+        gl = _host_of(gitlab_base)
+        if gl:
+            hosts[gl] = "gitlab"
+    if github_base:  # a self-hosted GitHub Enterprise host counts as github
+        gh = _host_of(github_base)
         if gh:
-            hosts[gh] = "gitlab"
+            hosts[gh] = "github"
     host = _host_of(repo)
     platform = hosts.get(host)
     if platform is None:
@@ -139,7 +161,9 @@ def _parse_forge_url(
     return platform, parts, is_group
 
 
-def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str] | None:
+def detect_forge(
+    repo: str, *, gitlab_base: str | None = None, github_base: str | None = None
+) -> tuple[str, str] | None:
     """Return ``(platform, "owner/name")`` if ``repo`` is a known forge URL, else
     ``None`` (so callers fall back to the git source).
 
@@ -147,7 +171,7 @@ def detect_forge(repo: str, *, gitlab_base: str | None = None) -> tuple[str, str
     slug — the group or project path either way (the ``groups/`` marker is already
     consumed). Public signature is intentionally the ``(platform, slug)`` tuple.
     """
-    parsed = _parse_forge_url(repo, gitlab_base=gitlab_base)
+    parsed = _parse_forge_url(repo, gitlab_base=gitlab_base, github_base=github_base)
     if parsed is None:
         return None
     platform, parts, _is_group = parsed
@@ -184,8 +208,9 @@ class ForgeSource(Source):
         max_age: float | None = DEFAULT_MAX_AGE,
         now: Callable[[], datetime] | None = None,
         gitlab_base: str | None = None,
+        github_base: str | None = None,
     ) -> None:
-        parsed = _parse_forge_url(repo, gitlab_base=gitlab_base)
+        parsed = _parse_forge_url(repo, gitlab_base=gitlab_base, github_base=github_base)
         if parsed is None:
             raise ValueError(f"{repo!r} is not a recognized GitHub/GitLab URL.")
         self.repo = repo
@@ -197,9 +222,11 @@ class ForgeSource(Source):
         # GitHub's per-user mentions feed (``github.com/issues?q=…mentions:@me``):
         # open issues/PRs across GitHub that @-mention you — not a repo.
         self.is_mentions = self.platform == "github" and parts == ["issues"]
-        # For GitLab, the API base — a self-hosted instance (``gitlab_base``) or
-        # gitlab.com. GitHub always uses api.github.com.
+        # The API base per platform: for GitLab a self-hosted instance
+        # (``gitlab_base``) or gitlab.com; for GitHub the public api.github.com or —
+        # for GitHub Enterprise (``github_base``) — that instance's ``/api/v3``.
         self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
+        self.gh_api_base = normalize_github_base(github_base) if self.platform == "github" else GITHUB_DEFAULT_API
         self.project = (  # on-air attribution
             "to-dos" if self.is_todos else "mentions" if self.is_mentions else parts[-1]
         )
@@ -288,7 +315,7 @@ class ForgeSource(Source):
         return [n for n in items if keep(n)]
 
     def _poll_github(self) -> list[NewsItem]:
-        base = f"https://api.github.com/repos/{self.slug}"
+        base = f"{self.gh_api_base}/repos/{self.slug}"
         issues = self._get(
             f"{base}/issues?per_page={self.max_count}&sort=updated&direction=desc&state=all"
         )
@@ -329,7 +356,7 @@ class ForgeSource(Source):
         (``GET /issues?filter=mentioned``). User-scoped, so it needs the account's
         own token; the mentioned user is whoever the token authenticates as."""
         listing = self._get(
-            "https://api.github.com/issues"
+            f"{self.gh_api_base}/issues"
             f"?filter=mentioned&state=open&per_page={self.max_count}&sort=updated&direction=desc"
         )
         items: list[NewsItem] = []

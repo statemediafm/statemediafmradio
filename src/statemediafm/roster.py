@@ -105,15 +105,16 @@ def _build_repo(topic: str, seg: dict) -> Source:
     repo = seg.get("repo")
     if not repo:
         raise ValueError(f"segment {topic!r}: source='repo' needs a 'repo' URL or path")
-    # Self-hosted GitLab: the configured instance base URL ([gitlab] endpoint),
-    # so its URLs are recognized as GitLab and polled via its API. A per-segment
-    # 'gitlab_base' overrides it (rare); blank → gitlab.com.
+    # Self-hosted GitLab / GitHub Enterprise: the configured instance base URLs
+    # ([gitlab] / [github] endpoint), so their URLs are recognized and polled via
+    # their APIs. A per-segment override is honored (rare); blank → the public host.
     gitlab_base = seg.get("gitlab_base") or source_endpoint("gitlab") or None
+    github_base = seg.get("github_base") or source_endpoint("github") or None
     # Token precedence: an explicit token, then token_env, else the gitignored
     # auth config for the detected forge (github/gitlab), else none.
     token = seg.get("token") or (os.environ.get(seg["token_env"]) if seg.get("token_env") else None)
     if token is None:
-        forge = detect_forge(repo, gitlab_base=gitlab_base)  # (platform, slug) | None
+        forge = detect_forge(repo, gitlab_base=gitlab_base, github_base=github_base)
         if forge is not None and forge[0] in ("github", "gitlab"):
             token = source_token(forge[0])
     # max_age (e.g. "60d", "48h") caps a forge to items opened within the window;
@@ -125,6 +126,7 @@ def _build_repo(topic: str, seg: dict) -> Source:
         token=token,
         max_age=max_age,
         gitlab_base=gitlab_base,
+        github_base=github_base,
     )
 
 

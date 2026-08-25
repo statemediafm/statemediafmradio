@@ -122,7 +122,8 @@ def test_repo_source_falls_back_to_saved_auth_token(monkeypatch):
 
     captured = {}
 
-    def _fake_open_source(repo, max_count=20, token=None, max_age=None, gitlab_base=None):
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None,
+                          gitlab_base=None, github_base=None):
         captured.update(token=token, max_age=max_age, gitlab_base=gitlab_base)
 
         class _S:
@@ -150,8 +151,9 @@ def test_repo_source_uses_self_hosted_gitlab_endpoint(monkeypatch):
 
     captured = {}
 
-    def _fake_open_source(repo, max_count=20, token=None, max_age=None, gitlab_base=None):
-        captured.update(repo=repo, token=token, gitlab_base=gitlab_base)
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None,
+                          gitlab_base=None, github_base=None):
+        captured.update(repo=repo, token=token, gitlab_base=gitlab_base, github_base=github_base)
 
         class _S:
             name = "s"
@@ -169,3 +171,32 @@ def test_repo_source_uses_self_hosted_gitlab_endpoint(monkeypatch):
     roster._build_repo("T", {"repo": "https://gitlab.corp.example/team/app"})
     assert captured["gitlab_base"] == "https://gitlab.corp.example"  # threaded to open_source
     assert captured["token"] == "GLPAT"  # the URL is recognized as GitLab, so its token applies
+
+
+def test_repo_source_uses_github_enterprise_endpoint(monkeypatch):
+    from statemediafm import roster
+
+    captured = {}
+
+    def _fake_open_source(repo, max_count=20, token=None, max_age=None,
+                          gitlab_base=None, github_base=None):
+        captured.update(repo=repo, token=token, github_base=github_base)
+
+        class _S:
+            name = "s"
+
+            def poll(self, since=None):
+                return []
+
+        return _S()
+
+    monkeypatch.setattr(roster, "open_source", _fake_open_source)
+    # Configured GitHub Enterprise instance + its saved token.
+    monkeypatch.setattr(roster, "source_endpoint",
+                        lambda src, path=None: "https://ghe.corp.example" if src == "github" else None)
+    monkeypatch.setattr(roster, "source_token",
+                        lambda src, path=None: "GHPAT" if src == "github" else None)
+
+    roster._build_repo("T", {"repo": "https://ghe.corp.example/team/app"})
+    assert captured["github_base"] == "https://ghe.corp.example"  # threaded to open_source
+    assert captured["token"] == "GHPAT"  # the URL is recognized as GitHub (GHE), so its token applies

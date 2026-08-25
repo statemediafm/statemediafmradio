@@ -1444,10 +1444,11 @@ return of(u,o);};})();</script>
       <p class='muted'>If a token leaks, revoke it at the provider — this app can't. Storage and the
       full trust model are in <code>SECURITY_MODEL.md</code>.</p>
     </details>
-    <p class='muted'><strong>Self-hosted GitLab:</strong> set the GitLab <em>endpoint</em> to
-    your instance URL (e.g. <code>https://gitlab.mycorp.com</code>) so projects on it are
-    recognized and polled via its API — leave it blank for <code>gitlab.com</code>. Set the
-    endpoint/token <strong>before</strong> adding a project under <em>News Update Sources</em>
+    <p class='muted'><strong>Self-hosted GitLab / GitHub Enterprise:</strong> set the GitLab or
+    GitHub <em>endpoint</em> to your instance URL (e.g. <code>https://gitlab.mycorp.com</code> or
+    <code>https://ghe.mycorp.com</code>) so projects on it are recognized and polled via its API
+    (GHE uses <code>/api/v3</code>) — leave it blank for <code>gitlab.com</code> / <code>github.com</code>.
+    Set the endpoint/token <strong>before</strong> adding a project under <em>News Update Sources</em>
     (a value saved after a source is added only applies once you re-add it).</p>
     <div id='authform'></div>
     <h3>News writer</h3>
@@ -2083,6 +2084,10 @@ const ADD_OPTIONS=[
    ph:'https://gitlab.com/group/project  (a group /groups/… also works, or an issue/MR URL)'},
   {label:'GitLab to-dos (@mentions)', kind:'repo', key:'repo',
    ph:'https://gitlab.com/dashboard/todos  (or https://gitlab.mycorp.com/dashboard/todos)'},
+  {label:'GitHub Enterprise work items (URL)', kind:'repo', key:'repo',
+   ph:'https://ghe.yourcompany.com/owner/repo  (set the GitHub endpoint under Auth first)'},
+  {label:'GitHub Enterprise mentions (@me)', kind:'repo', key:'repo',
+   ph:'https://ghe.yourcompany.com/issues?q=is:issue+state:open+mentions:@me'},
   {label:'GitHub work items (URL)', kind:'repo', key:'repo',
    ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
   {label:'GitHub mentions (@me)', kind:'repo', key:'repo',
