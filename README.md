@@ -46,6 +46,22 @@ its own, just visit that address.)
 
 To stop it, press **Ctrl-C** in the terminal.
 
+## Add your music (Spotify)
+
+You can use your own **Spotify** account as the music mix, so bulletins play over
+your playlists instead of the generative bed (in-tab playback needs Spotify
+**Premium**). This takes a one-time setup: create a Spotify app to get a **Client
+ID** and **Client Secret**, with its redirect **endpoint set to `127.0.0.1`** (the
+same address the app runs on).
+
+1. At [developer.spotify.com](https://developer.spotify.com/dashboard), create an
+   app and copy its **Client ID** and **Client Secret**. Set the redirect URI to
+   `http://127.0.0.1:8150/spotify/callback`.
+2. In **Settings › Mix › Spotify**, paste the Client ID and Secret (stored locally,
+   never sent anywhere but your own machine).
+3. In the **Player** tab, switch to **Playlist** mode, **Connect** Spotify, pick a
+   playlist, and press **▶**.
+
 ---
 
 Want the details — other install options, the command-line tools, how the music and
