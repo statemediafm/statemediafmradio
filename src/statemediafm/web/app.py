@@ -1031,6 +1031,11 @@ return of(u,o);};})();</script>
           color:#666;border-bottom:2px solid transparent}
   #tabs a.active{color:#111;border-bottom-color:#111}
   .authrow{margin:.4rem 0;padding:.6rem 0;border-top:1px solid #eee}
+  /* "?" token-path helper (native tooltip on hover). */
+  .help{display:inline-block;width:1.15em;height:1.15em;line-height:1.15em;text-align:center;
+        border:1px solid #999;border-radius:50%;font-size:.72rem;color:#666;cursor:help;
+        user-select:none;vertical-align:middle}
+  @media(prefers-color-scheme:dark){.help{border-color:#666;color:#aaa}}
   .authrow input{font:inherit;font-size:.9rem;display:block;width:100%;max-width:26rem;margin:.2rem 0;
                  padding:.3rem;border:1px solid #ccc;border-radius:2px;background:#fffff8;color:inherit}
   /* Warning line + revealable info hint (least-privilege scopes). */
@@ -2261,11 +2266,24 @@ async function loadPresets(){
     }
   }catch(e){}
 }
+// Where each provider issues an auth token — shown as a "?" mouseover hint so
+// you don't have to hunt for the setting.
+const TOKEN_PATHS={
+  github:'GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens (read-only)',
+  gitlab:'GitLab: Preferences → Access Tokens → Personal Access Tokens (scope: read_api)',
+  jira:'Jira: Atlassian account → Security → Create and manage API tokens',
+  slack:'Slack: api.slack.com/apps → your app → OAuth & Permissions → Bot/User OAuth Token',
+  pagerduty:'PagerDuty: User Settings → My Profile → User Settings → Create API User Token',
+  'llm-gateway':"Your gateway's dashboard → API Keys"
+};
 // A single endpoint/token row, shared by the Auth (news sources) and Gateways
 // sections — both POST to /auth; the placeholder differs (endpoint vs URL).
 function authRow(src, c, epPlaceholder){
   const row=document.createElement('div'); row.className='authrow'; row.dataset.source=src;
-  row.innerHTML='<strong>'+esc(src)+'</strong> <span class="muted">'+
+  const path=TOKEN_PATHS[src];
+  row.innerHTML='<strong>'+esc(src)+'</strong>'+
+    (path?' <span class="help" title="'+esc(path)+'">?</span>':'')+
+    ' <span class="muted">'+
     (c.token_set?('· token set '+esc(c.token_hint||'')):'· no token')+'</span>'+
     '<input class="ep" placeholder="'+esc(epPlaceholder)+'" value="'+esc(c.endpoint||'')+'">'+
     '<input class="tok" type="password" autocomplete="off" placeholder="'+
