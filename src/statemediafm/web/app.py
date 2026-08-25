@@ -1482,9 +1482,6 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Premium</summary>
-    <p class='muted'>Commercial modules (e.g. themed voice personas) unlock with a
-    license key — stored locally in a gitignored file, owner-only, never sent
-    anywhere but your own server.</p>
     <div class='authrow' id='license-row'>
       <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
       <button id='license-save'>Activate</button>
