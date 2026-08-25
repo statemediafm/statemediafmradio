@@ -1487,10 +1487,9 @@ return of(u,o);};})();</script>
     anywhere but your own server.</p>
     <div class='authrow' id='license-row'>
       <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
-      <button id='license-save'>Unlock</button>
+      <button id='license-save'>Activate</button>
       <span class='muted' id='license-status'></span>
     </div>
-    <div id='license-modules'></div>
   </details>
 </div>
 
@@ -1994,7 +1993,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadTheme(); loadLicense(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadTheme(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNextNews(); pollMusic(); pollSong(); }
@@ -2025,7 +2024,7 @@ document.getElementById('license-save').addEventListener('click', async ()=>{
     const ok=(d.modules||[]).some(m=>m.entitled);
     st.textContent = ok ? 'unlocked' : 'key saved, but no modules unlocked';
     document.getElementById('license-key').value='';
-    await loadNarration(); await loadLicense();
+    await loadNarration();
   }catch(e){ st.textContent='error'; }
 });
 // Mix (under Narration) — rotate ambient generators, and/or mix in Spotify songs.
@@ -2056,17 +2055,6 @@ document.getElementById('sp-test').addEventListener('click', async ()=>{
     st.textContent = d.ok ? 'connection OK' : ('failed: '+(d.detail||'unknown'));
   }catch(e){ st.textContent='error'; }
 });
-// Premium — the registered modules and whether each is unlocked.
-async function loadLicense(){
-  try{
-    const d=await (await fetch('/license')).json();
-    const wrap=document.getElementById('license-modules');
-    wrap.innerHTML=(d.modules||[]).map(m=>
-      '<div class="srcrow"><span class="grow">'+esc(m.name)+
-      '</span><span class="kind">'+(m.entitled?'unlocked':'locked')+'</span></div>').join('')
-      || '<p class="muted">No premium modules registered.</p>';
-  }catch(e){}
-}
 document.getElementById('narration-save').addEventListener('click', async ()=>{
   const st=document.getElementById('narration-status'); st.textContent='saving…';
   const voice=document.getElementById('voice-sel').value;
