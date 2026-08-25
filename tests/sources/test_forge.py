@@ -411,3 +411,50 @@ def test_gitlab_todos_name_the_item_and_summarize_the_mention():
     assert review.kind == "merge_request"
     assert review.title == "Add idempotency keys"
     assert review.body == "Eli asked you to review."  # no comment → still says why
+
+
+def test_github_issues_mentions_url_flags_the_mentions_mode():
+    from statemediafm.sources.forge import _parse_forge_url
+
+    # The github.com/issues dashboard (with or without the mentions query) is the
+    # @-mentions feed, not a repo.
+    assert _parse_forge_url("https://github.com/issues") == ("github", ["issues"], False)
+    assert _parse_forge_url(
+        "https://github.com/issues?q=is:issue+state:open+mentions:@me"
+    ) == ("github", ["issues"], False)
+    src = ForgeSource("https://github.com/issues", get=lambda url: [], max_age=None)
+    assert src.is_mentions is True and src.project == "mentions"
+
+
+def test_github_mentions_reads_the_mentioned_filter():
+    now = datetime(2026, 8, 25, 12, 0, 0, tzinfo=UTC)
+    routes = {
+        "/issues?filter=mentioned": [
+            {"id": 5001, "number": 12, "title": "Flaky deploy step",
+             "state": "open", "user": {"login": "octocat"},
+             "body": "@you have you seen this fail on main?",
+             "repository": {"full_name": "acme/widgets", "name": "widgets"},
+             "created_at": "2026-08-24T09:00:00Z", "updated_at": "2026-08-25T08:00:00Z",
+             "html_url": "https://github.com/acme/widgets/issues/12"},
+            {"id": 5002, "number": 34, "title": "Bump lockfile",
+             "state": "open", "user": {"login": "dependabot"},
+             "body": "cc @you", "pull_request": {},
+             "repository": {"full_name": "acme/api", "name": "api"},
+             "created_at": "2026-08-24T10:00:00Z", "updated_at": "2026-08-25T07:00:00Z",
+             "html_url": "https://github.com/acme/api/pull/34"},
+        ]
+    }
+    fake = _FakeGet(routes)
+    items = ForgeSource("https://github.com/issues?q=is:issue+state:open+mentions:@me",
+                        get=fake, now=lambda: now, max_age=None).poll()
+    # Uses the authenticated-user mentioned filter, not a repo listing.
+    assert any("/issues?filter=mentioned&state=open" in u for u in fake.calls)
+    assert not any("/repos/" in u for u in fake.calls)
+
+    first = items[0]
+    assert first.kind == "issue"
+    assert first.title == "Flaky deploy step"
+    assert first.origin == "acme/widgets"   # per-item repo, since mentions span repos
+    assert first.actors == ["octocat"]
+    assert first.raw["mention"] is True and first.id == "github:mention:5001"
+    assert items[1].kind == "pull_request" and items[1].origin == "acme/api"

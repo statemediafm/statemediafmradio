@@ -6,10 +6,10 @@ GitLab **project's** — or a GitLab **group's** (``…/groups/team``, aggregati
 its projects) — most-recently-updated issues and merge/pull requests, attaches
 the *latest comment* on each, and normalizes them to ``NewsItem``s.
 
-It also reads a GitLab user's **to-do list** (``…/dashboard/todos``): the items
-you've been @-mentioned in, assigned, or asked to review. Each airs the work
-item's title plus a summary of the comment that pinged you. This mode is
-user-scoped, so it needs the account's own ``read_api`` PAT.
+It also reads two per-user feeds: a GitLab **to-do list** (``…/dashboard/todos``
+— items you've been @-mentioned in, assigned, or asked to review) and a GitHub
+**mentions** feed (``github.com/issues?q=…mentions:@me`` — open issues/PRs that
+@-mention you). Both are user-scoped, so they need the account's own token.
 
 Design notes:
 - **stdlib only** (``urllib`` + ``json``), so it still runs inside the
@@ -125,6 +125,11 @@ def _parse_forge_url(
     if is_group:
         parts = parts[1:]
     elif platform == "github":
+        # The personal issues dashboard (``github.com/issues`` — with or without a
+        # ``?q=…mentions:@me`` query, already stripped above) is the @-mentions
+        # feed, not a repo; keep it as a one-segment marker.
+        if parts == ["issues"]:
+            return platform, ["issues"], False
         # owner/repo are the first two segments (drop /issues/123, /pull/5, …).
         # GitLab projects keep the full (possibly nested) path — the API takes it whole.
         parts = parts[:2]
@@ -189,10 +194,15 @@ class ForgeSource(Source):
         # GitLab's per-user to-do feed (``/dashboard/todos``): items you've been
         # @-mentioned in, assigned, asked to review, etc. — not a project/group.
         self.is_todos = self.platform == "gitlab" and parts == ["dashboard", "todos"]
+        # GitHub's per-user mentions feed (``github.com/issues?q=…mentions:@me``):
+        # open issues/PRs across GitHub that @-mention you — not a repo.
+        self.is_mentions = self.platform == "github" and parts == ["issues"]
         # For GitLab, the API base — a self-hosted instance (``gitlab_base``) or
         # gitlab.com. GitHub always uses api.github.com.
         self.api_base = normalize_gitlab_base(gitlab_base) if self.platform == "gitlab" else GITLAB_DEFAULT_BASE
-        self.project = "to-dos" if self.is_todos else parts[-1]  # on-air attribution
+        self.project = (  # on-air attribution
+            "to-dos" if self.is_todos else "mentions" if self.is_mentions else parts[-1]
+        )
         self.max_count = max_count
         # The age cap (seconds), measured from when an item was opened; None = no
         # age limit. Combined with the last poll time so each poll airs what has
@@ -236,7 +246,7 @@ class ForgeSource(Source):
     def poll(self, since: datetime | None = None) -> list[NewsItem]:
         now = self._now()
         if self.platform == "github":
-            items = self._poll_github()
+            items = self._poll_github_mentions() if self.is_mentions else self._poll_github()
         elif self.is_todos:
             items = self._poll_gitlab_todos()
         else:
@@ -308,6 +318,37 @@ class ForgeSource(Source):
                     timestamp=_parse_ts(it.get("updated_at")),
                     refs=[it.get("html_url", "")],
                     raw={"platform": "github", "number": it["number"], "state": it["state"],
+                         "opened_at": it.get("created_at")},
+                )
+            )
+        return items
+
+    def _poll_github_mentions(self) -> list[NewsItem]:
+        """Open issues/PRs across GitHub that @-mention the signed-in user — the
+        REST equivalent of ``github.com/issues?q=…state:open+mentions:@me``
+        (``GET /issues?filter=mentioned``). User-scoped, so it needs the account's
+        own token; the mentioned user is whoever the token authenticates as."""
+        listing = self._get(
+            "https://api.github.com/issues"
+            f"?filter=mentioned&state=open&per_page={self.max_count}&sort=updated&direction=desc"
+        )
+        items: list[NewsItem] = []
+        for it in listing:
+            is_pr = "pull_request" in it
+            repo = it.get("repository") or {}
+            items.append(
+                NewsItem(
+                    id=f"github:mention:{it.get('id', it.get('number'))}",
+                    source=self.name,
+                    kind="pull_request" if is_pr else "issue",
+                    title=it["title"],
+                    body=(it.get("body") or "").strip()[:800],
+                    origin=repo.get("full_name") or repo.get("name") or self.project,
+                    actors=[it["user"]["login"]],
+                    timestamp=_parse_ts(it.get("updated_at")),
+                    refs=[it.get("html_url", "")],
+                    raw={"platform": "github", "number": it.get("number"),
+                         "state": it.get("state"), "mention": True,
                          "opened_at": it.get("created_at")},
                 )
             )

@@ -2080,6 +2080,8 @@ const ADD_OPTIONS=[
    ph:'https://gitlab.com/dashboard/todos  (or https://gitlab.mycorp.com/dashboard/todos)'},
   {label:'GitHub work items (URL)', kind:'repo', key:'repo',
    ph:'https://github.com/owner/repo  (or an issue/PR URL)'},
+  {label:'GitHub mentions (@me)', kind:'repo', key:'repo',
+   ph:'https://github.com/issues?q=is:issue+state:open+mentions:@me'},
   {label:'Hacker News', kind:'hackernews', key:null, ph:null},
   {label:'Slack channel', kind:'slack', key:'channel', ph:'channel name or ID'},
   {label:'Jira project', kind:'jira', key:'project', ph:'project key, e.g. OPS'},
