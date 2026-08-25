@@ -1023,6 +1023,8 @@ return of(u,o);};})();</script>
               padding:.4rem 1.1rem;margin:0;background:transparent;color:inherit;
               border:1px solid #bbb;border-radius:999px}
   button.icon:hover:not([disabled]){border-color:#888}
+  /* Lit (amber) while engaged — e.g. Pause when the radio is paused, press to resume. */
+  button.icon.active{background:#e8a13a;color:#151515;border-color:#e8a13a;box-shadow:none}
   #modelwrap,#tuningwrap,#quietwrap,#intensitywrap{display:inline-block;margin-left:1rem}
   #intensity{vertical-align:middle;width:6rem}
   select{font:inherit;font-size:.85rem;font-weight:normal;margin-left:.35rem}
@@ -1539,7 +1541,13 @@ let strudelReady=false;  // the generative engine is initialised + warmed
 function updateTransport(){
   const playing = started && broadcasting;
   btn.disabled = playing;                     // Play is a no-op while already playing
-  const pause=document.getElementById('pause'); if(pause) pause.disabled = !playing;      // Pause: only while playing
+  const pause=document.getElementById('pause');
+  if(pause){
+    pause.disabled = !(playing||paused);      // Pause while playing; Resume while paused
+    pause.classList.toggle('active', paused); // lit amber while paused
+    pause.setAttribute('aria-label', paused?'Resume':'Pause');
+    pause.title = paused?'Resume':'Pause';
+  }
   const stop=document.getElementById('stop'); if(stop) stop.disabled = !(playing||paused); // Stop: while playing or paused
 }
 async function loadBroadcast(){
@@ -1752,8 +1760,9 @@ async function pollMusic(){
     if(started && d.play===false){
       if(!musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
       viz.on=false;
-      statusEl.textContent = broadcasting ? 'quiet · silent (music returns before the news)'
-                                          : 'stopped';
+      statusEl.textContent = paused ? 'paused'
+                           : broadcasting ? 'quiet · silent (music returns before the news)'
+                           : 'stopped';
       return;
     }
     if(!d.text){ statusEl.textContent='waiting for activity…'; return; }
@@ -1959,12 +1968,11 @@ function setPlayerMode(m){
 }
 document.querySelectorAll('#modes button').forEach(b=>
   b.addEventListener('click', ()=>setPlayerMode(b.dataset.mode)));
-// Play: start/resume the radio in the current mode — the SAME button for Flow State
-// and Playlist. In Flow State it starts the generative bed; in Playlist it starts
+// Start (or resume from Pause) the radio in the current mode — shared by the Play
+// button and Pause's resume. Flow State starts the generative bed; Playlist starts
 // your Spotify playlist. The news airs over whichever you pick.
-btn.addEventListener('click', async ()=>{
-  btn.disabled=true;
-  const resuming = paused; paused=false;   // resuming from Pause vs a fresh start
+async function startBroadcast(resuming){
+  paused=false;
   try{
     broadcasting=true;
     try{ await fetch('/broadcast?on=true',{method:'POST'}); }catch(e){}
@@ -1981,17 +1989,22 @@ btn.addEventListener('click', async ()=>{
       await pollMusic(); pollNews(); pollSong();
     }
   } finally { updateTransport(); }
-});
-// Pause: halt audio but keep the session (Spotify pauses in place; the generative
-// bed goes silent). Play resumes. Unlike Stop, spMode is kept so Spotify resumes.
-document.getElementById('pause').addEventListener('click', async ()=>{
-  if(!(started && broadcasting)) return;     // nothing to pause
+}
+btn.addEventListener('click', async ()=>{ btn.disabled=true; await startBroadcast(paused); });
+// Pause: stop the music + broadcast but keep the session so it can resume. It
+// TOGGLES — pressed while playing it pauses (and lights amber); pressed again it
+// resumes. Play resumes too. Unlike Stop, spMode is kept so Spotify resumes in place.
+async function pauseBroadcast(){
   broadcasting=false; paused=true;
-  try{ await fetch('/broadcast?on=false',{method:'POST'}); }catch(e){}
+  try{ await fetch('/broadcast?on=false',{method:'POST'}); }catch(e){}  // stops the server loop + silences music
   if(spMode){ try{ if(spPlayer) await spPlayer.pause(); }catch(e){} }
   else if(strudelReady){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
   viz.on=false; statusEl.textContent='paused';
   updateTransport();
+}
+document.getElementById('pause').addEventListener('click', async ()=>{
+  if(paused){ await startBroadcast(true); }                 // pressed while paused → resume
+  else if(started && broadcasting){ await pauseBroadcast(); }  // pressed while playing → pause
 });
 // Stop: halt the radio (music/playlist + news) and reset. Play restarts.
 document.getElementById('stop').addEventListener('click', async ()=>{
