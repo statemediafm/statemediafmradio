@@ -140,3 +140,14 @@ def test_space_dub_pad_evolves_over_long_timescales():
     assert ".slow(31)" in pad and ".slow(23)" in pad and ".slow(29)" in pad
     # eight-chord wandering cycle (longer than the 4-chord skank progression)
     assert any(chord in pad for chord in ("Amaj7", "Bm11", "F#m11", "C#m7", "E6"))
+
+
+def test_entrainment_has_no_percussive_voices():
+    # The rain-stick timbre was a high-passed white-noise struct pattern that read
+    # as stray hi-hat/snare hits; Entrainment must emit no percussive struct beats.
+    from statemediafm.genmusic.styles import entrainment
+
+    for vol in range(1, 40, 3):
+        for band in _BANDS:
+            text = entrainment.render(_signal(vol, 3), 0.5, band)
+            assert ".struct(" not in text, (vol, band)
