@@ -39,8 +39,12 @@ its own, just visit that address.)
    - **Config** — paste your GitLab (or GitHub) address and a **read-only** access
      token. Optionally add an **AI gateway** URL + key for smarter news writing.
    - **News Update Sources** — add your project's URL.
-   - **News-parsing model** — flip **Live news** on and pick a model (optional; with
-     it off you still get clear, plain summaries).
+   - **News writer** — bulletins are written by an LLM, so you need **one** of:
+     - the **Claude CLI** — run it on a machine with [`claude`](https://claude.com/claude-code)
+       installed and signed in, and it writes the news using that login (no API key); or
+     - an **LLM gateway** — have its base **URL + API key** ready to paste.
+
+     Choose which under **Settings › Auth › News writer**.
 3. Everything you change is **saved automatically**. Next time, just run
    `statemediafm` again and it all comes back.
 
