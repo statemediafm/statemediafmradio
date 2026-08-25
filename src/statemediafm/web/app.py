@@ -1137,11 +1137,11 @@ return of(u,o);};})();</script>
     color:var(--an-ink); text-transform:uppercase; letter-spacing:.12em;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; text-shadow:0 1px 0 rgba(0,0,0,.6);
   }
-  /* Title + headings: a narrower, taller condensed face. */
+  /* Title + headings: a narrower condensed face. */
   html[data-theme='analog'] h1,html[data-theme='analog'] h2,html[data-theme='analog'] h3,
   html[data-theme='analog'] summary{
     font-family:'Arial Narrow','Helvetica Neue Condensed','Roboto Condensed','Helvetica Neue',Arial,sans-serif;
-    font-stretch:condensed; transform:scaleY(1.12); transform-origin:center;
+    font-stretch:condensed;
   }
   /* Title moves to the footer: last in the flex order, set off by a groove line. */
   html[data-theme='analog'] h1{ letter-spacing:.02em; font-weight:normal; text-align:center;
