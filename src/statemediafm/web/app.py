@@ -1464,13 +1464,11 @@ return of(u,o);};})();</script>
   <details class='section'>
     <summary>Theme</summary>
     <div class='authrow'>
-      <label class='muted'>theme
-        <select id='theme-sel'>
-          <option value='adequate'>Adequate</option>
-          <option value='analog'>Analog</option>
-          <option value='vapor'>Vapor</option>
-        </select></label>
-      <span class='muted' id='theme-status'></span>
+      <select id='theme-sel'>
+        <option value='adequate'>Adequate</option>
+        <option value='analog'>Analog</option>
+        <option value='vapor'>Vapor</option>
+      </select>
     </div>
   </details>
 
@@ -2220,13 +2218,11 @@ function applyTheme(t){ document.documentElement.dataset.theme = THEME_NAMES[t]?
 function loadTheme(){
   const t=currentTheme(); applyTheme(t);
   const sel=document.getElementById('theme-sel'); if(sel) sel.value=t;
-  const st=document.getElementById('theme-status'); if(st) st.textContent=THEME_NAMES[t]||'';
 }
 document.getElementById('theme-sel').addEventListener('change', (e)=>{
   const t=THEME_NAMES[e.target.value]?e.target.value:'adequate';
   try{ localStorage.setItem('smfm-theme', t); }catch(err){}
   applyTheme(t);
-  const st=document.getElementById('theme-status'); if(st) st.textContent=THEME_NAMES[t]||'';
 });
 applyTheme(currentTheme());  // apply immediately on load, before the Settings tab opens
 
