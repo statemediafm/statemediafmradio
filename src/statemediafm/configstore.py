@@ -116,6 +116,11 @@ def state_to_config(state) -> dict:
     }
     if getattr(state, "news_every_s", None) is not None:
         station["news_every_s"] = float(state.news_every_s)
+    # LAN binding (off by default → keys omitted, so the config stays loopback-clean).
+    if getattr(state, "listen_host", None):
+        station["listen_host"] = str(state.listen_host)
+    if getattr(state, "listen_enabled", False):
+        station["listen_host_enabled"] = True
     return {
         "station": station,
         "news": news,
@@ -142,6 +147,10 @@ def apply_station(state, cfg: dict) -> None:
         state.base_intensity = float(station["base_intensity"])
     if "quiet_mode" in station:
         state.quiet_mode = bool(station["quiet_mode"])
+    if "listen_host" in station:
+        state.listen_host = str(station["listen_host"]) or None
+    if "listen_host_enabled" in station:
+        state.listen_enabled = bool(station["listen_host_enabled"])
     mix = cfg.get("mix", {}) or {}
     if "generators" in mix:
         state.mix_generators = bool(mix["generators"])

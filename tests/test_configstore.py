@@ -60,6 +60,23 @@ def test_cadence_precedence_flag_over_persisted(monkeypatch, tmp_path):
     assert cap["news_every_s"] == 600.0 and cap["refresh"] == 5.0
 
 
+def test_listen_host_roundtrips_and_is_off_by_default():
+    st = _State()
+    # Default: LAN binding off → keys omitted so the config stays loopback-clean.
+    station = cs.state_to_config(st)["station"]
+    assert "listen_host" not in station and "listen_host_enabled" not in station
+
+    st.listen_host = "192.168.1.42"
+    st.listen_enabled = True
+    cfg = cs.state_to_config(st)
+    assert cfg["station"]["listen_host"] == "192.168.1.42"
+    assert cfg["station"]["listen_host_enabled"] is True
+
+    st2 = _State()
+    cs.apply_station(st2, cfg)
+    assert st2.listen_host == "192.168.1.42" and st2.listen_enabled is True
+
+
 def test_cadence_persists():
     st = _State()
     st.news_every_s = 300.0

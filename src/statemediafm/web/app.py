@@ -81,6 +81,34 @@ def _token_ok(supplied: str, token: str) -> bool:
         return False
 
 
+def _ipv4_interfaces() -> list[str]:
+    """The host's usable IPv4 addresses for binding, newest-relevant first:
+    loopback, then any LAN addresses discovered via the hostname and a UDP probe.
+    Deduplicated, stdlib-only, best-effort (never raises)."""
+    import contextlib
+    import socket
+
+    addrs: list[str] = ["127.0.0.1"]
+
+    def _add(ip: str) -> None:
+        if ip and ip not in addrs and not ip.startswith("127."):
+            addrs.append(ip)
+
+    with contextlib.suppress(OSError):
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            _add(info[4][0])
+    # A UDP "connect" to a public address reveals the primary outbound LAN IP
+    # without sending anything — covers hosts whose hostname doesn't resolve to it.
+    with contextlib.suppress(OSError):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            _add(s.getsockname()[0])
+        finally:
+            s.close()
+    return addrs
+
+
 def _describe_gateway_error(exc: Exception) -> str:
     """A human-readable reason a gateway ``/models`` probe failed, for the UI."""
     import urllib.error
@@ -157,6 +185,12 @@ class _State:
         self.news_every_s: float | None = None  # news-bulletin cadence (s); None → Director default
         self.refresh_s: float = 1200.0  # source-poll interval (s, 20 min); the serve loop reads this live
         self.broadcasting: bool = True  # when False the refresh loop pauses (no polling/TTS/LLM)
+        # Optional LAN binding (Settings tab): off by default → loopback only. When
+        # enabled with a chosen host, the *next* start binds there. bound_host is the
+        # address this process is actually serving on (set by serve.run).
+        self.listen_enabled: bool = False
+        self.listen_host: str | None = None
+        self.bound_host: str = "127.0.0.1"
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
         self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 2 min
@@ -279,6 +313,46 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
         store.broadcasting = on
         store.music_on = on  # silence the audio when stopped; restore on resume
         return {"broadcasting": store.broadcasting}
+
+    @app.get("/interfaces")
+    def interfaces() -> dict:
+        """The host's bindable IPv4 addresses, the current LAN-listen selection, and
+        the address this process is actually serving on. Powers the Settings toggle
+        + dropdown; changing it needs a restart (the bind is fixed at startup)."""
+        addrs = _ipv4_interfaces()
+        selected = getattr(store, "listen_host", None) or getattr(store, "bound_host", "127.0.0.1")
+        if selected not in addrs and selected not in ("127.0.0.1",):
+            addrs.append(selected)  # keep a saved-but-currently-absent address visible
+        return {
+            "addresses": addrs,
+            "enabled": bool(getattr(store, "listen_enabled", False)),
+            "selected": selected,
+            "bound": getattr(store, "bound_host", "127.0.0.1"),
+        }
+
+    @app.post("/interfaces")
+    def set_interfaces(enabled: bool, host: str = "") -> dict:
+        """Enable/disable binding to a LAN address, and which one. Persisted; takes
+        effect on the next start (loopback stays the default when disabled). A
+        non-loopback host must be one the host actually has."""
+        addrs = _ipv4_interfaces()
+        if enabled:
+            if not host or host == "127.0.0.1":
+                raise HTTPException(status_code=400, detail="choose a non-loopback address")
+            if host not in addrs:
+                raise HTTPException(status_code=400, detail="unknown host address")
+            store.listen_host = host
+        elif host:
+            store.listen_host = host  # remember the choice even while disabled
+        store.listen_enabled = bool(enabled)
+        bound = getattr(store, "bound_host", "127.0.0.1")
+        want = store.listen_host if store.listen_enabled else "127.0.0.1"
+        return {
+            "enabled": store.listen_enabled,
+            "selected": store.listen_host or bound,
+            "bound": bound,
+            "restart_required": (want or "127.0.0.1") != bound,
+        }
 
     @app.post("/news-now")
     def news_now() -> dict:
@@ -1489,6 +1563,19 @@ return of(u,o);};})();</script>
     <p class='muted'>Quick-fill from a provider preset (sets the URL slot above and suggests a
     news model — you still enter the API key in the token slot):</p>
     <div id='presets'></div>
+    <h3>Local network access</h3>
+    <p class='muted'>By default the app is reachable only from this machine
+    (<code>127.0.0.1</code>). Turn this on to also serve on a LAN address so other
+    devices on your network can open it. <strong>Applies on the next start.</strong></p>
+    <p class='warn'>⚠ Binding a LAN address makes the control API network-reachable
+    (it stays session-token-protected and host-locked). Only enable this on a
+    trusted network.</p>
+    <div class='authrow'>
+      <label class='switch'><input type='checkbox' id='lan-enabled'><span class='track'></span>
+        <strong>Listen on a local network address</strong></label>
+      <label class='muted'>address <select id='lan-host'></select></label>
+      <span class='muted' id='lan-status'></span>
+    </div>
   </details>
 
   <details class='section'>
@@ -2030,6 +2117,38 @@ document.getElementById('news-now').addEventListener('click', async ()=>{
   }catch(e){ s.textContent='error'; }
   setTimeout(()=>{ b.disabled=false; }, 2500);
 });
+// Local network access: opt-in bind to a LAN address (applies on the next start).
+async function loadInterfaces(){
+  const en=document.getElementById('lan-enabled'), sel=document.getElementById('lan-host'),
+        st=document.getElementById('lan-status');
+  if(!en||!sel) return;
+  try{
+    const d=await (await fetch('/interfaces')).json();
+    const lan=(d.addresses||[]).filter(a=>a!=='127.0.0.1');
+    sel.innerHTML=lan.map(a=>'<option'+(a===d.selected?' selected':'')+'>'+esc(a)+'</option>').join('');
+    en.checked=!!d.enabled; en.disabled=lan.length===0;
+    sel.disabled=!d.enabled||lan.length===0;
+    st.textContent = lan.length ? ('serving on '+esc(d.bound)) : 'no LAN address found on this host';
+  }catch(e){}
+}
+async function saveInterfaces(){
+  const en=document.getElementById('lan-enabled'), sel=document.getElementById('lan-host'),
+        st=document.getElementById('lan-status');
+  const enabled=en.checked, host=sel.value;
+  sel.disabled=!enabled;
+  try{
+    const r=await fetch('/interfaces?enabled='+(enabled?'true':'false')+'&host='+encodeURIComponent(host),
+      {method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ st.textContent='error: '+(d.detail||r.status); en.checked=!enabled; sel.disabled=!en.checked; return; }
+    st.textContent = d.restart_required
+      ? ('saved — restart to bind '+esc(d.selected)+' (currently on '+esc(d.bound)+')')
+      : ('serving on '+esc(d.bound));
+  }catch(e){ st.textContent='error'; }
+}
+document.getElementById('lan-enabled').addEventListener('change', saveInterfaces);
+document.getElementById('lan-host').addEventListener('change', saveInterfaces);
+
 // Tabs: Player / Settings.
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>{
@@ -2037,7 +2156,7 @@ document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>
   const tab=a.dataset.tab;
   document.getElementById('player-view').hidden = tab!=='player';
   document.getElementById('settings-view').hidden = tab!=='settings';
-  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadTheme(); }
+  if(tab==='settings'){ loadDemo(); loadCadence(); loadSources(); loadNarration(); loadSpotify(); loadNewsBackend(); loadPresets(); loadAuth(); loadGateways(); loadGatewayModels(false); loadInterfaces(); loadTheme(); }
   // Returning to the player re-syncs it with any settings just changed, so nothing
   // needs a full reload (all of these are idempotent reads).
   if(tab==='player'){ loadSpotifyBar(); loadBroadcast(); loadQuiet(); loadIntensity(); loadNextNews(); pollMusic(); pollSong(); }

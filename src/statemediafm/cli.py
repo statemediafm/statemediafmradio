@@ -420,11 +420,27 @@ def _serve(args: argparse.Namespace) -> int:
         refresh = float(args.refresh)
     else:
         refresh = float(pstation.get("refresh_s") or 1200.0)
+    # Bind host: an explicit --host flag wins; else the persisted LAN toggle
+    # (Settings › Auth › Local network access) — choosing it in-app is consent to
+    # bind non-loopback; else loopback (the default).
+    listen_enabled = bool(pstation.get("listen_host_enabled"))
+    listen_host = pstation.get("listen_host") or None
+    allow_nonloopback = False
+    if args.host is not None:
+        host = args.host
+    elif listen_enabled and listen_host:
+        host = listen_host
+        allow_nonloopback = True
+    else:
+        host = "127.0.0.1"
     return serve_mod.run(
         roster,
         tts,
-        host=args.host,
+        host=host,
         port=args.port,
+        allow_nonloopback=allow_nonloopback,
+        listen_enabled=listen_enabled,
+        listen_host=listen_host,
         refresh=refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
         style=style,
@@ -633,7 +649,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Ambient generator to start with (e.g. 'Space Dub', 'Entrainment 0.1'). "
         "Overrides the [genmusic] config; the news bed and opening bulletin use it.",
     )
-    sv.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1).")
+    sv.add_argument("--host", default=None,
+                    help="Bind host (default 127.0.0.1, or the persisted Settings choice).")
     sv.add_argument("--port", type=int, default=8150, help="Bind port (default 8150).")
     sv.add_argument(
         "--refresh", type=float, default=None,

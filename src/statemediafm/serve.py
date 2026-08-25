@@ -438,6 +438,9 @@ def run(
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
+    allow_nonloopback: bool = False,
+    listen_enabled: bool = False,
+    listen_host: str | None = None,
     refresh: float = 1200.0,
     headline_pause_ms: int = 1000,
     style: str = "newsroom",
@@ -495,10 +498,13 @@ def run(
     from .web.app import _host_only
 
     if _host_only(host) not in {"127.0.0.1", "::1", "localhost"}:
-        if os.environ.get("STATEMEDIAFM_ALLOW_NONLOOPBACK") != "1":
+        # A non-loopback bind requires opt-in: the env var, or in-app consent
+        # (``allow_nonloopback`` — set when the host comes from the Settings toggle).
+        if not allow_nonloopback and os.environ.get("STATEMEDIAFM_ALLOW_NONLOOPBACK") != "1":
             raise SystemExit(
                 f"refusing to bind non-loopback host {host!r}: the control API would be "
-                "network-reachable. Set STATEMEDIAFM_ALLOW_NONLOOPBACK=1 to proceed "
+                "network-reachable. Enable it under Settings › Auth › Local network access, "
+                "or set STATEMEDIAFM_ALLOW_NONLOOPBACK=1 to proceed "
                 "(session-token auth + a Host/Origin lock stay enforced)."
             )
         print(
@@ -524,6 +530,11 @@ def run(
     # The live roster is owned by the app state so the Settings tab can edit it.
     state.roster = list(roster)
     state.segments = list(segments or [])
+    # LAN binding: reflect the persisted toggle/selection in the UI, and record the
+    # address actually bound this run (so Settings can show "restart to apply").
+    state.listen_enabled = bool(listen_enabled)
+    state.listen_host = listen_host
+    state.bound_host = host
     # Restore persisted (non-flag) settings: energy, quiet mode, mix toggles.
     if base_intensity is not None:
         state.base_intensity = float(base_intensity)

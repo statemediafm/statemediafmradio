@@ -211,6 +211,33 @@ def test_gateway_models_no_probe_returns_cached_without_network():
     assert d["probed"] is False and d["models"] == ["x/y"] and d["selected"] == "x/y"
 
 
+def test_interfaces_list_and_toggle(monkeypatch):
+    import statemediafm.web.app as appmod
+
+    monkeypatch.setattr(appmod, "_ipv4_interfaces", lambda: ["127.0.0.1", "192.168.1.42"])
+    state = _State()
+    client = TestClient(create_app(state))
+
+    d = client.get("/interfaces").json()
+    assert d["addresses"] == ["127.0.0.1", "192.168.1.42"]
+    assert d["enabled"] is False and d["bound"] == "127.0.0.1"  # default: loopback, off
+
+    # Enable + choose a LAN address → persisted, and flagged as needing a restart.
+    r = client.post("/interfaces", params={"enabled": True, "host": "192.168.1.42"}).json()
+    assert r["enabled"] is True and r["selected"] == "192.168.1.42"
+    assert r["restart_required"] is True
+    assert state.listen_enabled is True and state.listen_host == "192.168.1.42"
+
+    # A bogus / loopback host is rejected while enabling.
+    assert client.post("/interfaces", params={"enabled": True, "host": "10.0.0.9"}).status_code == 400
+    assert client.post("/interfaces", params={"enabled": True, "host": "127.0.0.1"}).status_code == 400
+
+    # Turning it back off returns to loopback (default) with no restart needed.
+    off = client.post("/interfaces", params={"enabled": False}).json()
+    assert off["enabled"] is False and off["restart_required"] is False
+    assert state.listen_enabled is False
+
+
 def test_news_model_set_and_clear():
     state = _State()
     client = TestClient(create_app(state))
