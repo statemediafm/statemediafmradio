@@ -1504,6 +1504,7 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Premium</summary>
+    <p class='muted'>Future features TBD:</p>
     <ul class='locked-list'>
       <li>Enterprise streaming-service mode</li>
       <li>SSO</li>
