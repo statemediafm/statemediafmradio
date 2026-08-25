@@ -1373,8 +1373,8 @@ return of(u,o);};})();</script>
         <select id='tuning'></select>
       </label>
     </div>
-    <p class='muted'>The ambient bed is <strong>Entrainment&nbsp;0.1</strong> at
-    A=433&nbsp;Hz.</p>
+    <p class='muted'>The ambient bed is the generative composition
+    <em>Radiator</em> by James Reid.</p>
     <div class='authrow' id='voice-row' hidden>
       <label class='muted'>voice <select id='voice-sel'></select></label>
       <button id='narration-save'>Apply</button>
