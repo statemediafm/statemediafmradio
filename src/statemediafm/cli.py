@@ -441,6 +441,8 @@ def _serve(args: argparse.Namespace) -> int:
         allow_nonloopback=allow_nonloopback,
         listen_enabled=listen_enabled,
         listen_host=listen_host,
+        show_premium=bool(pstation.get("show_premium"))
+        or os.environ.get("STATEMEDIAFM_SHOW_PREMIUM") == "1",
         refresh=refresh,
         headline_pause_ms=round(args.headline_pause * 1000),
         style=style,

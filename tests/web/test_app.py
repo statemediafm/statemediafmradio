@@ -110,6 +110,19 @@ def test_index_serves_strudel_player():
     assert "/broadcast" in html and 'id=\'play\'' in html  # the transport (start/pause) control
 
 
+def test_premium_section_hidden_unless_flag_set():
+    # Default: the Premium section is present but hidden, and the reveal is gated off.
+    html = TestClient(create_app(_State())).get("/").text
+    assert "id='sec-premium' hidden" in html
+    assert "if(false){ const _p=document.getElementById('sec-premium')" in html
+
+    # With the config/env flag, the page ships the reveal enabled.
+    st = _State()
+    st.show_premium = True
+    html2 = TestClient(create_app(st)).get("/").text
+    assert "if(true){ const _p=document.getElementById('sec-premium')" in html2
+
+
 def test_settings_has_theme_picker_with_stub_themes():
     html = TestClient(create_app()).get("/").text
     assert "<summary>Theme</summary>" in html and 'id=\'theme-sel\'' in html

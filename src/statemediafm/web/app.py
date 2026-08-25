@@ -191,6 +191,9 @@ class _State:
         self.listen_enabled: bool = False
         self.listen_host: str | None = None
         self.bound_host: str = "127.0.0.1"
+        # The Premium section is hidden in the UI unless this is set (config
+        # [station] show_premium = true, or $STATEMEDIAFM_SHOW_PREMIUM=1).
+        self.show_premium: bool = False
         self.quiet_mode: bool = False  # music only around the news, silent between
         self.music_on: bool = True  # the quiet-mode gate (should the music sound now?)
         self.demo_mode: bool = False  # earlier-milestone feel: HN+git issues every 2 min
@@ -1066,7 +1069,11 @@ def _render_page(store: _State, token: str | None = None) -> str:
     plays the generative music with Strudel, crossfading as programs change. When
     the instance is secured, the per-session ``token`` is embedded so same-origin
     API calls carry it automatically (see the bootstrap script in the page)."""
-    return _PLAYER_HTML.replace("__SMFM_TOKEN_JSON__", _json.dumps(token or ""))
+    return (
+        _PLAYER_HTML
+        .replace("__SMFM_TOKEN_JSON__", _json.dumps(token or ""))
+        .replace("__SMFM_SHOW_PREMIUM__", "true" if getattr(store, "show_premium", False) else "false")
+    )
 
 
 # Loaded once. The page fetches /plan (news) and /genmusic (Strudel program text)
@@ -1589,7 +1596,7 @@ return of(u,o);};})();</script>
     </div>
   </details>
 
-  <details class='section'>
+  <details class='section' id='sec-premium' hidden>
     <summary>Premium</summary>
     <p class='muted'>Future features TBD:</p>
     <ul class='locked-list'>
@@ -2151,6 +2158,8 @@ document.getElementById('lan-host').addEventListener('change', saveInterfaces);
 
 // Tabs: Player / Settings.
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// The Premium section is hidden unless the server enables it (config/env flag).
+if(__SMFM_SHOW_PREMIUM__){ const _p=document.getElementById('sec-premium'); if(_p) _p.hidden=false; }
 document.querySelectorAll('#tabs a').forEach(a=>a.addEventListener('click', ()=>{
   document.querySelectorAll('#tabs a').forEach(x=>x.classList.toggle('active', x===a));
   const tab=a.dataset.tab;

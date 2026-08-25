@@ -121,6 +121,8 @@ def state_to_config(state) -> dict:
         station["listen_host"] = str(state.listen_host)
     if getattr(state, "listen_enabled", False):
         station["listen_host_enabled"] = True
+    if getattr(state, "show_premium", False):  # keep the (off-by-default) Premium reveal
+        station["show_premium"] = True
     return {
         "station": station,
         "news": news,
@@ -151,6 +153,8 @@ def apply_station(state, cfg: dict) -> None:
         state.listen_host = str(station["listen_host"]) or None
     if "listen_host_enabled" in station:
         state.listen_enabled = bool(station["listen_host_enabled"])
+    if "show_premium" in station:
+        state.show_premium = bool(station["show_premium"])
     mix = cfg.get("mix", {}) or {}
     if "generators" in mix:
         state.mix_generators = bool(mix["generators"])
