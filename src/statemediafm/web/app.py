@@ -1496,7 +1496,7 @@ return of(u,o);};})();</script>
   <details class='section'>
     <summary>Premium</summary>
     <div class='authrow' id='license-row'>
-      <input id='license-key' type='password' autocomplete='off' placeholder='license key'>
+      <input id='license-key' type='password' autocomplete='off' placeholder='premium key'>
       <button id='license-save'>Activate</button>
       <span class='muted' id='license-status'></span>
     </div>
