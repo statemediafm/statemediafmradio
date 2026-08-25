@@ -113,7 +113,7 @@ def test_index_serves_strudel_player():
 def test_settings_has_theme_picker_with_stub_themes():
     html = TestClient(create_app()).get("/").text
     assert "<summary>Theme</summary>" in html and 'id=\'theme-sel\'' in html
-    for label in ("Adequate", "Analog", "Vapor", "Skeuomorphic"):
+    for label in ("Adequate", "Analog", "Vapor"):
         assert label in html
     assert "data-theme" in html  # applied app-wide via <html data-theme="…">
 

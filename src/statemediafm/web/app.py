@@ -1262,8 +1262,6 @@ return of(u,o);};})();</script>
     text-shadow:0 0 8px var(--vw-pink) }
   html[data-theme='vapor'] .newslist a{ color:var(--vw-cyan); border-bottom-color:rgba(1,205,254,.5) }
   html[data-theme='vapor'] .warn{ color:#1b0b2e; background:var(--vw-yellow); border-color:#e0d060 }
-
-  html[data-theme='skeuomorphic']{ /* TODO: textured skeuomorphic look */ }
 </style>
 <h1>State Media FM</h1>
 <nav id='tabs'><a data-tab='player' class='active'>Player</a><a data-tab='settings'>Settings</a></nav>
@@ -1465,16 +1463,12 @@ return of(u,o);};})();</script>
 
   <details class='section'>
     <summary>Theme</summary>
-    <p class='muted'>The look of the whole app, saved in this browser. <em>Adequate</em>
-    (the default), <em>Analog</em>, and <em>Vapor</em> are styled; <em>Skeuomorphic</em>
-    is a placeholder for now.</p>
     <div class='authrow'>
       <label class='muted'>theme
         <select id='theme-sel'>
           <option value='adequate'>Adequate</option>
           <option value='analog'>Analog</option>
           <option value='vapor'>Vapor</option>
-          <option value='skeuomorphic'>Skeuomorphic</option>
         </select></label>
       <span class='muted' id='theme-status'></span>
     </div>
@@ -2220,7 +2214,7 @@ document.getElementById('news-backend').addEventListener('change', async (e)=>{
 // ── Theme (app-wide look, saved per browser) ─────────────────────────────────
 // Only the default is styled today; the rest are stubs applied via <html
 // data-theme="…"> so their CSS can be filled in later without more wiring.
-const THEME_NAMES={adequate:'Adequate',analog:'Analog',vapor:'Vapor',skeuomorphic:'Skeuomorphic'};
+const THEME_NAMES={adequate:'Adequate',analog:'Analog',vapor:'Vapor'};
 function currentTheme(){ try{ return localStorage.getItem('smfm-theme')||'adequate'; }catch(e){ return 'adequate'; } }
 function applyTheme(t){ document.documentElement.dataset.theme = THEME_NAMES[t]?t:'adequate'; }
 function loadTheme(){
