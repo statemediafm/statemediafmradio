@@ -1504,6 +1504,12 @@ return of(u,o);};})();</script>
       <span class='muted' id='license-status'></span>
     </div>
   </details>
+
+  <details class='section'>
+    <summary>Contact</summary>
+    <p>Open an issue at <a href='https://gitlab.com/statemediafm' target='_blank' rel='noopener'>https://gitlab.com/statemediafm</a>
+    or JAMIE dot F dot REID at GMAIL dot COM.</p>
+  </details>
 </div>
 
 <script src='https://unpkg.com/@strudel/web@1.0.3'></script>
