@@ -1808,6 +1808,12 @@ const DUCK={GAIN:0.15, RELEASE_MS:600, NEWS_FADE_MS:500};
 let releaseTimer=null;
 async function playCurrent(fresh){
   if(!currentProg) return;
+  // Never sound the generative bed while Spotify/playlist is the music — otherwise
+  // the news-duck path (setDuck→playCurrent) would start it *over* the playlist.
+  if(spMode || playerMode==='playlist'){
+    if(strudelReady && !musicSilenced){ try{ await evaluate('silence'); }catch(e){} musicSilenced=true; }
+    return;
+  }
   const base=currentProg.replace(/\.fadeIn\([0-9.]+\)\s*$/,'');
   const code=ducked?base+'.gain('+DUCK.GAIN+')':currentProg;
   // A genuinely NEW program (not a duck re-eval): stop the previous pattern first,

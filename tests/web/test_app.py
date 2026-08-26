@@ -110,6 +110,15 @@ def test_index_serves_strudel_player():
     assert "/broadcast" in html and 'id=\'play\'' in html  # the transport (start/pause) control
 
 
+def test_generative_bed_is_gated_off_during_playlist():
+    # playCurrent (the only place the generative program is evaluated) must refuse
+    # while Spotify/playlist is the music, so the news-duck path can't start the
+    # generative bed over the playlist.
+    html = TestClient(create_app(_State())).get("/").text
+    guard = "if(spMode || playerMode==='playlist'){"
+    assert html.count(guard) >= 2  # in pollMusic AND in playCurrent
+
+
 def test_premium_section_hidden_unless_flag_set():
     # Default: the Premium section is present but hidden, and the reveal is gated off.
     html = TestClient(create_app(_State())).get("/").text
