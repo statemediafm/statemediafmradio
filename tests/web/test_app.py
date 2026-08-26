@@ -224,6 +224,16 @@ def test_gateway_models_no_probe_returns_cached_without_network():
     assert d["probed"] is False and d["models"] == ["x/y"] and d["selected"] == "x/y"
 
 
+def test_ipv4_interfaces_enumerates_all_interfaces():
+    import statemediafm.web.app as appmod
+
+    addrs = appmod._ipv4_interfaces()
+    # Always includes loopback first; every entry is a plausible dotted-quad string.
+    assert addrs and addrs[0] == "127.0.0.1"
+    assert all(isinstance(a, str) and a.count(".") == 3 for a in addrs)
+    assert len(addrs) == len(set(addrs))  # deduplicated
+
+
 def test_interfaces_list_and_toggle(monkeypatch):
     import statemediafm.web.app as appmod
 

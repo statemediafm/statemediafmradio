@@ -82,9 +82,13 @@ def _token_ok(supplied: str, token: str) -> bool:
 
 
 def _ipv4_interfaces() -> list[str]:
-    """The host's usable IPv4 addresses for binding, newest-relevant first:
-    loopback, then any LAN addresses discovered via the hostname and a UDP probe.
-    Deduplicated, stdlib-only, best-effort (never raises)."""
+    """The host's usable IPv4 addresses for binding: loopback first, then every
+    interface's address — LAN, **ppp0**, and **VPN** (tun/wg/tap) included.
+
+    Enumerates all interfaces via ``if_nameindex`` + a ``SIOCGIFADDR`` ioctl
+    (Linux), then supplements with the hostname's addresses and the primary
+    outbound IP (a UDP probe). Deduplicated, stdlib-only, best-effort (never
+    raises); non-Linux hosts fall back to the last two methods."""
     import contextlib
     import socket
 
@@ -94,11 +98,27 @@ def _ipv4_interfaces() -> list[str]:
         if ip and ip not in addrs and not ip.startswith("127."):
             addrs.append(ip)
 
+    # 1. Every interface (Linux): catches LAN, ppp0, and VPN tunnels that the
+    #    hostname/route probes below miss. fcntl is unix-only; guarded broadly.
+    with contextlib.suppress(Exception):
+        import fcntl
+        import struct
+
+        for _idx, name in socket.if_nameindex():
+            with contextlib.suppress(OSError):
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    req = struct.pack("256s", name.encode("utf-8")[:15])
+                    info = fcntl.ioctl(s.fileno(), 0x8915, req)  # SIOCGIFADDR
+                    _add(socket.inet_ntoa(info[20:24]))
+                finally:
+                    s.close()
+    # 2. The hostname's addresses (portable supplement).
     with contextlib.suppress(OSError):
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             _add(info[4][0])
-    # A UDP "connect" to a public address reveals the primary outbound LAN IP
-    # without sending anything — covers hosts whose hostname doesn't resolve to it.
+    # 3. The primary outbound IP — a UDP "connect" reveals it without sending
+    #    anything (covers hosts whose hostname doesn't resolve to it).
     with contextlib.suppress(OSError):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
