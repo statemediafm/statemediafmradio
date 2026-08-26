@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from statemediafm.web.app import (
     SecurityPolicy,
     _host_only,
+    _State,
     create_app,
     lan_bind_hosts,
     new_security_policy,
@@ -85,6 +86,21 @@ def test_cross_origin_request_is_403():
         headers={"X-SMFM-Token": TOKEN, "Origin": "http://evil.example.com"},
     )
     assert r.status_code == 403
+
+
+def test_allow_any_host_drops_the_host_and_origin_allowlist():
+    # For a demo behind a tunnel/proxy/domain: with allow_any_host on, any Host and
+    # Origin pass — but the session token is still required (the API isn't opened).
+    st = _State()
+    st.allow_any_host = True
+    c = TestClient(create_app(st, security=POLICY))
+    assert c.get("/health", headers={"Host": "radio.public.example"}).status_code == 200
+    r = c.get("/genmusic", headers={"Host": "radio.public.example",
+                                    "Origin": "http://radio.public.example",
+                                    "X-SMFM-Token": TOKEN})
+    assert r.status_code == 200
+    # Still gated: a foreign Host without the token is 401 (not open).
+    assert c.get("/genmusic", headers={"Host": "radio.public.example"}).status_code == 401
 
 
 def test_same_origin_request_passes():

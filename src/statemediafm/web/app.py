@@ -228,6 +228,9 @@ class _State:
         self.listen_enabled: bool = False
         self.listen_host: str | None = None
         self.bound_host: str = "127.0.0.1"
+        # Drop the Host/Origin allowlist so the app is reachable via any name
+        # (tunnel/reverse proxy/public domain). Live; the session token still gates.
+        self.allow_any_host: bool = False
         # The Premium section is hidden in the UI unless this is set (config
         # [station] show_premium = true, or $STATEMEDIAFM_SHOW_PREMIUM=1).
         self.show_premium: bool = False
@@ -306,12 +309,17 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
 
         @app.middleware("http")
         async def _enforce_security(request: Request, call_next):
+            # "Allow any host" (Settings toggle) drops the Host/Origin allowlist so
+            # the app is reachable via any name — a tunnel, reverse proxy, or public
+            # domain (demos). The session token remains the gate; a page can't read
+            # it cross-origin, so the API still can't be forged. Checked live.
+            allow_any = bool(getattr(store, "allow_any_host", False))
             # 1. DNS-rebinding defense: only answer to known Host names.
-            if _host_only(request.headers.get("host", "")) not in security.allowed_hosts:
+            if not allow_any and _host_only(request.headers.get("host", "")) not in security.allowed_hosts:
                 return JSONResponse({"detail": "host not allowed"}, status_code=403)
             # 2. Cross-site defense: a present Origin must be one of our own hosts.
             origin = request.headers.get("origin")
-            if origin and _host_only(urlsplit(origin).netloc) not in security.allowed_hosts:
+            if origin and not allow_any and _host_only(urlsplit(origin).netloc) not in security.allowed_hosts:
                 return JSONResponse({"detail": "cross-origin request blocked"}, status_code=403)
             # 3. Session token on everything but the small public set. The custom
             # header also forces a CORS preflight cross-origin — which the Origin
@@ -368,7 +376,16 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
             "enabled": bool(getattr(store, "listen_enabled", False)),
             "selected": selected,
             "bound": getattr(store, "bound_host", "127.0.0.1"),
+            "allow_any_host": bool(getattr(store, "allow_any_host", False)),
         }
+
+    @app.post("/allow-any-host")
+    def set_allow_any_host(on: bool) -> dict:
+        """Drop (or restore) the Host/Origin allowlist so the app is reachable via
+        any name — a tunnel, reverse proxy, or public domain. Takes effect
+        immediately (no restart); the session token still guards the API."""
+        store.allow_any_host = bool(on)
+        return {"allow_any_host": store.allow_any_host}
 
     @app.post("/interfaces")
     def set_interfaces(enabled: bool, host: str = "") -> dict:
@@ -1624,6 +1641,11 @@ return of(u,o);};})();</script>
       <label class='muted'>address <select id='lan-host'></select></label>
       <span class='muted' id='lan-status'></span>
     </div>
+    <div class='authrow'>
+      <label class='switch'><input type='checkbox' id='lan-anyhost'><span class='track'></span>
+        <strong>Allow any host</strong></label>
+      <span class='muted' id='lan-anyhost-status'>reach it via a tunnel, reverse proxy, or public domain (applies immediately)</span>
+    </div>
   </details>
 
   <details class='section'>
@@ -2174,7 +2196,7 @@ document.getElementById('news-now').addEventListener('click', async ()=>{
 // Local network access: opt-in bind to a LAN address (applies on the next start).
 async function loadInterfaces(){
   const en=document.getElementById('lan-enabled'), sel=document.getElementById('lan-host'),
-        st=document.getElementById('lan-status');
+        st=document.getElementById('lan-status'), any=document.getElementById('lan-anyhost');
   if(!en||!sel) return;
   try{
     const d=await (await fetch('/interfaces')).json();
@@ -2182,9 +2204,19 @@ async function loadInterfaces(){
     sel.innerHTML=lan.map(a=>'<option'+(a===d.selected?' selected':'')+'>'+esc(a)+'</option>').join('');
     en.checked=!!d.enabled; en.disabled=lan.length===0;
     sel.disabled=!d.enabled||lan.length===0;
+    if(any) any.checked=!!d.allow_any_host;
     st.textContent = lan.length ? ('serving on '+esc(d.bound)) : 'no LAN address found on this host';
   }catch(e){}
 }
+document.getElementById('lan-anyhost').addEventListener('change', async (e)=>{
+  const st=document.getElementById('lan-anyhost-status');
+  try{
+    await fetch('/allow-any-host?on='+(e.target.checked?'true':'false'), {method:'POST'});
+    st.textContent = e.target.checked
+      ? 'any host allowed — reachable via tunnel/proxy/domain (token still required)'
+      : 'reach it via a tunnel, reverse proxy, or public domain (applies immediately)';
+  }catch(err){ st.textContent='error'; }
+});
 async function saveInterfaces(){
   const en=document.getElementById('lan-enabled'), sel=document.getElementById('lan-host'),
         st=document.getElementById('lan-status');

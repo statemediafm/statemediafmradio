@@ -441,6 +441,7 @@ def run(
     allow_nonloopback: bool = False,
     listen_enabled: bool = False,
     listen_host: str | None = None,
+    allow_any_host: bool = False,
     show_premium: bool = False,
     refresh: float = 1200.0,
     headline_pause_ms: int = 1000,
@@ -536,6 +537,7 @@ def run(
     state.listen_enabled = bool(listen_enabled)
     state.listen_host = listen_host
     state.bound_host = host
+    state.allow_any_host = bool(allow_any_host)  # drop the Host/Origin allowlist (demos)
     state.show_premium = bool(show_premium)  # reveal the (hidden-by-default) Premium UI
     # Restore persisted (non-flag) settings: energy, quiet mode, mix toggles.
     if base_intensity is not None:

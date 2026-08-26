@@ -270,6 +270,16 @@ def test_interfaces_list_and_toggle(monkeypatch):
     assert state.listen_enabled is False
 
 
+def test_allow_any_host_toggle_is_live():
+    state = _State()
+    client = TestClient(create_app(state))
+    assert client.post("/allow-any-host", params={"on": True}).json() == {"allow_any_host": True}
+    assert state.allow_any_host is True  # live flag the security middleware reads
+    assert client.get("/interfaces").json()["allow_any_host"] is True
+    assert client.post("/allow-any-host", params={"on": False}).json() == {"allow_any_host": False}
+    assert state.allow_any_host is False
+
+
 def test_news_model_set_and_clear():
     state = _State()
     client = TestClient(create_app(state))
