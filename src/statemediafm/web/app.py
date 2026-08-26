@@ -1493,6 +1493,10 @@ return of(u,o);};})();</script>
     <code>developer.spotify.com</code> and paste its Client ID + Client Secret —
     stored locally in the gitignored auth file, the secret masked and never sent
     anywhere but your own server.</p>
+    <p class='warn'>⚠ Playing Spotify playlists needs an <strong>open, logged-in
+    Spotify web-player session</strong> in this browser (Premium) — playback runs
+    through Spotify's Web Playback SDK in this tab, so if you're signed out of
+    Spotify it won't work.</p>
     <div class='authrow'>
       <input id='sp-id' placeholder='Client ID'>
       <input id='sp-secret' type='password' autocomplete='off' placeholder='Client Secret'>
