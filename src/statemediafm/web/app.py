@@ -129,6 +129,23 @@ def _ipv4_interfaces() -> list[str]:
     return addrs
 
 
+def lan_bind_hosts(host: str) -> list[str]:
+    """Extra ``Host`` names to accept for a **non-loopback** bind: every one of this
+    machine's IPv4 addresses and its hostname — so a client reaches the server via
+    whichever address/name it uses (LAN IP, another interface, the hostname) without
+    hand-listing them. Empty for a loopback bind (the default). The Host allowlist is
+    a DNS-rebinding defense; the session token remains the real gate."""
+    if _host_only(host) in {"127.0.0.1", "::1", "localhost"}:
+        return []
+    import contextlib
+    import socket
+
+    hosts = list(_ipv4_interfaces())
+    with contextlib.suppress(Exception):
+        hosts.append(socket.gethostname())
+    return hosts
+
+
 def _describe_gateway_error(exc: Exception) -> str:
     """A human-readable reason a gateway ``/models`` probe failed, for the UI."""
     import urllib.error

@@ -595,6 +595,12 @@ def run(
     # non-loopback bind from another machine (browse via the server's hostname/IP).
     # Comma-separated in $STATEMEDIAFM_ALLOWED_HOSTS.
     extra_hosts = [h for h in os.environ.get("STATEMEDIAFM_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    # On a LAN (non-loopback) bind, also answer to every one of this host's own IPv4
+    # addresses and its hostname, so a client reaches it via whichever address/name
+    # it uses (see lan_bind_hosts).
+    from .web.app import lan_bind_hosts
+
+    extra_hosts += lan_bind_hosts(host)
     security = new_security_policy(host=host, extra_hosts=extra_hosts)
     app = create_app(state, security=security)
     cache: dict = {"t0": start, "last_elapsed": -1.0}

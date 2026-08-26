@@ -13,6 +13,7 @@ from statemediafm.web.app import (
     SecurityPolicy,
     _host_only,
     create_app,
+    lan_bind_hosts,
     new_security_policy,
 )
 
@@ -118,6 +119,27 @@ def test_new_security_policy_includes_extra_hosts():
     assert {"radio.corp.example", "10.0.0.5"} <= p.allowed_hosts
     assert "127.0.0.1" in p.allowed_hosts  # loopback still allowed
     assert "" not in p.allowed_hosts
+
+
+def test_lan_bind_hosts_covers_all_addresses_and_hostname(monkeypatch):
+    import socket
+
+    import statemediafm.web.app as appmod
+
+    monkeypatch.setattr(appmod, "_ipv4_interfaces", lambda: ["127.0.0.1", "10.0.0.78", "10.8.0.2"])
+    monkeypatch.setattr(socket, "gethostname", lambda: "arcadian")
+
+    # Loopback bind → no extra hosts (default behaviour unchanged).
+    assert lan_bind_hosts("127.0.0.1") == []
+    # LAN bind → every one of the host's IPv4 addresses + the hostname, so a client
+    # reaching it via the LAN IP, a VPN IP, or the hostname is all accepted.
+    extra = lan_bind_hosts("10.0.0.78")
+    assert {"10.0.0.78", "10.8.0.2", "arcadian"} <= set(extra)
+
+    # Wired into a policy, those Host values pass while a foreign one is still blocked.
+    p = new_security_policy(host="10.0.0.78", extra_hosts=extra)
+    assert {"10.0.0.78", "10.8.0.2", "arcadian"} <= p.allowed_hosts
+    assert "evil.com" not in p.allowed_hosts
 
 
 def test_new_security_policy_drops_wildcard_bind_host():
