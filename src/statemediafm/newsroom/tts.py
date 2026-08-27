@@ -44,13 +44,25 @@ _VOICE_ALIASES = {
     "southern_english_female": "en_GB-southern_english_female-low",
 }
 
+# Additional community Piper voices from brycebeattie.com/files/tts (hosted on
+# DigitalOcean Spaces) — direct .onnx / .onnx.json downloads, not on the rhasspy
+# hub, so they carry their full URLs rather than a hub path. Friendly name →
+# (model URL, config URL).
+_BRYCE_HUB = "https://sfo3.digitaloceanspaces.com/bkmdls"
+_VOICE_URLS = {
+    "norman": (f"{_BRYCE_HUB}/norman.onnx", f"{_BRYCE_HUB}/norman.onnx.json"),  # US male
+    "cori_medium": (f"{_BRYCE_HUB}/cori-med.onnx", f"{_BRYCE_HUB}/cori-med.onnx.json"),  # UK female
+    "jenny_dioco": (f"{_BRYCE_HUB}/jenny.onnx", f"{_BRYCE_HUB}/jenny.onnx.json"),  # UK/Irish female
+    "bryce": (f"{_BRYCE_HUB}/bryce.onnx", f"{_BRYCE_HUB}/bryce.onnx.json"),  # US male
+}
+
 # Default offline voice: Alan, a British male (accepts the alias below too).
 _DEFAULT_VOICE = "alan"
 
 
 def voice_names() -> list[str]:
     """The friendly voice names the UI offers (``--voice`` also accepts these)."""
-    return list(_VOICE_ALIASES)
+    return list(_VOICE_ALIASES) + list(_VOICE_URLS)
 
 
 def _silence_wav(rate: int, ms: int = 120, *, channels: int = 1, width: int = 2) -> bytes:
@@ -237,8 +249,9 @@ def resolve_piper_voice(
     Downloads the pair from the Piper voice hub into ``voices_dir`` the first
     time (network required once); subsequent calls are offline. ``voice`` may
     be a friendly alias (``alan``, ``alba``, ``northern_english_male``,
-    ``southern_english_female``), a full Piper name (see ``_VOICE_PATHS``), or a
-    filesystem path to a ``.onnx`` model.
+    ``southern_english_female``, plus the brycebeattie.com voices ``norman``,
+    ``cori_medium``, ``jenny_dioco``, ``bryce``), a full Piper name (see
+    ``_VOICE_PATHS``), or a filesystem path to a ``.onnx`` model.
     """
     # Explicit path to a model file.
     p = Path(voice)
@@ -246,8 +259,20 @@ def resolve_piper_voice(
         return p, p.with_suffix(".onnx.json")
 
     voice = _VOICE_ALIASES.get(voice, voice)  # resolve friendly aliases
+
+    # A community voice with direct .onnx / .onnx.json URLs (brycebeattie.com).
+    if voice in _VOICE_URLS:
+        voices_dir = voices_dir or default_voices_dir()
+        voices_dir.mkdir(parents=True, exist_ok=True)
+        model = voices_dir / f"{voice}.onnx"
+        config = voices_dir / f"{voice}.onnx.json"
+        for local, url in zip((model, config), _VOICE_URLS[voice], strict=True):
+            if not local.exists():
+                urllib.request.urlretrieve(url, local)
+        return model, config
+
     if voice not in _VOICE_PATHS:
-        known = sorted(_VOICE_ALIASES) + sorted(_VOICE_PATHS)
+        known = sorted(_VOICE_ALIASES) + sorted(_VOICE_URLS) + sorted(_VOICE_PATHS)
         raise ValueError(
             f"Unknown voice {voice!r}. Known: {', '.join(known)}, "
             "or pass a path to a local .onnx model."

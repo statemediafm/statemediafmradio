@@ -8,10 +8,12 @@ from statemediafm.core.models import AudioRef, Script
 from statemediafm.newsroom.tts import (
     _VOICE_ALIASES,
     _VOICE_PATHS,
+    _VOICE_URLS,
     ToneWavTTS,
     concat_wavs,
     render_reads,
     resolve_piper_voice,
+    voice_names,
 )
 
 
@@ -49,6 +51,41 @@ def test_resolve_rejects_unknown_voice_without_network():
     # A non-.onnx, non-alias, non-name string fails fast (no download attempted).
     with pytest.raises(ValueError, match="Unknown voice"):
         resolve_piper_voice("definitely-not-a-voice")
+
+
+def test_community_voices_are_offered_and_url_backed():
+    # The brycebeattie.com additions show up in the picker alongside the curated set.
+    names = voice_names()
+    for v in ("norman", "cori_medium", "jenny_dioco", "bryce"):
+        assert v in names and v in _VOICE_URLS
+        onnx, cfg = _VOICE_URLS[v]
+        assert onnx.startswith("https://") and onnx.endswith(".onnx")
+        assert cfg == onnx + ".json"
+
+
+def test_resolve_community_voice_downloads_from_its_urls(tmp_path, monkeypatch):
+    # A URL-backed voice fetches its .onnx/.onnx.json pair (no hub path), caching
+    # them in the voices dir; a second resolve is offline.
+    from statemediafm.newsroom import tts
+
+    calls = []
+
+    def _fake_urlretrieve(url, dest):
+        calls.append(url)
+        dest = str(dest)
+        with open(dest, "wb") as f:
+            f.write(b"stub")
+
+    monkeypatch.setattr(tts.urllib.request, "urlretrieve", _fake_urlretrieve)
+    model, config = resolve_piper_voice("jenny_dioco", voices_dir=tmp_path)
+    assert model.name == "jenny_dioco.onnx" and config.name == "jenny_dioco.onnx.json"
+    assert calls == [
+        "https://sfo3.digitaloceanspaces.com/bkmdls/jenny.onnx",
+        "https://sfo3.digitaloceanspaces.com/bkmdls/jenny.onnx.json",
+    ]
+    calls.clear()
+    resolve_piper_voice("jenny_dioco", voices_dir=tmp_path)  # cached → no downloads
+    assert calls == []
 
 
 def test_concat_wavs_joins_clips_with_gap():
