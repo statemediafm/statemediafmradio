@@ -186,9 +186,20 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
     ident = getattr(state, "ident", None)  # persona station phrasing
     signoff = getattr(state, "signoff", None)
     rotation = _voice_rotation(base_voice)
-    # Give each SOURCE its own voice so git/forge updates sound distinct from Hacker
-    # News, etc. The assignment is remembered in the tick cache by first appearance,
-    # so a source keeps its voice across bulletins even when others fall silent.
+    # A source may PIN a voice (Settings › News Update Sources dropdown); unpinned
+    # sources default to "random" — the auto rotation below. Map topic → pinned voice
+    # from the live roster (segments carry the optional 'voice').
+    pinned = {}
+    for seg, entry in zip(
+        getattr(state, "segments", []) or [], getattr(state, "roster", []) or [], strict=False
+    ):
+        v = seg.get("voice")
+        if v and v != "random":
+            pinned[entry[0]] = v
+    # Give each remaining SOURCE its own voice so git/forge updates sound distinct
+    # from Hacker News, etc. The assignment is remembered in the tick cache by first
+    # appearance, so a source keeps its voice across bulletins even when others fall
+    # silent.
     topic_voice = cache.setdefault("topic_voice", {}) if cache is not None else {}
     programmes: list[Programme] = []
     content: dict = {}
@@ -197,9 +208,12 @@ def _publish_plan(state, per_topic, tts, style, headline_pause_ms, llm=None, cac
         if not reads:
             continue  # no model / the model failed → this segment airs nothing
         script = Script(text=" ".join(r.text for r in reads if r.role != "pause"), style=style)
-        if topic not in topic_voice and rotation:
-            topic_voice[topic] = rotation[len(topic_voice) % len(rotation)]
-        seg_voice = topic_voice.get(topic, base_voice)
+        if topic in pinned:
+            seg_voice = pinned[topic]  # the source's explicitly chosen voice
+        else:
+            if topic not in topic_voice and rotation:
+                topic_voice[topic] = rotation[len(topic_voice) % len(rotation)]
+            seg_voice = topic_voice.get(topic, base_voice)
         try:
             audio = render_reads(
                 reads, tts, style=style, voice=seg_voice, headline_pause_ms=headline_pause_ms

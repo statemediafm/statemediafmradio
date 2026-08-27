@@ -788,6 +788,7 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
     def sources() -> dict:
         """The live roster (which sources air) and the registered source kinds.
         Tokens are never included — those live in the auth tab."""
+        from ..newsroom.tts import voice_names
         from ..roster import source_kinds
 
         items = [
@@ -797,11 +798,12 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
                 "kind": seg.get("source"),
                 "every": seg.get("every", "15m"),
                 "enabled": seg.get("enabled", True),
+                "voice": seg.get("voice") or "random",  # 'random' → the auto rotation
                 "config": {k: v for k, v in seg.items() if k != "token"},
             }
             for i, (seg, entry) in enumerate(zip(store.segments, store.roster))
         ]
-        return {"sources": items, "kinds": source_kinds()}
+        return {"sources": items, "kinds": source_kinds(), "voices": voice_names()}
 
     @app.post("/sources")
     def add_source(seg: dict = Body(...)) -> dict:  # noqa: B008 (FastAPI body param)
@@ -848,6 +850,24 @@ def create_app(state: _State | None = None, *, security: SecurityPolicy | None =
             raise HTTPException(status_code=404, detail="no such source")
         store.segments[index]["enabled"] = bool(on)
         return {"index": index, "enabled": store.segments[index]["enabled"]}
+
+    @app.post("/sources/{index}/voice")
+    def set_source_voice(index: int, voice: str = "") -> dict:
+        """Pin the narration voice for this source's news, or clear it. Blank /
+        ``random`` → the app's automatic per-source rotation (the default).
+        Persisted in the segment so it survives a restart."""
+        from ..newsroom.tts import voice_names
+
+        if not 0 <= index < len(store.segments):
+            raise HTTPException(status_code=404, detail="no such source")
+        v = (voice or "").strip()
+        if v and v != "random" and v not in voice_names():
+            raise HTTPException(status_code=400, detail="unknown voice")
+        if v and v != "random":
+            store.segments[index]["voice"] = v
+        else:
+            store.segments[index].pop("voice", None)  # back to random / auto
+        return {"index": index, "voice": store.segments[index].get("voice") or "random"}
 
     @app.post("/sources/{index}/test")
     def test_source(index: int) -> dict:
@@ -2368,11 +2388,20 @@ async function loadSources(){
         '<span class="kind">'+esc(s.kind||'?')+'</span>'+
         '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
         (extra?(' · '+esc(extra)):'')+(on?'':' · off')+'</span></span>'+
+        '<label class="muted" title="voice for this source\'s news">voice <select class="src-voice"></select></label>'+
         '<span class="muted src-result"></span>'+
         '<button class="src-test">Test</button>'+
         '<button class="src-edit">Edit</button>'+
         '<button class="src-remove">Remove</button>';
       const res=row.querySelector('.src-result');
+      // Per-source voice: "Random" (auto rotation) by default, or a pinned voice.
+      const vsel=row.querySelector('.src-voice'); const curV=s.voice||'random';
+      vsel.innerHTML='<option value="random"'+(curV==='random'?' selected':'')+'>Random</option>'+
+        (d.voices||[]).map(v=>'<option'+(v===curV?' selected':'')+'>'+esc(v)+'</option>').join('');
+      vsel.addEventListener('change', async (e)=>{
+        try{ await fetch('/sources/'+s.index+'/voice?voice='+encodeURIComponent(e.target.value),
+          {method:'POST'}); }catch(err){}
+      });
       row.querySelector('.src-on').addEventListener('change', async (e)=>{
         try{ await fetch('/sources/'+s.index+'/enabled?on='+(e.target.checked?'true':'false'),
           {method:'POST'}); await loadSources(); }catch(err){ await loadSources(); }

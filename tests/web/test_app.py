@@ -382,6 +382,94 @@ def test_source_enable_disable_toggle_persists():
     assert client.post("/sources/9/enabled", params={"on": False}).status_code == 404
 
 
+def test_source_voice_pin_and_reset_to_random():
+    from statemediafm.roster import build_segment
+
+    state = _State()
+    state.segments = [{"topic": "HN", "source": "hackernews"}]
+    state.roster = [build_segment(state.segments[0])]
+    client = TestClient(create_app(state))
+
+    d = client.get("/sources").json()
+    assert d["sources"][0]["voice"] == "random"  # default
+    assert "alan" in d["voices"] and "alba" in d["voices"]  # the picker options
+
+    # Pin a voice → stored on the segment and reflected in the listing + persistence.
+    assert client.post("/sources/0/voice", params={"voice": "alba"}).json() == {
+        "index": 0, "voice": "alba"}
+    assert state.segments[0]["voice"] == "alba"
+    assert client.get("/sources").json()["sources"][0]["voice"] == "alba"
+    from statemediafm.configstore import state_to_config
+
+    assert state_to_config(state)["sources"][0]["voice"] == "alba"
+
+    # Reset to random (blank or 'random') clears the pin.
+    assert client.post("/sources/0/voice", params={"voice": "random"}).json()["voice"] == "random"
+    assert "voice" not in state.segments[0]
+
+    # Unknown voice / bad index are rejected.
+    assert client.post("/sources/0/voice", params={"voice": "nope"}).status_code == 400
+    assert client.post("/sources/9/voice", params={"voice": "alan"}).status_code == 404
+
+
+def test_pinned_source_voice_overrides_the_rotation(monkeypatch):
+    from statemediafm import serve
+    from statemediafm.core.models import AudioRef, NewsItem
+    from statemediafm.newsroom.llm import LLMConfig
+    from statemediafm.roster import build_segment
+
+    # Capture the voice _publish_plan renders each segment with (skip real WAV work).
+    captured = []
+
+    def _fake_render_reads(reads, tts, *, style=None, voice=None, headline_pause_ms=None):
+        captured.append(voice)
+        return AudioRef(id="a", data=b"", duration_ms=1000)
+
+    monkeypatch.setattr(serve, "render_reads", _fake_render_reads)
+
+    class _FakeLLM:  # news is always LLM-written; a trivial client suffices here
+        def complete(self, prompt, cfg):
+            return "A quiet day on the wire."
+
+    state = _State()
+    state.voice = "alan"
+    state.segments = [{"topic": "Eng", "source": "hackernews", "voice": "southern_english_female"}]
+    state.roster = [build_segment(state.segments[0])]
+    items = [NewsItem(id="1", source="hackernews", kind="story", title="T", body="b")]
+    topic = state.roster[0][0]  # the pin is keyed by the built roster topic
+    from statemediafm.core.schedule import Cadence
+    serve._publish_plan(state, [(topic, items, Cadence(600), 3)], object(), "newsroom", 1000,
+                        llm=(_FakeLLM(), LLMConfig(model="fake")), cache={})
+    assert captured == ["southern_english_female"]  # pinned voice, not the rotation
+
+
+def test_unpinned_source_uses_the_auto_rotation(monkeypatch):
+    from statemediafm import serve
+    from statemediafm.core.models import AudioRef, NewsItem
+    from statemediafm.newsroom.llm import LLMConfig
+    from statemediafm.roster import build_segment
+
+    captured = []
+    monkeypatch.setattr(serve, "render_reads",
+                        lambda reads, tts, *, style=None, voice=None, headline_pause_ms=None:
+                        captured.append(voice) or AudioRef(id="a", data=b"", duration_ms=1000))
+
+    class _FakeLLM:
+        def complete(self, prompt, cfg):
+            return "News."
+
+    state = _State()
+    state.voice = "alan"
+    state.segments = [{"topic": "HN", "source": "hackernews"}]  # no voice → random/auto
+    state.roster = [build_segment(state.segments[0])]
+    items = [NewsItem(id="1", source="hackernews", kind="story", title="T", body="b")]
+    topic = state.roster[0][0]
+    from statemediafm.core.schedule import Cadence
+    serve._publish_plan(state, [(topic, items, Cadence(600), 3)], object(), "newsroom", 1000,
+                        llm=(_FakeLLM(), LLMConfig(model="fake")), cache={})
+    assert captured == ["alan"]  # first source keeps the base voice (rotation lead)
+
+
 def test_source_test_reports_success_and_errors():
     import urllib.error
 
