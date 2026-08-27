@@ -1237,6 +1237,10 @@ return of(u,o);};})();</script>
           padding:.35rem 0;border-top:1px solid #eee}
   .srcrow .grow{flex:1;min-width:10rem} .srcrow .kind{font-variant:small-caps;color:#666}
   .srcrow .src-result{font-style:italic}
+  /* Compact voice picker: initial-only when closed; capped width so it can't widen
+     or wrap the row even while focused (the open menu still shows full names). */
+  .srcrow .src-voice{font-size:.75rem;margin:0;padding:.1rem .1rem;width:auto;
+                     min-width:2.1rem;max-width:2.8rem;flex:0 0 auto;text-align:center}
   .srcrow.off{opacity:.55} .srcrow.off .grow{text-decoration:line-through}
   /* compact toggle for the source rows */
   .srcrow .switch .track{width:2rem;height:1.1rem}
@@ -2388,17 +2392,34 @@ async function loadSources(){
         '<span class="kind">'+esc(s.kind||'?')+'</span>'+
         '<span class="grow">'+esc(s.topic||'')+' <span class="muted">· every '+esc(s.every)+
         (extra?(' · '+esc(extra)):'')+(on?'':' · off')+'</span></span>'+
-        '<label class="muted" title="voice for this source\'s news">voice <select class="src-voice"></select></label>'+
+        '<select class="src-voice" aria-label="voice"></select>'+
         '<span class="muted src-result"></span>'+
         '<button class="src-test">Test</button>'+
         '<button class="src-edit">Edit</button>'+
         '<button class="src-remove">Remove</button>';
       const res=row.querySelector('.src-result');
-      // Per-source voice: "Random" (auto rotation) by default, or a pinned voice.
+      // Per-source voice: a COMPACT widget so it never widens/wraps the row — it
+      // shows just the speaker's initial when closed, and the full names only in the
+      // open menu. "Random" (auto rotation) is the default.
       const vsel=row.querySelector('.src-voice'); const curV=s.voice||'random';
-      vsel.innerHTML='<option value="random"'+(curV==='random'?' selected':'')+'>Random</option>'+
-        (d.voices||[]).map(v=>'<option'+(v===curV?' selected':'')+'>'+esc(v)+'</option>').join('');
+      const _init=x=>(String(x||'').charAt(0).toUpperCase()||'·');
+      const opts=[['random','Random']].concat((d.voices||[]).map(v=>[v,v]));
+      vsel.innerHTML=opts.map(([val,lab])=>
+        '<option value="'+esc(val)+'" data-full="'+esc(lab)+'">'+esc(lab)+'</option>').join('');
+      vsel.value=curV;
+      const _expand=()=>{ for(const o of vsel.options) o.textContent=o.dataset.full; };  // open → full names
+      const _collapse=()=>{                                                            // closed → initial only
+        const sel=vsel.selectedOptions[0];
+        for(const o of vsel.options) o.textContent=o.dataset.full;
+        if(sel) sel.textContent=_init(sel.dataset.full);
+        vsel.title='voice: '+(sel?sel.dataset.full:'Random');
+      };
+      _collapse();
+      vsel.addEventListener('mousedown', _expand);  // about to open
+      vsel.addEventListener('focus', _expand);
+      vsel.addEventListener('blur', _collapse);
       vsel.addEventListener('change', async (e)=>{
+        _collapse();
         try{ await fetch('/sources/'+s.index+'/voice?voice='+encodeURIComponent(e.target.value),
           {method:'POST'}); }catch(err){}
       });
