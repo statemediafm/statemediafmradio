@@ -61,8 +61,17 @@ _DEFAULT_VOICE = "alan"
 
 
 def voice_names() -> list[str]:
-    """The friendly voice names the UI offers (``--voice`` also accepts these)."""
+    """The friendly voice names the UI offers (``--voice`` also accepts these) —
+    the original curated set plus the added community voices."""
     return list(_VOICE_ALIASES) + list(_VOICE_URLS)
+
+
+def rotation_voice_names() -> list[str]:
+    """The voices the automatic (**"Random"**) per-source rotation draws from — only
+    the **original curated** set. The added community voices (``_VOICE_URLS``) are
+    opt-in: a source uses one only when it's picked explicitly in the dropdown, so
+    they never turn up on their own."""
+    return list(_VOICE_ALIASES)
 
 
 def _silence_wav(rate: int, ms: int = 120, *, channels: int = 1, width: int = 2) -> bytes:

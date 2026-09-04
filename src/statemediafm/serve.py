@@ -169,13 +169,15 @@ def _headlines(items, cap) -> list[tuple[str, str | None]]:
 
 
 def _voice_rotation(base: str | None) -> list:
-    """Voices to rotate across sources so each sounds distinct — the operator's
-    ``base`` voice first (so the first source keeps it), then the other curated
-    voices. A ``base`` that isn't a curated alias (a full Piper name/path) still
-    leads, with the curated set behind it."""
-    from .newsroom.tts import voice_names
+    """Voices the automatic ("Random") rotation cycles across sources so each sounds
+    distinct — the operator's ``base`` voice first (so the first source keeps it),
+    then the other **original curated** voices. The added community voices are
+    excluded here: they're used only when a source picks one explicitly (see
+    ``rotation_voice_names``). A ``base`` that isn't in the rotation set (a community
+    voice, or a full Piper name/path) still leads, with the curated set behind it."""
+    from .newsroom.tts import rotation_voice_names
 
-    names = voice_names()
+    names = rotation_voice_names()
     if base in names:
         return [base] + [n for n in names if n != base]
     return [base, *names] if base else names

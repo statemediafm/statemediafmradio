@@ -63,6 +63,24 @@ def test_community_voices_are_offered_and_url_backed():
         assert cfg == onnx + ".json"
 
 
+def test_random_rotation_excludes_the_community_voices():
+    from statemediafm.newsroom.tts import rotation_voice_names
+    from statemediafm.serve import _voice_rotation
+
+    # The auto "Random" rotation draws only from the original curated set...
+    rot = rotation_voice_names()
+    assert set(rot) == set(_VOICE_ALIASES)
+    assert not (set(rot) & set(_VOICE_URLS))  # no community voices
+    # ...even though the picker still offers them.
+    assert set(_VOICE_URLS) <= set(voice_names())
+
+    # An unpinned rotation (base 'alan') cycles only curated voices.
+    assert set(_voice_rotation("alan")) == set(_VOICE_ALIASES)
+    # A community base voice still leads, with the curated set behind it (opt-in lead).
+    order = _voice_rotation("jenny_dioco")
+    assert order[0] == "jenny_dioco" and set(order[1:]) == set(_VOICE_ALIASES)
+
+
 def test_resolve_community_voice_downloads_from_its_urls(tmp_path, monkeypatch):
     # A URL-backed voice fetches its .onnx/.onnx.json pair (no hub path), caching
     # them in the voices dir; a second resolve is offline.
